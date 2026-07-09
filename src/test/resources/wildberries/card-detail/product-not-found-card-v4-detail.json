@@ -1,0 +1,14 @@
+{
+  "state": 0,
+  "version": 2,
+  "data": {
+    "products": [
+      {
+        "id": 111111111,
+        "name": "Another product",
+        "brand": "Another Brand",
+        "sizes": []
+      }
+    ]
+  }
+}
