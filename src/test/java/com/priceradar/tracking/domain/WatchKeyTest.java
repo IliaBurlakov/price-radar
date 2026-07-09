@@ -15,14 +15,16 @@ class WatchKeyTest {
         WatchKey option = WatchKey.forProviderOption(
                 Marketplace.WILDBERRIES, 123, "789", 1_259_570_991L, 30
         );
-        WatchKey noSize = WatchKey.withoutSize(Marketplace.WILDBERRIES, 123, 1_259_570_991L, 30);
+        WatchKey noVariant = WatchKey.withoutVariant(
+                Marketplace.WILDBERRIES, 123, 1_259_570_991L, 30
+        );
 
-        assertThat(sized.variantKey()).isEqualTo("SIZE:456");
-        assertThat(sized.variantKind()).isEqualTo(VariantKind.SIZE);
-        assertThat(option.variantKey()).isEqualTo("OPTION:789");
-        assertThat(option.variantKind()).isEqualTo(VariantKind.PROVIDER_OPTION);
-        assertThat(noSize.variantKey()).isEqualTo("NO_SIZE");
-        assertThat(noSize.variantKind()).isEqualTo(VariantKind.NO_SIZE);
+        assertThat(sized.getVariantKey()).isEqualTo("SIZE:456");
+        assertThat(sized.getVariantKind()).isEqualTo(VariantKind.SIZE);
+        assertThat(option.getVariantKey()).isEqualTo("OPTION:789");
+        assertThat(option.getVariantKind()).isEqualTo(VariantKind.PROVIDER_OPTION);
+        assertThat(noVariant.getVariantKey()).isEqualTo("NO_VARIANT");
+        assertThat(noVariant.getVariantKind()).isEqualTo(VariantKind.NO_VARIANT);
     }
 
     @Test
@@ -46,13 +48,13 @@ class WatchKeyTest {
         WatchKey moscow = WatchKey.forSize(
                 Marketplace.WILDBERRIES, 123, 456, 1_259_570_991L, 30
         );
-        WatchKey novosibirsk = WatchKey.forSize(
-                Marketplace.WILDBERRIES, 123, 456, -366_519L, 30
+        WatchKey differentRegion = WatchKey.forSize(
+                Marketplace.WILDBERRIES, 123, 456, -100L, 30
         );
         WatchKey otherSize = WatchKey.forSize(
                 Marketplace.WILDBERRIES, 123, 789, 1_259_570_991L, 30
         );
 
-        assertThat(moscow).isNotEqualTo(novosibirsk).isNotEqualTo(otherSize);
+        assertThat(moscow).isNotEqualTo(differentRegion).isNotEqualTo(otherSize);
     }
 }
