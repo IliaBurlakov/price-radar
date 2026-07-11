@@ -1,0 +1,17 @@
+{
+  "state": 0,
+  "version": 2,
+  "data": {
+    "products": [
+      {
+        "id": 987654321,
+        "name": "Demo book",
+        "brand": "Demo Publisher",
+        "price": {
+          "product": 77700,
+          "basic": 99900
+        }
+      }
+    ]
+  }
+}

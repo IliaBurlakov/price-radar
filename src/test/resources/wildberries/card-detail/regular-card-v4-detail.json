@@ -1,0 +1,44 @@
+{
+  "state": 0,
+  "version": 2,
+  "data": {
+    "products": [
+      {
+        "id": 123456789,
+        "name": "Demo jacket",
+        "brand": "Demo Brand",
+        "sizes": [
+          {
+            "optionId": 111,
+            "name": "42",
+            "origName": "42",
+            "stocks": [
+              {
+                "wh": 507,
+                "qty": 2
+              }
+            ],
+            "price": {
+              "product": 89900,
+              "basic": 129900
+            }
+          },
+          {
+            "optionId": 222,
+            "name": "44",
+            "origName": "44",
+            "stocks": [
+              {
+                "wh": 507,
+                "qty": 1
+              }
+            ],
+            "price": {
+              "basic": 119900
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

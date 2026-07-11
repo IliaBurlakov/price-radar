@@ -101,10 +101,6 @@ public final class InterpretedPrice {
                 && regularPrice.isPresent();
     }
 
-    public boolean isEligibleForAnalyticsAndNotifications() {
-        return hasValidRegularPrice();
-    }
-
     @Override
     public boolean equals(Object other) {
         if (this == other) {
