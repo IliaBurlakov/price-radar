@@ -8,4 +8,6 @@ public interface TelegramGateway {
     List<TelegramUpdate> receiveUpdates(long offset, Duration timeout);
 
     void sendMessage(OutgoingTelegramMessage message);
+
+    void answerCallbackQuery(String callbackQueryId);
 }

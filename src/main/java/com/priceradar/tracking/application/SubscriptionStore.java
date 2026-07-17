@@ -17,6 +17,8 @@ public interface SubscriptionStore {
 
     Optional<SubscriptionQuoteObservation> findLatestQuoteObservation(UUID watchTargetId);
 
+    Optional<SubscriptionQuoteObservation> findLatestRegularPriceObservation(UUID watchTargetId);
+
     Subscription create(Subscription subscription);
 
     Subscription end(Subscription subscription);
