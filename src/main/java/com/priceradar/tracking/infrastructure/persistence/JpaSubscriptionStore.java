@@ -1,8 +1,10 @@
 package com.priceradar.tracking.infrastructure.persistence;
 
+import com.priceradar.pricing.application.InterpretedPrice;
 import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
+import com.priceradar.tracking.application.LatestSnapshotView;
 import com.priceradar.tracking.application.SubscriptionQuoteObservation;
 import com.priceradar.tracking.application.SubscriptionStore;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
@@ -65,6 +67,16 @@ public class JpaSubscriptionStore implements SubscriptionStore {
         return subscriptionRepository.findActiveTrackedItems(userId).stream()
                 .map(this::toTrackedSubscriptionItem)
                 .toList();
+    }
+
+    @Override
+    public Optional<LatestSnapshotView> findLatestSnapshotActiveOwned(
+            UUID userId,
+            UUID subscriptionId
+    ) {
+        return subscriptionRepository
+                .findLatestSnapshotActiveOwned(userId, subscriptionId)
+                .map(this::toLatestSnapshotView);
     }
 
     @Override
@@ -156,6 +168,30 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 projection.getTrackingStartedAt(),
                 snapshotStatus,
                 regularPrice,
+                Optional.ofNullable(projection.getObservedAt())
+        );
+    }
+
+    private LatestSnapshotView toLatestSnapshotView(
+            LatestSnapshotProjection projection
+    ) {
+        Optional<InterpretedPrice> interpretedPrice = Optional
+                .ofNullable(projection.getSnapshotStatus())
+                .map(status -> new InterpretedPrice(
+                        optionalAmount(projection.getRegularPriceMinor()),
+                        optionalAmount(projection.getMarketingBasePriceMinor()),
+                        Optional.ofNullable(projection.getPriceSource())
+                                .map(PriceSource::valueOf),
+                        SnapshotStatus.valueOf(status)
+                ));
+        return new LatestSnapshotView(
+                projection.getSubscriptionId(),
+                projection.getNmId(),
+                Optional.ofNullable(projection.getTitle()),
+                Optional.ofNullable(projection.getBrand()),
+                projection.getCanonicalUrl(),
+                Optional.ofNullable(projection.getVariantDisplayName()),
+                interpretedPrice,
                 Optional.ofNullable(projection.getObservedAt())
         );
     }
