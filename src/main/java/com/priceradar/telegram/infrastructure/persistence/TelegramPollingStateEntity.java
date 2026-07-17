@@ -54,4 +54,19 @@ public class TelegramPollingStateEntity {
     public long getVersion() {
         return version;
     }
+
+    public boolean confirm(long updateId, Instant confirmedAt) {
+        if (updateId < 0) {
+            throw new IllegalArgumentException("updateId must be non-negative");
+        }
+        if (confirmedAt == null) {
+            throw new IllegalArgumentException("confirmedAt must not be null");
+        }
+        if (lastConfirmedUpdateId != null && updateId <= lastConfirmedUpdateId) {
+            return false;
+        }
+        lastConfirmedUpdateId = updateId;
+        updatedAt = confirmedAt;
+        return true;
+    }
 }

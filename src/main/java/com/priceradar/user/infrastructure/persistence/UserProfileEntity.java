@@ -108,4 +108,15 @@ public class UserProfileEntity {
     public long getVersion() {
         return version;
     }
+
+    public void updateTelegramChatId(long telegramChatId, Instant updatedAt) {
+        if (telegramChatId <= 0) {
+            throw new IllegalArgumentException("telegramChatId must be positive");
+        }
+        if (updatedAt == null) {
+            throw new IllegalArgumentException("updatedAt must not be null");
+        }
+        this.telegramChatId = telegramChatId;
+        this.updatedAt = updatedAt;
+    }
 }
