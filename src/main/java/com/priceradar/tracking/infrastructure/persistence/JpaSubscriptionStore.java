@@ -123,6 +123,20 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
+    public boolean updateNotificationStateIfActive(Subscription subscription) {
+        if (subscription == null) {
+            throw new IllegalArgumentException("subscription must not be null");
+        }
+        return subscriptionRepository.updateNotificationStateIfActive(
+                subscription.getId(),
+                subscription.getBaselinePrice().map(RubleAmount::getMinorUnits).orElse(null),
+                subscription.getBaselineObservedAt().orElse(null),
+                subscription.getThresholdState(),
+                SubscriptionStatus.ACTIVE
+        ) == 1;
+    }
+
+    @Override
     public Subscription end(Subscription subscription) {
         SubscriptionEntity entity = subscriptionRepository.findById(subscription.getId())
                 .orElseThrow(() -> new IllegalStateException("Subscription no longer exists"));

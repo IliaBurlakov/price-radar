@@ -29,5 +29,7 @@ public interface SubscriptionStore {
 
     Subscription create(Subscription subscription);
 
+    boolean updateNotificationStateIfActive(Subscription subscription);
+
     Subscription end(Subscription subscription);
 }
