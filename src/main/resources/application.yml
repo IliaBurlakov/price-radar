@@ -1,3 +1,24 @@
 spring:
   application:
     name: price-radar
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  flyway:
+    enabled: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+priceradar:
+  provider:
+    wildberries:
+      endpoint: https://card.wb.ru/cards/v4/detail
+      min-request-delay: PT3S
+      request-timeout: PT10S
+      cache-ttl: PT5M
+      cache-max-entries: 10000
+      max-attempts: 3
+      base-backoff: PT2S

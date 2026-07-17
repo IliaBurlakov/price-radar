@@ -107,6 +107,55 @@ class WildberriesCardMapperTest {
         assertThat(priceFields.getBasicPrice()).contains(RubleAmount.ofMinorUnits(99900));
     }
 
+    @Test
+    void rejectsDuplicateSizeOptionIds() {
+        String response = """
+                {
+                  "data": {
+                    "products": [{
+                      "id": 123456789,
+                      "sizes": [
+                        {"optionId": 111, "stocks": [{"qty": 1}], "price": {"product": 10000}},
+                        {"optionId": 111, "stocks": [{"qty": 2}], "price": {"product": 9000}}
+                      ]
+                    }]
+                  }
+                }
+                """;
+
+        WildberriesMappingResult result = mapper.map(response, 123456789);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getFailure()).get()
+                .extracting(WildberriesMappingFailure::getCode)
+                .isEqualTo(WildberriesMappingFailureCode.SCHEMA_VIOLATION);
+    }
+
+    @Test
+    void treatsStocksWithZeroQuantityAsUnavailable() {
+        String response = """
+                {
+                  "data": {
+                    "products": [{
+                      "id": 123456789,
+                      "sizes": [{
+                        "optionId": 111,
+                        "stocks": [{"qty": 0}],
+                        "price": {"product": 10000}
+                      }]
+                    }]
+                  }
+                }
+                """;
+
+        WildberriesMappedProduct product = mapper.map(response, 123456789)
+                .getProduct()
+                .orElseThrow();
+
+        assertThat(product.getVariantOptions().getFirst().isAvailable()).isFalse();
+        assertThat(product.findPriceFields("SIZE:111").orElseThrow().isAvailable()).isFalse();
+    }
+
     private String fixture(String path) {
         try (var input = getClass().getClassLoader().getResourceAsStream(path)) {
             if (input == null) {

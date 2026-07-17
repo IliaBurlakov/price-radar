@@ -113,6 +113,13 @@ public final class WildberriesCardMapper {
                     priceFields.getProductPrice().isPresent()
             );
 
+            if (priceFieldsByVariant.containsKey(option.getVariantKey())) {
+                return failure(
+                        WildberriesMappingFailureCode.SCHEMA_VIOLATION,
+                        "Response contains duplicate size option id"
+                );
+            }
+
             options.add(option);
             priceFieldsByVariant.put(option.getVariantKey(), priceFields);
         }
@@ -184,7 +191,12 @@ public final class WildberriesCardMapper {
         }
         JsonNode stocks = sizeNode.path("stocks");
         if (stocks.isArray()) {
-            return !stocks.isEmpty();
+            for (JsonNode stock : stocks) {
+                if (positiveLong(stock, "qty").isPresent()) {
+                    return true;
+                }
+            }
+            return false;
         }
         return positiveLong(sizeNode, "quantity", "qty", "stockCount").isPresent();
     }

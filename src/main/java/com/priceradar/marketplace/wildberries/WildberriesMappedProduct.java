@@ -51,6 +51,10 @@ public final class WildberriesMappedProduct {
         return variantOptions;
     }
 
+    public Map<String, ProviderPriceFields> getPriceFieldsByVariantKey() {
+        return priceFieldsByVariantKey;
+    }
+
     public Optional<ProviderPriceFields> findPriceFields(String variantKey) {
         Objects.requireNonNull(variantKey, "variantKey must not be null");
         return Optional.ofNullable(priceFieldsByVariantKey.get(variantKey.trim()));

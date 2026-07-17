@@ -6,13 +6,17 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class LocalHttpStub implements AutoCloseable {
 
     private final HttpServer server;
+    private final AtomicInteger requestCount;
 
     private LocalHttpStub(HttpServer server) {
         this.server = server;
+        this.requestCount = new AtomicInteger();
     }
 
     public static LocalHttpStub start() {
@@ -30,8 +34,24 @@ public final class LocalHttpStub implements AutoCloseable {
     }
 
     public void stub(String path, int statusCode, String responseBody) {
+        stub(path, statusCode, responseBody, Map.of());
+    }
+
+    public void stub(
+            String path,
+            int statusCode,
+            String responseBody,
+            Map<String, String> responseHeaders
+    ) {
         byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
-        server.createContext(path, exchange -> respond(exchange, statusCode, body));
+        server.createContext(path, exchange -> {
+            requestCount.incrementAndGet();
+            respond(exchange, statusCode, body, responseHeaders);
+        });
+    }
+
+    public int requestCount() {
+        return requestCount.get();
     }
 
     @Override
@@ -39,8 +59,14 @@ public final class LocalHttpStub implements AutoCloseable {
         server.stop(0);
     }
 
-    private static void respond(HttpExchange exchange, int statusCode, byte[] body) throws IOException {
+    private static void respond(
+            HttpExchange exchange,
+            int statusCode,
+            byte[] body,
+            Map<String, String> responseHeaders
+    ) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
+        responseHeaders.forEach((name, value) -> exchange.getResponseHeaders().set(name, value));
         exchange.sendResponseHeaders(statusCode, body.length);
         try (var response = exchange.getResponseBody()) {
             response.write(body);
