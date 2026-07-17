@@ -5,10 +5,13 @@ import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.tracking.application.SubscriptionQuoteObservation;
 import com.priceradar.tracking.application.SubscriptionStore;
+import com.priceradar.tracking.application.TrackedSubscriptionItem;
+import com.priceradar.tracking.domain.NotificationMode;
 import com.priceradar.tracking.domain.Subscription;
 import com.priceradar.tracking.domain.SubscriptionStatus;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -55,6 +58,13 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     @Override
     public long countActive(UUID userId) {
         return subscriptionRepository.countByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE);
+    }
+
+    @Override
+    public List<TrackedSubscriptionItem> findActiveByUserId(UUID userId) {
+        return subscriptionRepository.findActiveTrackedItems(userId).stream()
+                .map(this::toTrackedSubscriptionItem)
+                .toList();
     }
 
     @Override
@@ -122,6 +132,43 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 entity.getCreatedAt(),
                 Optional.ofNullable(entity.getEndedAt())
         );
+    }
+
+    private TrackedSubscriptionItem toTrackedSubscriptionItem(
+            TrackedSubscriptionProjection projection
+    ) {
+        Optional<SnapshotStatus> snapshotStatus = Optional
+                .ofNullable(projection.getSnapshotStatus())
+                .map(SnapshotStatus::valueOf);
+        Optional<RubleAmount> regularPrice = validRegularPrice(
+                projection,
+                snapshotStatus
+        );
+        return new TrackedSubscriptionItem(
+                projection.getSubscriptionId(),
+                projection.getNmId(),
+                Optional.ofNullable(projection.getTitle()),
+                Optional.ofNullable(projection.getBrand()),
+                projection.getCanonicalUrl(),
+                Optional.ofNullable(projection.getVariantDisplayName()),
+                NotificationMode.valueOf(projection.getNotificationMode()),
+                optionalAmount(projection.getTargetPriceMinor()),
+                projection.getTrackingStartedAt(),
+                snapshotStatus,
+                regularPrice,
+                Optional.ofNullable(projection.getObservedAt())
+        );
+    }
+
+    private Optional<RubleAmount> validRegularPrice(
+            TrackedSubscriptionProjection projection,
+            Optional<SnapshotStatus> status
+    ) {
+        if (status.filter(SnapshotStatus.REGULAR_PRICE::equals).isEmpty()
+                || !PriceSource.PRODUCT.name().equals(projection.getPriceSource())) {
+            return Optional.empty();
+        }
+        return optionalAmount(projection.getRegularPriceMinor());
     }
 
     private Optional<RubleAmount> optionalAmount(Long minorUnits) {

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -77,12 +78,23 @@ public class SubscriptionService {
         if (userId == null || subscriptionId == null || now == null) {
             throw new IllegalArgumentException("end subscription fields must not be null");
         }
+        if (!userProfileStore.existsAndLockById(userId)) {
+            return SubscriptionEndResult.notFound();
+        }
         Optional<Subscription> active = subscriptionStore.findActiveOwned(userId, subscriptionId);
         if (active.isEmpty()) {
             return SubscriptionEndResult.notFound();
         }
         Subscription ended = active.get().end(now);
         return SubscriptionEndResult.ended(subscriptionStore.end(ended));
+    }
+
+    @Transactional(readOnly = true)
+    public List<TrackedSubscriptionItem> findActive(UUID userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId must not be null");
+        }
+        return subscriptionStore.findActiveByUserId(userId);
     }
 
     private Subscription createSubscription(
