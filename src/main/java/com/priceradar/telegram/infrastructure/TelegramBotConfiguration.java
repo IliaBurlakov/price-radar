@@ -3,8 +3,11 @@ package com.priceradar.telegram.infrastructure;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.product.application.ResolvedQuoteService;
+import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.telegram.application.LatestSnapshotMessageFactory;
 import com.priceradar.telegram.application.ShowLastKnownCallbackHandler;
+import com.priceradar.telegram.application.StatisticsCallbackHandler;
+import com.priceradar.telegram.application.StatisticsMessageFactory;
 import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
@@ -155,17 +158,41 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public StatisticsMessageFactory statisticsMessageFactory() {
+        return new StatisticsMessageFactory();
+    }
+
+    @Bean
+    public StatisticsCallbackHandler statisticsCallbackHandler(
+            UserProfileService userProfileService,
+            SubscriptionStatisticsService statisticsService,
+            StatisticsMessageFactory messageFactory,
+            TelegramGateway telegramGateway,
+            Clock providerClock
+    ) {
+        return new StatisticsCallbackHandler(
+                userProfileService,
+                statisticsService,
+                messageFactory,
+                telegramGateway,
+                providerClock
+        );
+    }
+
+    @Bean
     public TelegramUpdateDispatcher telegramUpdateDispatcher(
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramTrackingHandler trackingHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
-            ShowLastKnownCallbackHandler showLastKnownHandler
+            ShowLastKnownCallbackHandler showLastKnownHandler,
+            StatisticsCallbackHandler statisticsHandler
     ) {
         return new TelegramUpdateDispatcher(
                 currentQuoteHandler,
                 trackingHandler,
                 trackedItemsHandler,
-                showLastKnownHandler
+                showLastKnownHandler,
+                statisticsHandler
         );
     }
 

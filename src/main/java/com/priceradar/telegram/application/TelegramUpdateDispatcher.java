@@ -6,21 +6,24 @@ public class TelegramUpdateDispatcher {
     private final TelegramTrackingHandler trackingHandler;
     private final TrackedItemsMessageHandler trackedItemsHandler;
     private final ShowLastKnownCallbackHandler showLastKnownHandler;
+    private final StatisticsCallbackHandler statisticsHandler;
 
     public TelegramUpdateDispatcher(
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramTrackingHandler trackingHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
-            ShowLastKnownCallbackHandler showLastKnownHandler
+            ShowLastKnownCallbackHandler showLastKnownHandler,
+            StatisticsCallbackHandler statisticsHandler
     ) {
         if (currentQuoteHandler == null || trackingHandler == null || trackedItemsHandler == null
-                || showLastKnownHandler == null) {
+                || showLastKnownHandler == null || statisticsHandler == null) {
             throw new IllegalArgumentException("Telegram update dispatcher dependencies must not be null");
         }
         this.currentQuoteHandler = currentQuoteHandler;
         this.trackingHandler = trackingHandler;
         this.trackedItemsHandler = trackedItemsHandler;
         this.showLastKnownHandler = showLastKnownHandler;
+        this.statisticsHandler = statisticsHandler;
     }
 
     public void dispatch(TelegramUpdate update) {
@@ -30,6 +33,9 @@ public class TelegramUpdateDispatcher {
         if (update.getCallback().isPresent()) {
             IncomingTelegramCallback callback = update.getCallback().orElseThrow();
             if (showLastKnownHandler.handleCallback(callback)) {
+                return;
+            }
+            if (statisticsHandler.handleCallback(callback)) {
                 return;
             }
             if (trackedItemsHandler.handleCallback(callback)) {
