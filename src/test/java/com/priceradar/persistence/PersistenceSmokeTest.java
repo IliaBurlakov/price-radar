@@ -44,7 +44,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -54,19 +56,26 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @ActiveProfiles("test")
 @Testcontainers
+@AutoConfigureMockMvc
 class PersistenceSmokeTest {
 
     @Container
@@ -140,6 +149,9 @@ class PersistenceSmokeTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private MockMvc mockMvc;
+
     @BeforeEach
     void clearBusinessData() {
         jdbcTemplate.execute("""
@@ -169,6 +181,30 @@ class PersistenceSmokeTest {
         assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
+    }
+
+    @Test
+    void protectsAndSanitizesPublishedActuatorEndpoints() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Basic realm=\"Realm\""));
+
+        String authorization = basicAuthorization(
+                "test-actuator",
+                "test-only-actuator-password"
+        );
+        mockMvc.perform(get("/actuator/health").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.components").doesNotExist());
+        mockMvc.perform(get("/actuator/info").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.build.version").value("0.0.1-SNAPSHOT"));
+        mockMvc.perform(get("/actuator/metrics").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.names").isArray());
+        mockMvc.perform(get("/actuator/env").header("Authorization", authorization))
+                .andExpect(status().is4xxClientError());
     }
 
     @Test
@@ -519,5 +555,12 @@ class PersistenceSmokeTest {
                 marketingBasePriceMinor,
                 available
         ));
+    }
+
+    private String basicAuthorization(String username, String password) {
+        String credentials = username + ":" + password;
+        return "Basic " + Base64.getEncoder().encodeToString(
+                credentials.getBytes(StandardCharsets.UTF_8)
+        );
     }
 }
