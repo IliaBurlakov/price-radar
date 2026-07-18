@@ -14,6 +14,10 @@ public interface SubscriptionStore {
 
     Optional<Subscription> findActiveOwned(UUID userId, UUID subscriptionId);
 
+    Optional<Subscription> findActiveById(UUID subscriptionId);
+
+    List<Subscription> findActiveByWatchTargetId(UUID watchTargetId);
+
     long countActive(UUID userId);
 
     List<TrackedSubscriptionItem> findActiveByUserId(UUID userId);

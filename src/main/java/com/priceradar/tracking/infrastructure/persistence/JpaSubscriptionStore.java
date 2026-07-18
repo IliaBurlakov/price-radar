@@ -60,6 +60,26 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
+    public Optional<Subscription> findActiveById(UUID subscriptionId) {
+        return subscriptionRepository.findByIdAndStatus(
+                subscriptionId,
+                SubscriptionStatus.ACTIVE
+        ).map(this::toSubscription);
+    }
+
+    @Override
+    public List<Subscription> findActiveByWatchTargetId(UUID watchTargetId) {
+        return subscriptionRepository
+                .findByWatchTargetIdAndStatusOrderByCreatedAtAscIdAsc(
+                        watchTargetId,
+                        SubscriptionStatus.ACTIVE
+                )
+                .stream()
+                .map(this::toSubscription)
+                .toList();
+    }
+
+    @Override
     public long countActive(UUID userId) {
         return subscriptionRepository.countByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE);
     }
