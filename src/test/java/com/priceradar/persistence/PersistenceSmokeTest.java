@@ -7,7 +7,9 @@ import com.priceradar.pricing.application.InterpretedPrice;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.domain.PriceContext;
+import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
+import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.notification.domain.NotificationType;
 import com.priceradar.notification.application.NotificationDeliveryStore;
 import com.priceradar.notification.application.NotificationDecisionService;
@@ -23,6 +25,10 @@ import com.priceradar.scheduler.application.DueWatchTarget;
 import com.priceradar.scheduler.application.DueWatchTargetReader;
 import com.priceradar.scheduler.application.ScheduledObservationStore;
 import com.priceradar.scheduler.application.WatchTargetCheckTransaction;
+import com.priceradar.statistics.application.SubscriptionStatistics;
+import com.priceradar.statistics.application.SubscriptionStatisticsService;
+import com.priceradar.statistics.domain.StatisticsPeriod;
+import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotEntity;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotJpaRepository;
 import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaRepository;
 import com.priceradar.tracking.application.SubscriptionCreationResult;
@@ -106,6 +112,9 @@ class PersistenceSmokeTest {
 
     @Autowired
     private SubscriptionService subscriptionService;
+
+    @Autowired
+    private SubscriptionStatisticsService subscriptionStatisticsService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -307,6 +316,137 @@ class PersistenceSmokeTest {
     }
 
     @Test
+    void calculatesStatisticsOnlyForTheCurrentSubscriptionPeriod() {
+        Instant subscriptionStartedAt = Instant.parse("2026-07-18T10:00:00Z");
+        UUID watchTargetId = quotePersistenceService.save(
+                quoteCommand(444444L, subscriptionStartedAt.minusSeconds(1))
+        );
+        UserProfile user = userProfileService.getOrCreate(40001L, 40001L);
+        SubscriptionCreationResult firstSubscription = subscriptionService.createFromQuote(
+                user.getId(),
+                watchTargetId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                subscriptionStartedAt
+        );
+
+        saveSnapshot(
+                watchTargetId,
+                subscriptionStartedAt.plusSeconds(1),
+                SnapshotStatus.REGULAR_PRICE,
+                PriceSource.PRODUCT,
+                9_000L,
+                null,
+                true
+        );
+        saveSnapshot(
+                watchTargetId,
+                subscriptionStartedAt.plusSeconds(2),
+                SnapshotStatus.REGULAR_PRICE,
+                PriceSource.PRODUCT,
+                11_001L,
+                null,
+                true
+        );
+        saveSnapshot(
+                watchTargetId,
+                subscriptionStartedAt.plusSeconds(3),
+                SnapshotStatus.BASIC_FALLBACK,
+                PriceSource.BASIC_FALLBACK,
+                null,
+                7_000L,
+                true
+        );
+        saveSnapshot(
+                watchTargetId,
+                subscriptionStartedAt.plusSeconds(4),
+                SnapshotStatus.UNAVAILABLE,
+                null,
+                null,
+                null,
+                false
+        );
+        saveSnapshot(
+                watchTargetId,
+                subscriptionStartedAt.plusSeconds(5),
+                SnapshotStatus.NO_PRICE,
+                null,
+                null,
+                null,
+                true
+        );
+
+        UUID firstSubscriptionId = firstSubscription.getSubscription()
+                .orElseThrow()
+                .getId();
+        SubscriptionStatistics firstPeriod = subscriptionStatisticsService.calculate(
+                user.getId(),
+                firstSubscriptionId,
+                StatisticsPeriod.ALL_TIME,
+                subscriptionStartedAt.plusSeconds(6)
+        ).orElseThrow();
+
+        assertThat(firstPeriod.getEffectivePeriodStart()).isEqualTo(subscriptionStartedAt);
+        assertThat(firstPeriod.getObservationCount()).isEqualTo(2);
+        assertThat(firstPeriod.getMinimumPrice())
+                .contains(RubleAmount.ofMinorUnits(9_000L));
+        assertThat(firstPeriod.getMaximumPrice())
+                .contains(RubleAmount.ofMinorUnits(11_001L));
+        assertThat(firstPeriod.getAverageMinorUnits().orElseThrow())
+                .isEqualByComparingTo("10000.5");
+
+        subscriptionService.end(
+                user.getId(),
+                firstSubscriptionId,
+                subscriptionStartedAt.plusSeconds(7)
+        );
+        SubscriptionCreationResult secondSubscription = subscriptionService.createFromQuote(
+                user.getId(),
+                watchTargetId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                subscriptionStartedAt.plusSeconds(8)
+        );
+        UUID secondSubscriptionId = secondSubscription.getSubscription()
+                .orElseThrow()
+                .getId();
+
+        SubscriptionStatistics newPeriodWithoutObservations = subscriptionStatisticsService
+                .calculate(
+                        user.getId(),
+                        secondSubscriptionId,
+                        StatisticsPeriod.ALL_TIME,
+                        subscriptionStartedAt.plusSeconds(9)
+                ).orElseThrow();
+
+        assertThat(newPeriodWithoutObservations.hasData()).isFalse();
+        assertThat(newPeriodWithoutObservations.getObservationCount()).isZero();
+        assertThat(newPeriodWithoutObservations.getMinimumPrice()).isEmpty();
+
+        saveSnapshot(
+                watchTargetId,
+                subscriptionStartedAt.plusSeconds(10),
+                SnapshotStatus.REGULAR_PRICE,
+                PriceSource.PRODUCT,
+                8_500L,
+                null,
+                true
+        );
+        SubscriptionStatistics newPeriod = subscriptionStatisticsService.calculate(
+                user.getId(),
+                secondSubscriptionId,
+                StatisticsPeriod.ALL_TIME,
+                subscriptionStartedAt.plusSeconds(11)
+        ).orElseThrow();
+
+        assertThat(newPeriod.getObservationCount()).isOne();
+        assertThat(newPeriod.getMinimumPrice())
+                .contains(RubleAmount.ofMinorUnits(8_500L));
+        assertThat(newPeriod.getAverageMinorUnits().orElseThrow())
+                .isEqualByComparingTo("8500");
+    }
+
+    @Test
     void persistsResolvedQuoteIdempotentlyAndChecksTtlFromSnapshots() {
         Instant freshObservation = Instant.now().minus(1, ChronoUnit.MINUTES);
         ResolvedQuotePersistenceCommand freshQuote = quoteCommand(123456L, freshObservation);
@@ -357,5 +497,27 @@ class PersistenceSmokeTest {
                 interpretedPrice,
                 observedAt
         );
+    }
+
+    private void saveSnapshot(
+            UUID watchTargetId,
+            Instant observedAt,
+            SnapshotStatus status,
+            PriceSource priceSource,
+            Long regularPriceMinor,
+            Long marketingBasePriceMinor,
+            boolean available
+    ) {
+        snapshotRepository.save(new PriceSnapshotEntity(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                watchTargetId,
+                observedAt,
+                status,
+                priceSource,
+                regularPriceMinor,
+                marketingBasePriceMinor,
+                available
+        ));
     }
 }
