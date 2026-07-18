@@ -37,3 +37,12 @@ priceradar:
     poll-delay: PT1S
     bot-key: primary
     max-update-attempts: 5
+  notification:
+    delivery:
+      initial-delay: PT5S
+      poll-delay: PT5S
+      batch-size: 25
+      max-attempts: 5
+      claim-timeout: PT30S
+      base-backoff: PT10S
+      max-backoff: PT15M

@@ -1,19 +1,14 @@
 package com.priceradar.telegram.infrastructure;
 
-public class TelegramGatewayException extends RuntimeException {
+import com.priceradar.telegram.application.TelegramDeliveryException;
 
-    private final boolean retryable;
+public class TelegramGatewayException extends TelegramDeliveryException {
 
     public TelegramGatewayException(String message) {
         this(message, false);
     }
 
     public TelegramGatewayException(String message, boolean retryable) {
-        super(message);
-        this.retryable = retryable;
-    }
-
-    public boolean isRetryable() {
-        return retryable;
+        super(message, retryable);
     }
 }

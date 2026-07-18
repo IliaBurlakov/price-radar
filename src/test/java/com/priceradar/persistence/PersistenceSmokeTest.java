@@ -9,6 +9,8 @@ import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.notification.domain.NotificationType;
+import com.priceradar.notification.application.NotificationDeliveryStore;
+import com.priceradar.notification.application.PendingNotificationDelivery;
 import com.priceradar.notification.infrastructure.persistence.NotificationOutboxJpaRepository;
 import com.priceradar.product.application.ResolvedQuotePersistenceCommand;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
@@ -87,6 +89,9 @@ class PersistenceSmokeTest {
     private NotificationOutboxJpaRepository notificationOutboxRepository;
 
     @Autowired
+    private NotificationDeliveryStore notificationDeliveryStore;
+
+    @Autowired
     private UserProfileService userProfileService;
 
     @Autowired
@@ -154,6 +159,29 @@ class PersistenceSmokeTest {
                             .isEqualTo(NotificationType.TARGET_REACHED);
                     assertThat(event.getSnapshotId()).isNotNull();
                 });
+
+        PendingNotificationDelivery pending = notificationDeliveryStore.findDue(now, 10)
+                .getFirst();
+        Instant claimUntil = now.plusSeconds(30);
+        assertThat(pending.getType()).isEqualTo(NotificationType.TARGET_REACHED);
+        assertThat(pending.getTargetPrice())
+                .contains(RubleAmount.ofMinorUnits(11_000L));
+        assertThat(notificationDeliveryStore.claim(
+                pending.getOutboxId(),
+                pending.getNextAttemptAt(),
+                now,
+                claimUntil
+        )).isTrue();
+        assertThat(notificationDeliveryStore.markSent(
+                pending.getOutboxId(),
+                claimUntil,
+                now.plusSeconds(1)
+        )).isTrue();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM notification_outbox WHERE id = ?",
+                String.class,
+                pending.getOutboxId()
+        )).isEqualTo("SENT");
     }
 
     @Test
