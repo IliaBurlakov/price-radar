@@ -44,6 +44,9 @@ public class SubscriptionEntity {
     @Column(name = "threshold_state", nullable = false, length = 32)
     private ThresholdState thresholdState;
 
+    @Column(name = "threshold_observed_at")
+    private Instant thresholdObservedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     private SubscriptionStatus status;
@@ -70,6 +73,7 @@ public class SubscriptionEntity {
             Long baselinePriceMinor,
             Instant baselineObservedAt,
             ThresholdState thresholdState,
+            Instant thresholdObservedAt,
             SubscriptionStatus status,
             Instant createdAt,
             Instant endedAt
@@ -82,6 +86,7 @@ public class SubscriptionEntity {
         this.baselinePriceMinor = baselinePriceMinor;
         this.baselineObservedAt = baselineObservedAt;
         this.thresholdState = thresholdState;
+        this.thresholdObservedAt = thresholdObservedAt;
         this.status = status;
         this.createdAt = createdAt;
         this.endedAt = endedAt;
@@ -128,6 +133,10 @@ public class SubscriptionEntity {
 
     public ThresholdState getThresholdState() {
         return thresholdState;
+    }
+
+    public Instant getThresholdObservedAt() {
+        return thresholdObservedAt;
     }
 
     public SubscriptionStatus getStatus() {

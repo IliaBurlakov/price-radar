@@ -13,6 +13,7 @@ public final class TelegramBotProperties {
     private Duration longPollingTimeout = Duration.ofSeconds(25);
     private Duration requestTimeout = Duration.ofSeconds(10);
     private String botKey = "primary";
+    private int maxUpdateAttempts = 5;
 
     public boolean isEnabled() {
         return enabled;
@@ -52,5 +53,16 @@ public final class TelegramBotProperties {
 
     public void setBotKey(String botKey) {
         this.botKey = botKey;
+    }
+
+    public int getMaxUpdateAttempts() {
+        return maxUpdateAttempts;
+    }
+
+    public void setMaxUpdateAttempts(int maxUpdateAttempts) {
+        if (maxUpdateAttempts <= 0) {
+            throw new IllegalArgumentException("maxUpdateAttempts must be positive");
+        }
+        this.maxUpdateAttempts = maxUpdateAttempts;
     }
 }

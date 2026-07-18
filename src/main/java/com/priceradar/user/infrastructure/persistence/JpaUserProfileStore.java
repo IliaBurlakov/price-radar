@@ -40,7 +40,7 @@ public class JpaUserProfileStore implements UserProfileStore {
             UserPricePreferences pricePreferences,
             Instant createdAt
     ) {
-        UserProfileEntity entity = new UserProfileEntity(
+        profileRepository.upsert(
                 UUID.randomUUID(),
                 telegramUserId,
                 telegramChatId,
@@ -51,7 +51,9 @@ public class JpaUserProfileStore implements UserProfileStore {
                 createdAt,
                 createdAt
         );
-        return toProfile(profileRepository.save(entity));
+        return profileRepository.findByTelegramUserId(telegramUserId)
+                .map(this::toProfile)
+                .orElseThrow(() -> new IllegalStateException("User profile upsert did not return a profile"));
     }
 
     @Override

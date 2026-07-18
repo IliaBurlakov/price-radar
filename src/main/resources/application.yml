@@ -36,3 +36,4 @@ priceradar:
     initial-delay: PT1S
     poll-delay: PT1S
     bot-key: primary
+    max-update-attempts: 5

@@ -64,6 +64,7 @@ public class JpaResolvedQuoteStore implements ResolvedQuoteStore {
                 watchKey.getVariantKind().name(),
                 watchKey.getVariantValue(),
                 command.getResolvedVariant().getDisplayName().orElse(null),
+                command.getPriceContext().getCityName(),
                 watchKey.getDest(),
                 watchKey.getSpp(),
                 command.getObservedAt().plus(FIRST_CHECK_DELAY),

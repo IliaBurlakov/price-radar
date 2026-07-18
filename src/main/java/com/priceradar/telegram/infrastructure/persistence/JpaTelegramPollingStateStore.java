@@ -42,4 +42,25 @@ public class JpaTelegramPollingStateStore implements TelegramPollingStateStore {
             stateRepository.save(state);
         }
     }
+
+    @Override
+    @Transactional
+    public int recordFailure(String botKey, long updateId) {
+        validate(botKey, updateId);
+        Instant now = Instant.now();
+        TelegramPollingStateEntity state = stateRepository.findById(botKey)
+                .orElseGet(() -> new TelegramPollingStateEntity(botKey, null, now));
+        int attempts = state.recordFailure(updateId, now);
+        stateRepository.save(state);
+        return attempts;
+    }
+
+    private void validate(String botKey, long updateId) {
+        if (botKey == null || botKey.isBlank()) {
+            throw new IllegalArgumentException("botKey must not be blank");
+        }
+        if (updateId < 0) {
+            throw new IllegalArgumentException("updateId must be non-negative");
+        }
+    }
 }

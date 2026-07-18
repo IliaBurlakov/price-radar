@@ -21,16 +21,20 @@ public class SubscriptionService {
 
     private final UserProfileStore userProfileStore;
     private final SubscriptionStore subscriptionStore;
+    private final ImmediateThresholdNotificationPort immediateThresholdNotificationPort;
 
     public SubscriptionService(
             UserProfileStore userProfileStore,
-            SubscriptionStore subscriptionStore
+            SubscriptionStore subscriptionStore,
+            ImmediateThresholdNotificationPort immediateThresholdNotificationPort
     ) {
-        if (userProfileStore == null || subscriptionStore == null) {
+        if (userProfileStore == null || subscriptionStore == null
+                || immediateThresholdNotificationPort == null) {
             throw new IllegalArgumentException("subscription service dependencies must not be null");
         }
         this.userProfileStore = userProfileStore;
         this.subscriptionStore = subscriptionStore;
+        this.immediateThresholdNotificationPort = immediateThresholdNotificationPort;
     }
 
     @Transactional
@@ -61,6 +65,7 @@ public class SubscriptionService {
         Optional<SubscriptionQuoteObservation> currentRegularPrice = subscriptionStore
                 .findLatestRegularPriceObservation(watchTargetId)
                 .filter(observation -> !observation.getObservedAt().isBefore(freshNotBefore))
+                .filter(observation -> !observation.getObservedAt().isAfter(now))
                 .filter(observation -> observation.getRegularPrice().isPresent());
         Subscription subscription = createSubscription(
                 userId,
@@ -70,7 +75,16 @@ public class SubscriptionService {
                 currentRegularPrice,
                 now
         );
-        return SubscriptionCreationResult.created(subscriptionStore.create(subscription));
+        Subscription created = subscriptionStore.create(subscription);
+        if (created.getNotificationMode() == NotificationMode.TARGET_PRICE
+                && created.getThresholdState() == ThresholdState.REACHED_NOTIFIED) {
+            immediateThresholdNotificationPort.enqueue(
+                    created,
+                    currentRegularPrice.orElseThrow(),
+                    now
+            );
+        }
+        return SubscriptionCreationResult.created(created);
     }
 
     @Transactional
@@ -115,9 +129,11 @@ public class SubscriptionService {
                     currentRegularPrice.flatMap(SubscriptionQuoteObservation::getRegularPrice),
                     currentRegularPrice.map(SubscriptionQuoteObservation::getObservedAt),
                     ThresholdState.NOT_APPLICABLE,
+                    Optional.empty(),
                     SubscriptionStatus.ACTIVE,
                     now,
-                    Optional.empty()
+                    Optional.empty(),
+                    0
             );
         }
 
@@ -137,9 +153,11 @@ public class SubscriptionService {
                 Optional.empty(),
                 Optional.empty(),
                 thresholdState,
+                currentRegularPrice.map(SubscriptionQuoteObservation::getObservedAt),
                 SubscriptionStatus.ACTIVE,
                 now,
-                Optional.empty()
+                Optional.empty(),
+                0
         );
     }
 
@@ -193,6 +211,7 @@ public class SubscriptionService {
                 subscriptionStore.findLatestQuoteObservation(watchTargetId);
         if (latestObservation
                 .filter(value -> !value.getObservedAt().isBefore(freshNotBefore))
+                .filter(value -> !value.getObservedAt().isAfter(now))
                 .isEmpty()) {
             return SubscriptionPreparationResult.failed(
                     SubscriptionPreparationResult.Status.QUOTE_EXPIRED

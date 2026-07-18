@@ -20,12 +20,17 @@ public final class TelegramQuoteMessageFactory {
             "⚠️ Цена приблизительная и может отличаться в вашем аккаунте Wildberries.";
 
     private final WalletEstimateService walletEstimateService;
+    private final TrackingCallbackCodec trackingCallbackCodec;
 
-    public TelegramQuoteMessageFactory(WalletEstimateService walletEstimateService) {
-        if (walletEstimateService == null) {
-            throw new IllegalArgumentException("walletEstimateService must not be null");
+    public TelegramQuoteMessageFactory(
+            WalletEstimateService walletEstimateService,
+            TrackingCallbackCodec trackingCallbackCodec
+    ) {
+        if (walletEstimateService == null || trackingCallbackCodec == null) {
+            throw new IllegalArgumentException("quote message dependencies must not be null");
         }
         this.walletEstimateService = walletEstimateService;
+        this.trackingCallbackCodec = trackingCallbackCodec;
     }
 
     public OutgoingTelegramMessage createQuoteMessage(
@@ -50,7 +55,10 @@ public final class TelegramQuoteMessageFactory {
         return new OutgoingTelegramMessage(
                 chatId,
                 text.toString(),
-                trackingKeyboard(quote.getWatchTargetId())
+                trackingKeyboard(
+                        quote.getWatchTargetId(),
+                        userProfile.getTelegramUserId()
+                )
         );
     }
 
@@ -116,21 +124,28 @@ public final class TelegramQuoteMessageFactory {
                         .append(displayName));
     }
 
-    private List<List<TelegramInlineButton>> trackingKeyboard(UUID watchTargetId) {
+    private List<List<TelegramInlineButton>> trackingKeyboard(
+            UUID watchTargetId,
+            long telegramUserId
+    ) {
         return List.of(
                 List.of(new TelegramInlineButton(
                         "Отслеживать любое снижение",
-                        callbackData("TRACK_ANY_DECREASE", watchTargetId)
+                        trackingCallbackCodec.encode(
+                                TrackingCallbackData.Action.TRACK_ANY_DECREASE,
+                                watchTargetId,
+                                telegramUserId
+                        )
                 )),
                 List.of(new TelegramInlineButton(
                         "Установить целевую цену",
-                        callbackData("TRACK_TARGET", watchTargetId)
+                        trackingCallbackCodec.encode(
+                                TrackingCallbackData.Action.TRACK_TARGET,
+                                watchTargetId,
+                                telegramUserId
+                        )
                 ))
         );
-    }
-
-    private String callbackData(String action, UUID applicationId) {
-        return action + ":" + applicationId;
     }
 
     private String providerFailureText(MarketplaceProviderFailureCode code) {

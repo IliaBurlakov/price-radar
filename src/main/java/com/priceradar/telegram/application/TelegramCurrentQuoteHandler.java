@@ -88,7 +88,9 @@ public class TelegramCurrentQuoteHandler {
             return OutgoingTelegramMessage.text(
                     message.getChatId(),
                     "Некорректная ссылка. Отправьте URL вида "
-                            + "https://www.wildberries.ru/catalog/123456/detail.aspx"
+                            + "https://www.wildberries.ru/catalog/123456/detail.aspx. "
+                            + "Если вы вводили целевую цену после перезапуска бота, снова нажмите "
+                            + "кнопку «Установить целевую цену» в актуальной карточке товара."
             );
         } catch (RuntimeException exception) {
             LOGGER.error(

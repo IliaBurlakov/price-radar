@@ -21,13 +21,15 @@ public class TelegramLongPollingWorker {
     private final TelegramPollingStateStore pollingStateStore;
     private final String botKey;
     private final Duration longPollingTimeout;
+    private final int maxUpdateAttempts;
 
     public TelegramLongPollingWorker(
             TelegramGateway telegramGateway,
             TelegramUpdateDispatcher updateDispatcher,
             TelegramPollingStateStore pollingStateStore,
             String botKey,
-            Duration longPollingTimeout
+            Duration longPollingTimeout,
+            int maxUpdateAttempts
     ) {
         if (telegramGateway == null || updateDispatcher == null || pollingStateStore == null
                 || botKey == null || botKey.isBlank() || longPollingTimeout == null) {
@@ -36,11 +38,15 @@ public class TelegramLongPollingWorker {
         if (longPollingTimeout.isZero() || longPollingTimeout.isNegative()) {
             throw new IllegalArgumentException("longPollingTimeout must be positive");
         }
+        if (maxUpdateAttempts <= 0) {
+            throw new IllegalArgumentException("maxUpdateAttempts must be positive");
+        }
         this.telegramGateway = telegramGateway;
         this.updateDispatcher = updateDispatcher;
         this.pollingStateStore = pollingStateStore;
         this.botKey = botKey.trim();
         this.longPollingTimeout = longPollingTimeout;
+        this.maxUpdateAttempts = maxUpdateAttempts;
     }
 
     @Scheduled(
@@ -52,8 +58,9 @@ public class TelegramLongPollingWorker {
             long offset = nextOffset(pollingStateStore.findLastConfirmedUpdateId(botKey));
             List<TelegramUpdate> updates = telegramGateway.receiveUpdates(offset, longPollingTimeout);
             for (TelegramUpdate update : updates) {
-                updateDispatcher.dispatch(update);
-                pollingStateStore.confirm(botKey, update.getUpdateId());
+                if (!process(update)) {
+                    break;
+                }
             }
         } catch (TelegramGatewayException exception) {
             LOGGER.warn("Telegram polling failed: {}", exception.getMessage());
@@ -63,6 +70,51 @@ public class TelegramLongPollingWorker {
                     exception.getClass().getSimpleName()
             );
         }
+    }
+
+    private boolean process(TelegramUpdate update) {
+        try {
+            updateDispatcher.dispatch(update);
+        } catch (TelegramGatewayException exception) {
+            if (exception.isRetryable()) {
+                LOGGER.warn(
+                        "Telegram update delivery failed transiently; update will be retried, updateId={}, error={}",
+                        update.getUpdateId(),
+                        exception.getMessage()
+                );
+                return false;
+            }
+            return handlePermanentFailure(update, exception);
+        } catch (RuntimeException exception) {
+            return handlePermanentFailure(update, exception);
+        }
+
+        pollingStateStore.confirm(botKey, update.getUpdateId());
+        return true;
+    }
+
+    private boolean handlePermanentFailure(
+            TelegramUpdate update,
+            RuntimeException exception
+    ) {
+        int attempts = pollingStateStore.recordFailure(botKey, update.getUpdateId());
+        if (attempts < maxUpdateAttempts) {
+            LOGGER.warn(
+                    "Telegram update processing failed; update will be retried, updateId={}, attempt={}, errorType={}",
+                    update.getUpdateId(),
+                    attempts,
+                    exception.getClass().getSimpleName()
+            );
+            return false;
+        }
+        LOGGER.error(
+                "Telegram update moved past after repeated processing failures, updateId={}, attempts={}, errorType={}",
+                update.getUpdateId(),
+                attempts,
+                exception.getClass().getSimpleName()
+        );
+        pollingStateStore.confirm(botKey, update.getUpdateId());
+        return true;
     }
 
     private long nextOffset(OptionalLong lastConfirmedUpdateId) {

@@ -34,16 +34,20 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
             SET subscription.baselinePriceMinor = :baselinePriceMinor,
                 subscription.baselineObservedAt = :baselineObservedAt,
                 subscription.thresholdState = :thresholdState,
+                subscription.thresholdObservedAt = :thresholdObservedAt,
                 subscription.version = subscription.version + 1
             WHERE subscription.id = :subscriptionId
               AND subscription.status = :activeStatus
+              AND subscription.version = :expectedVersion
             """)
     int updateNotificationStateIfActive(
             @Param("subscriptionId") UUID subscriptionId,
             @Param("baselinePriceMinor") Long baselinePriceMinor,
             @Param("baselineObservedAt") Instant baselineObservedAt,
             @Param("thresholdState") ThresholdState thresholdState,
-            @Param("activeStatus") SubscriptionStatus activeStatus
+            @Param("thresholdObservedAt") Instant thresholdObservedAt,
+            @Param("activeStatus") SubscriptionStatus activeStatus,
+            @Param("expectedVersion") long expectedVersion
     );
 
     @Query(value = """
@@ -91,6 +95,9 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
                 p.brand AS "brand",
                 p.canonical_url AS "canonicalUrl",
                 wt.variant_display_name AS "variantDisplayName",
+                wt.city_name AS "cityName",
+                wt.dest AS "dest",
+                wt.spp AS "spp",
                 latest.status AS "snapshotStatus",
                 latest.price_source AS "priceSource",
                 latest.regular_price_minor AS "regularPriceMinor",

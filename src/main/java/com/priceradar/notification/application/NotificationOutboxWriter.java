@@ -1,6 +1,7 @@
 package com.priceradar.notification.application;
 
 import com.priceradar.tracking.application.SubscriptionStore;
+import com.priceradar.tracking.application.NotificationStateUpdateResult;
 import com.priceradar.tracking.domain.SubscriptionStatus;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,8 +46,10 @@ public class NotificationOutboxWriter {
                 .isPresent()) {
             throw new IllegalArgumentException("outbox creation time must not precede observation");
         }
-        if (!subscriptionStore.updateNotificationStateIfActive(decision.getSubscription())) {
-            return NotificationOutboxWriteResult.SUBSCRIPTION_INACTIVE;
+        NotificationStateUpdateResult updateResult = subscriptionStore
+                .updateNotificationStateIfActive(decision.getSubscription());
+        if (updateResult == NotificationStateUpdateResult.CONFLICT) {
+            return NotificationOutboxWriteResult.STATE_CONFLICT;
         }
         if (notificationIntent.isEmpty()) {
             return NotificationOutboxWriteResult.STATE_UPDATED;

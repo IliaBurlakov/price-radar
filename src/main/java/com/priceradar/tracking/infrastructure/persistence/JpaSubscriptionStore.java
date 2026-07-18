@@ -2,9 +2,11 @@ package com.priceradar.tracking.infrastructure.persistence;
 
 import com.priceradar.pricing.application.InterpretedPrice;
 import com.priceradar.pricing.domain.PriceSource;
+import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.tracking.application.LatestSnapshotView;
+import com.priceradar.tracking.application.NotificationStateUpdateResult;
 import com.priceradar.tracking.application.SubscriptionQuoteObservation;
 import com.priceradar.tracking.application.SubscriptionStore;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
@@ -83,6 +85,7 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     public Optional<SubscriptionQuoteObservation> findLatestQuoteObservation(UUID watchTargetId) {
         return snapshotRepository.findFirstByWatchTargetIdOrderByObservedAtDesc(watchTargetId)
                 .map(snapshot -> new SubscriptionQuoteObservation(
+                        snapshot.getId(),
                         snapshot.getObservedAt(),
                         validRegularPrice(snapshot)
                 ));
@@ -99,6 +102,7 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                         PriceSource.PRODUCT
                 )
                 .map(snapshot -> new SubscriptionQuoteObservation(
+                        snapshot.getId(),
                         snapshot.getObservedAt(),
                         optionalAmount(snapshot.getRegularPriceMinor())
                 ));
@@ -115,6 +119,7 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 subscription.getBaselinePrice().map(RubleAmount::getMinorUnits).orElse(null),
                 subscription.getBaselineObservedAt().orElse(null),
                 subscription.getThresholdState(),
+                subscription.getThresholdObservedAt().orElse(null),
                 subscription.getStatus(),
                 subscription.getCreatedAt(),
                 subscription.getEndedAt().orElse(null)
@@ -123,17 +128,22 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
-    public boolean updateNotificationStateIfActive(Subscription subscription) {
+    public NotificationStateUpdateResult updateNotificationStateIfActive(Subscription subscription) {
         if (subscription == null) {
             throw new IllegalArgumentException("subscription must not be null");
         }
-        return subscriptionRepository.updateNotificationStateIfActive(
+        int updated = subscriptionRepository.updateNotificationStateIfActive(
                 subscription.getId(),
                 subscription.getBaselinePrice().map(RubleAmount::getMinorUnits).orElse(null),
                 subscription.getBaselineObservedAt().orElse(null),
                 subscription.getThresholdState(),
-                SubscriptionStatus.ACTIVE
-        ) == 1;
+                subscription.getThresholdObservedAt().orElse(null),
+                SubscriptionStatus.ACTIVE,
+                subscription.getVersion()
+        );
+        return updated == 1
+                ? NotificationStateUpdateResult.UPDATED
+                : NotificationStateUpdateResult.CONFLICT;
     }
 
     @Override
@@ -154,9 +164,11 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 optionalAmount(entity.getBaselinePriceMinor()),
                 Optional.ofNullable(entity.getBaselineObservedAt()),
                 entity.getThresholdState(),
+                Optional.ofNullable(entity.getThresholdObservedAt()),
                 entity.getStatus(),
                 entity.getCreatedAt(),
-                Optional.ofNullable(entity.getEndedAt())
+                Optional.ofNullable(entity.getEndedAt()),
+                entity.getVersion()
         );
     }
 
@@ -205,6 +217,11 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 Optional.ofNullable(projection.getBrand()),
                 projection.getCanonicalUrl(),
                 Optional.ofNullable(projection.getVariantDisplayName()),
+                new PriceContext(
+                        projection.getCityName(),
+                        projection.getDest(),
+                        projection.getSpp()
+                ),
                 interpretedPrice,
                 Optional.ofNullable(projection.getObservedAt())
         );

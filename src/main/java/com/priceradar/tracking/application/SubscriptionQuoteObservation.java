@@ -4,28 +4,36 @@ import com.priceradar.pricing.domain.RubleAmount;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 public final class SubscriptionQuoteObservation {
 
+    private final UUID snapshotId;
     private final Instant observedAt;
     private final Optional<RubleAmount> regularPrice;
 
     public SubscriptionQuoteObservation(
+            UUID snapshotId,
             Instant observedAt,
             Optional<RubleAmount> regularPrice
     ) {
-        if (observedAt == null || regularPrice == null) {
+        if (snapshotId == null || observedAt == null || regularPrice == null) {
             throw new IllegalArgumentException("quote observation fields must not be null");
         }
         if (regularPrice.filter(price -> price.getMinorUnits() == 0).isPresent()) {
             throw new IllegalArgumentException("regularPrice must be positive");
         }
+        this.snapshotId = snapshotId;
         this.observedAt = observedAt;
         this.regularPrice = regularPrice;
     }
 
     public Instant getObservedAt() {
         return observedAt;
+    }
+
+    public UUID getSnapshotId() {
+        return snapshotId;
     }
 
     public Optional<RubleAmount> getRegularPrice() {

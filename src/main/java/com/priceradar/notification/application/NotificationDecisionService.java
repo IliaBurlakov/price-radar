@@ -33,6 +33,11 @@ public final class NotificationDecisionService {
             NotificationObservation observation,
             RubleAmount currentPrice
     ) {
+        if (subscription.getBaselineObservedAt()
+                .filter(previous -> !observation.getObservedAt().isAfter(previous))
+                .isPresent()) {
+            return NotificationDecisionResult.unchanged(subscription);
+        }
         Optional<RubleAmount> previousPrice = subscription.getBaselinePrice();
         Subscription updated = subscription.withBaseline(
                 currentPrice,
@@ -59,25 +64,36 @@ public final class NotificationDecisionService {
             NotificationObservation observation,
             RubleAmount currentPrice
     ) {
+        if (subscription.getThresholdObservedAt()
+                .filter(previous -> !observation.getObservedAt().isAfter(previous))
+                .isPresent()) {
+            return NotificationDecisionResult.unchanged(subscription);
+        }
         RubleAmount targetPrice = subscription.getTargetPrice().orElseThrow();
         boolean targetReached = currentPrice.getMinorUnits() <= targetPrice.getMinorUnits();
         ThresholdState currentState = subscription.getThresholdState();
 
         if (!targetReached) {
-            if (currentState == ThresholdState.ABOVE_TARGET) {
-                return NotificationDecisionResult.unchanged(subscription);
-            }
             return NotificationDecisionResult.changed(
-                    subscription.withThresholdState(ThresholdState.ABOVE_TARGET)
+                    subscription.withThresholdObservation(
+                            ThresholdState.ABOVE_TARGET,
+                            observation.getObservedAt()
+                    )
             );
         }
 
         if (currentState == ThresholdState.REACHED_NOTIFIED) {
-            return NotificationDecisionResult.unchanged(subscription);
+            return NotificationDecisionResult.changed(
+                    subscription.withThresholdObservation(
+                            ThresholdState.REACHED_NOTIFIED,
+                            observation.getObservedAt()
+                    )
+            );
         }
 
-        Subscription updated = subscription.withThresholdState(
-                ThresholdState.REACHED_NOTIFIED
+        Subscription updated = subscription.withThresholdObservation(
+                ThresholdState.REACHED_NOTIFIED,
+                observation.getObservedAt()
         );
         NotificationIntent intent = new NotificationIntent(
                 subscription.getId(),
