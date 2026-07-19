@@ -11,6 +11,8 @@ import com.priceradar.telegram.application.TelegramPollingStateStore;
 import com.priceradar.telegram.application.TelegramQuoteMessageFactory;
 import com.priceradar.telegram.application.TelegramTrackingHandler;
 import com.priceradar.telegram.application.TelegramUpdateDispatcher;
+import com.priceradar.telegram.application.TrackedItemsMessageFactory;
+import com.priceradar.telegram.application.TrackedItemsMessageHandler;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.user.application.UserProfileService;
 import org.springframework.beans.factory.annotation.Value;
@@ -98,11 +100,38 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public TrackedItemsMessageFactory trackedItemsMessageFactory() {
+        return new TrackedItemsMessageFactory();
+    }
+
+    @Bean
+    public TrackedItemsMessageHandler trackedItemsMessageHandler(
+            UserProfileService userProfileService,
+            SubscriptionService subscriptionService,
+            TrackedItemsMessageFactory messageFactory,
+            TelegramGateway telegramGateway,
+            Clock providerClock
+    ) {
+        return new TrackedItemsMessageHandler(
+                userProfileService,
+                subscriptionService,
+                messageFactory,
+                telegramGateway,
+                providerClock
+        );
+    }
+
+    @Bean
     public TelegramUpdateDispatcher telegramUpdateDispatcher(
             TelegramCurrentQuoteHandler currentQuoteHandler,
-            TelegramTrackingHandler trackingHandler
+            TelegramTrackingHandler trackingHandler,
+            TrackedItemsMessageHandler trackedItemsHandler
     ) {
-        return new TelegramUpdateDispatcher(currentQuoteHandler, trackingHandler);
+        return new TelegramUpdateDispatcher(
+                currentQuoteHandler,
+                trackingHandler,
+                trackedItemsHandler
+        );
     }
 
     @Bean

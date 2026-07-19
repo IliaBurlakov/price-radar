@@ -2,6 +2,7 @@ package com.priceradar.tracking.application;
 
 import com.priceradar.tracking.domain.Subscription;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,6 +15,8 @@ public interface SubscriptionStore {
     Optional<Subscription> findActiveOwned(UUID userId, UUID subscriptionId);
 
     long countActive(UUID userId);
+
+    List<TrackedSubscriptionItem> findActiveByUserId(UUID userId);
 
     Optional<SubscriptionQuoteObservation> findLatestQuoteObservation(UUID watchTargetId);
 

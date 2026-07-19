@@ -14,9 +14,11 @@ public class TelegramCurrentQuoteHandler {
     private static final String START_MESSAGE = """
             PriceRadar показывает приблизительную цену товара Wildberries и помогает начать отслеживание.
             Отправьте ссылку вида https://www.wildberries.ru/catalog/123456/detail.aspx
+            Список активных подписок: /tracked
             """;
     private static final String HELP_MESSAGE = """
             Отправьте ссылку на товар Wildberries. Я покажу последнюю полученную цену, регион и оценку цены с WB Кошельком.
+            Команда /tracked показывает активные подписки и позволяет остановить отслеживание.
             Цены приблизительные и могут отличаться в вашем аккаунте.
             """;
 
