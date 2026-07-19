@@ -13,6 +13,12 @@ spring:
       ddl-auto: validate
 
 priceradar:
+  user:
+    defaults:
+      city-name: Moscow
+      dest: 1259570991
+      spp: 30
+      wallet-discount-percent: 3
   provider:
     wildberries:
       endpoint: https://card.wb.ru/cards/v4/detail
@@ -22,3 +28,11 @@ priceradar:
       cache-max-entries: 10000
       max-attempts: 3
       base-backoff: PT2S
+  telegram:
+    enabled: ${TELEGRAM_BOT_ENABLED:true}
+    api-base-url: https://api.telegram.org/
+    long-polling-timeout: PT25S
+    request-timeout: PT10S
+    initial-delay: PT1S
+    poll-delay: PT1S
+    bot-key: primary

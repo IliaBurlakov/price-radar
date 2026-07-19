@@ -3,3 +3,7 @@ spring:
     name: price-radar-test
   main:
     banner-mode: "off"
+
+priceradar:
+  telegram:
+    enabled: false
