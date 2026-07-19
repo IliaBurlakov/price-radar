@@ -85,6 +85,16 @@ public final class WatchKey {
         return VariantKind.NO_VARIANT;
     }
 
+    public String getVariantValue() {
+        if (variantKey.startsWith("SIZE:")) {
+            return variantKey.substring("SIZE:".length());
+        }
+        if (variantKey.startsWith(OPTION_PREFIX)) {
+            return variantKey.substring(OPTION_PREFIX.length());
+        }
+        return NO_VARIANT_KEY;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
