@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.priceradar.telegram.application.IncomingTelegramMessage;
+import com.priceradar.telegram.application.IncomingTelegramCallback;
 import com.priceradar.telegram.application.OutgoingTelegramMessage;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.TelegramInlineButton;
@@ -67,20 +68,29 @@ public class TelegramBotApiClient implements TelegramGateway {
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("offset", offset);
         requestBody.put("timeout", Math.toIntExact(timeout.toSeconds()));
-        requestBody.putArray("allowed_updates").add("message");
+        requestBody.putArray("allowed_updates")
+                .add("message")
+                .add("callback_query");
 
         JsonNode result = call(
                 "getUpdates",
                 requestBody,
                 timeout.plus(requestTimeout)
         );
+        if (!result.isArray()) {
+            throw new TelegramGatewayException("Telegram API returned invalid updates data");
+        }
         List<TelegramUpdate> updates = new ArrayList<>();
         for (JsonNode updateNode : result) {
             if (!updateNode.path("update_id").canConvertToLong()) {
                 continue;
             }
             long updateId = updateNode.path("update_id").longValue();
-            updates.add(new TelegramUpdate(updateId, parseMessage(updateNode.path("message"))));
+            updates.add(new TelegramUpdate(
+                    updateId,
+                    parseMessage(updateNode.path("message")),
+                    parseCallback(updateNode.path("callback_query"))
+            ));
         }
         updates.sort(Comparator.comparingLong(TelegramUpdate::getUpdateId));
         return List.copyOf(updates);
@@ -99,6 +109,16 @@ public class TelegramBotApiClient implements TelegramGateway {
             requestBody.set("reply_markup", createReplyMarkup(message.getInlineKeyboard()));
         }
         call("sendMessage", requestBody, requestTimeout);
+    }
+
+    @Override
+    public void answerCallbackQuery(String callbackQueryId) {
+        if (callbackQueryId == null || callbackQueryId.isBlank()) {
+            throw new IllegalArgumentException("callbackQueryId must not be blank");
+        }
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("callback_query_id", callbackQueryId.trim());
+        call("answerCallbackQuery", requestBody, requestTimeout);
     }
 
     private Optional<IncomingTelegramMessage> parseMessage(JsonNode messageNode) {
@@ -122,6 +142,33 @@ public class TelegramBotApiClient implements TelegramGateway {
                 chatId,
                 chatNode.path("type").textValue(),
                 textNode.textValue()
+        ));
+    }
+
+    private Optional<IncomingTelegramCallback> parseCallback(JsonNode callbackNode) {
+        JsonNode fromNode = callbackNode.path("from");
+        JsonNode chatNode = callbackNode.path("message").path("chat");
+        JsonNode idNode = callbackNode.path("id");
+        JsonNode dataNode = callbackNode.path("data");
+        if (!idNode.isTextual()
+                || !fromNode.path("id").canConvertToLong()
+                || !chatNode.path("id").canConvertToLong()
+                || !chatNode.path("type").isTextual()
+                || !dataNode.isTextual()) {
+            return Optional.empty();
+        }
+
+        long telegramUserId = fromNode.path("id").longValue();
+        long chatId = chatNode.path("id").longValue();
+        if (telegramUserId <= 0 || chatId <= 0) {
+            return Optional.empty();
+        }
+        return Optional.of(new IncomingTelegramCallback(
+                idNode.textValue(),
+                telegramUserId,
+                chatId,
+                chatNode.path("type").textValue(),
+                dataNode.textValue()
         ));
     }
 
@@ -163,10 +210,11 @@ public class TelegramBotApiClient implements TelegramGateway {
         }
 
         JsonNode responseBody = readJson(response.body());
-        if (!responseBody.path("ok").asBoolean(false) || !responseBody.path("result").isContainerNode()) {
+        JsonNode result = responseBody.path("result");
+        if (!responseBody.path("ok").asBoolean(false) || result.isMissingNode() || result.isNull()) {
             throw new TelegramGatewayException("Telegram API returned an unsuccessful response");
         }
-        return responseBody.path("result");
+        return result;
     }
 
     private String writeJson(JsonNode body) {

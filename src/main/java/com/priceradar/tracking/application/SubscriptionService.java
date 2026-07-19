@@ -33,6 +33,16 @@ public class SubscriptionService {
     }
 
     @Transactional
+    public SubscriptionPreparationResult prepareFromQuote(
+            UUID userId,
+            UUID watchTargetId,
+            Instant now
+    ) {
+        validateIdentity(userId, watchTargetId, now);
+        return checkEligibility(userId, watchTargetId, now);
+    }
+
+    @Transactional
     public SubscriptionCreationResult createFromQuote(
             UUID userId,
             UUID watchTargetId,
@@ -41,38 +51,15 @@ public class SubscriptionService {
             Instant now
     ) {
         validateCreationInput(userId, watchTargetId, mode, targetPrice, now);
+        SubscriptionPreparationResult preparation = checkEligibility(userId, watchTargetId, now);
+        if (!preparation.isReady()) {
+            return creationResultFrom(preparation);
+        }
 
-        if (!userProfileStore.existsAndLockById(userId)) {
-            return SubscriptionCreationResult.failed(
-                    SubscriptionCreationResult.Status.USER_NOT_FOUND
-            );
-        }
-        Optional<Subscription> existing = subscriptionStore.findActive(userId, watchTargetId);
-        if (existing.isPresent()) {
-            return SubscriptionCreationResult.alreadyActive(existing.get());
-        }
-        if (!subscriptionStore.watchTargetExists(watchTargetId)) {
-            return SubscriptionCreationResult.failed(
-                    SubscriptionCreationResult.Status.WATCH_TARGET_NOT_FOUND
-            );
-        }
         Instant freshNotBefore = now.minus(QUOTE_TTL);
-        Optional<SubscriptionQuoteObservation> latestObservation =
-                subscriptionStore.findLatestQuoteObservation(watchTargetId);
-        if (latestObservation
-                .filter(value -> !value.getObservedAt().isBefore(freshNotBefore))
-                .isEmpty()) {
-            return SubscriptionCreationResult.failed(
-                    SubscriptionCreationResult.Status.QUOTE_EXPIRED
-            );
-        }
-        if (subscriptionStore.countActive(userId) >= ACTIVE_SUBSCRIPTION_LIMIT) {
-            return SubscriptionCreationResult.failed(
-                    SubscriptionCreationResult.Status.LIMIT_REACHED
-            );
-        }
-
-        Optional<SubscriptionQuoteObservation> currentRegularPrice = latestObservation
+        Optional<SubscriptionQuoteObservation> currentRegularPrice = subscriptionStore
+                .findLatestRegularPriceObservation(watchTargetId)
+                .filter(observation -> !observation.getObservedAt().isBefore(freshNotBefore))
                 .filter(observation -> observation.getRegularPrice().isPresent());
         Subscription subscription = createSubscription(
                 userId,
@@ -162,5 +149,71 @@ public class SubscriptionService {
                 && targetPrice.filter(price -> price.getMinorUnits() > 0).isEmpty()) {
             throw new IllegalArgumentException("TARGET_PRICE requires positive targetPrice");
         }
+    }
+
+    private void validateIdentity(UUID userId, UUID watchTargetId, Instant now) {
+        if (userId == null || watchTargetId == null || now == null) {
+            throw new IllegalArgumentException("subscription identity fields must not be null");
+        }
+    }
+
+    private SubscriptionPreparationResult checkEligibility(
+            UUID userId,
+            UUID watchTargetId,
+            Instant now
+    ) {
+        if (!userProfileStore.existsAndLockById(userId)) {
+            return SubscriptionPreparationResult.failed(
+                    SubscriptionPreparationResult.Status.USER_NOT_FOUND
+            );
+        }
+        Optional<Subscription> existing = subscriptionStore.findActive(userId, watchTargetId);
+        if (existing.isPresent()) {
+            return SubscriptionPreparationResult.alreadyActive(existing.get());
+        }
+        if (!subscriptionStore.watchTargetExists(watchTargetId)) {
+            return SubscriptionPreparationResult.failed(
+                    SubscriptionPreparationResult.Status.WATCH_TARGET_NOT_FOUND
+            );
+        }
+        Instant freshNotBefore = now.minus(QUOTE_TTL);
+        Optional<SubscriptionQuoteObservation> latestObservation =
+                subscriptionStore.findLatestQuoteObservation(watchTargetId);
+        if (latestObservation
+                .filter(value -> !value.getObservedAt().isBefore(freshNotBefore))
+                .isEmpty()) {
+            return SubscriptionPreparationResult.failed(
+                    SubscriptionPreparationResult.Status.QUOTE_EXPIRED
+            );
+        }
+        if (subscriptionStore.countActive(userId) >= ACTIVE_SUBSCRIPTION_LIMIT) {
+            return SubscriptionPreparationResult.failed(
+                    SubscriptionPreparationResult.Status.LIMIT_REACHED
+            );
+        }
+        return SubscriptionPreparationResult.ready();
+    }
+
+    private SubscriptionCreationResult creationResultFrom(
+            SubscriptionPreparationResult preparation
+    ) {
+        return switch (preparation.getStatus()) {
+            case ALREADY_ACTIVE -> SubscriptionCreationResult.alreadyActive(
+                    preparation.getExistingSubscription().orElseThrow()
+            );
+            case LIMIT_REACHED -> SubscriptionCreationResult.failed(
+                    SubscriptionCreationResult.Status.LIMIT_REACHED
+            );
+            case QUOTE_EXPIRED -> SubscriptionCreationResult.failed(
+                    SubscriptionCreationResult.Status.QUOTE_EXPIRED
+            );
+            case USER_NOT_FOUND -> SubscriptionCreationResult.failed(
+                    SubscriptionCreationResult.Status.USER_NOT_FOUND
+            );
+            case WATCH_TARGET_NOT_FOUND -> SubscriptionCreationResult.failed(
+                    SubscriptionCreationResult.Status.WATCH_TARGET_NOT_FOUND
+            );
+            case READY -> throw new IllegalArgumentException("READY preparation cannot be a failure");
+        };
     }
 }

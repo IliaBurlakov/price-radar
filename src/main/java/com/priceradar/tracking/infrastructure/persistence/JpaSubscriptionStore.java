@@ -67,6 +67,22 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
+    public Optional<SubscriptionQuoteObservation> findLatestRegularPriceObservation(
+            UUID watchTargetId
+    ) {
+        return snapshotRepository
+                .findFirstByWatchTargetIdAndStatusAndPriceSourceOrderByObservedAtDesc(
+                        watchTargetId,
+                        SnapshotStatus.REGULAR_PRICE,
+                        PriceSource.PRODUCT
+                )
+                .map(snapshot -> new SubscriptionQuoteObservation(
+                        snapshot.getObservedAt(),
+                        optionalAmount(snapshot.getRegularPriceMinor())
+                ));
+    }
+
+    @Override
     public Subscription create(Subscription subscription) {
         SubscriptionEntity entity = new SubscriptionEntity(
                 subscription.getId(),

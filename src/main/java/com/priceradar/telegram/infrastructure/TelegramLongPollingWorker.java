@@ -1,9 +1,9 @@
 package com.priceradar.telegram.infrastructure;
 
-import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.TelegramPollingStateStore;
 import com.priceradar.telegram.application.TelegramUpdate;
+import com.priceradar.telegram.application.TelegramUpdateDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,19 +17,19 @@ public class TelegramLongPollingWorker {
     private static final Logger LOGGER = LoggerFactory.getLogger(TelegramLongPollingWorker.class);
 
     private final TelegramGateway telegramGateway;
-    private final TelegramCurrentQuoteHandler updateHandler;
+    private final TelegramUpdateDispatcher updateDispatcher;
     private final TelegramPollingStateStore pollingStateStore;
     private final String botKey;
     private final Duration longPollingTimeout;
 
     public TelegramLongPollingWorker(
             TelegramGateway telegramGateway,
-            TelegramCurrentQuoteHandler updateHandler,
+            TelegramUpdateDispatcher updateDispatcher,
             TelegramPollingStateStore pollingStateStore,
             String botKey,
             Duration longPollingTimeout
     ) {
-        if (telegramGateway == null || updateHandler == null || pollingStateStore == null
+        if (telegramGateway == null || updateDispatcher == null || pollingStateStore == null
                 || botKey == null || botKey.isBlank() || longPollingTimeout == null) {
             throw new IllegalArgumentException("Telegram polling worker fields must not be null or blank");
         }
@@ -37,7 +37,7 @@ public class TelegramLongPollingWorker {
             throw new IllegalArgumentException("longPollingTimeout must be positive");
         }
         this.telegramGateway = telegramGateway;
-        this.updateHandler = updateHandler;
+        this.updateDispatcher = updateDispatcher;
         this.pollingStateStore = pollingStateStore;
         this.botKey = botKey.trim();
         this.longPollingTimeout = longPollingTimeout;
@@ -52,7 +52,7 @@ public class TelegramLongPollingWorker {
             long offset = nextOffset(pollingStateStore.findLastConfirmedUpdateId(botKey));
             List<TelegramUpdate> updates = telegramGateway.receiveUpdates(offset, longPollingTimeout);
             for (TelegramUpdate update : updates) {
-                update.getMessage().ifPresent(updateHandler::handle);
+                updateDispatcher.dispatch(update);
                 pollingStateStore.confirm(botKey, update.getUpdateId());
             }
         } catch (TelegramGatewayException exception) {

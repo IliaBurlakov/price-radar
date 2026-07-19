@@ -1,5 +1,7 @@
 package com.priceradar.tracking.infrastructure.persistence;
 
+import com.priceradar.pricing.domain.PriceSource;
+import com.priceradar.pricing.domain.SnapshotStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -14,6 +16,12 @@ public interface PriceSnapshotJpaRepository extends JpaRepository<PriceSnapshotE
     Optional<PriceSnapshotEntity> findByCheckId(UUID checkId);
 
     Optional<PriceSnapshotEntity> findFirstByWatchTargetIdOrderByObservedAtDesc(UUID watchTargetId);
+
+    Optional<PriceSnapshotEntity> findFirstByWatchTargetIdAndStatusAndPriceSourceOrderByObservedAtDesc(
+            UUID watchTargetId,
+            SnapshotStatus status,
+            PriceSource priceSource
+    );
 
     @Modifying
     @Query(value = """
