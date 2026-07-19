@@ -25,6 +25,14 @@ public class JpaUserProfileStore implements UserProfileStore {
     }
 
     @Override
+    public boolean existsAndLockById(UUID userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId must not be null");
+        }
+        return profileRepository.findByIdForUpdate(userId).isPresent();
+    }
+
+    @Override
     public UserProfile create(
             long telegramUserId,
             long telegramChatId,

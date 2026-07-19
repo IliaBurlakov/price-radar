@@ -5,10 +5,13 @@ import com.priceradar.user.domain.UserPricePreferences;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface UserProfileStore {
 
     Optional<UserProfile> findByTelegramUserId(long telegramUserId);
+
+    boolean existsAndLockById(UUID userId);
 
     UserProfile create(
             long telegramUserId,
