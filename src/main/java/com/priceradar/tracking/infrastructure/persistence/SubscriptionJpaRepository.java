@@ -1,10 +1,13 @@
 package com.priceradar.tracking.infrastructure.persistence;
 
 import com.priceradar.tracking.domain.SubscriptionStatus;
+import com.priceradar.tracking.domain.ThresholdState;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +27,28 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
     );
 
     long countByUserIdAndStatus(UUID userId, SubscriptionStatus status);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE SubscriptionEntity subscription
+            SET subscription.baselinePriceMinor = :baselinePriceMinor,
+                subscription.baselineObservedAt = :baselineObservedAt,
+                subscription.thresholdState = :thresholdState,
+                subscription.thresholdObservedAt = :thresholdObservedAt,
+                subscription.version = subscription.version + 1
+            WHERE subscription.id = :subscriptionId
+              AND subscription.status = :activeStatus
+              AND subscription.version = :expectedVersion
+            """)
+    int updateNotificationStateIfActive(
+            @Param("subscriptionId") UUID subscriptionId,
+            @Param("baselinePriceMinor") Long baselinePriceMinor,
+            @Param("baselineObservedAt") Instant baselineObservedAt,
+            @Param("thresholdState") ThresholdState thresholdState,
+            @Param("thresholdObservedAt") Instant thresholdObservedAt,
+            @Param("activeStatus") SubscriptionStatus activeStatus,
+            @Param("expectedVersion") long expectedVersion
+    );
 
     @Query(value = """
             SELECT
@@ -70,6 +95,9 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
                 p.brand AS "brand",
                 p.canonical_url AS "canonicalUrl",
                 wt.variant_display_name AS "variantDisplayName",
+                wt.city_name AS "cityName",
+                wt.dest AS "dest",
+                wt.spp AS "spp",
                 latest.status AS "snapshotStatus",
                 latest.price_source AS "priceSource",
                 latest.regular_price_minor AS "regularPriceMinor",

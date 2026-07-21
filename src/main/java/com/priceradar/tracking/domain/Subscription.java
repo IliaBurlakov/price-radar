@@ -16,9 +16,11 @@ public final class Subscription {
     private final Optional<RubleAmount> baselinePrice;
     private final Optional<Instant> baselineObservedAt;
     private final ThresholdState thresholdState;
+    private final Optional<Instant> thresholdObservedAt;
     private final SubscriptionStatus status;
     private final Instant createdAt;
     private final Optional<Instant> endedAt;
+    private final long version;
 
     public Subscription(
             UUID id,
@@ -29,16 +31,29 @@ public final class Subscription {
             Optional<RubleAmount> baselinePrice,
             Optional<Instant> baselineObservedAt,
             ThresholdState thresholdState,
+            Optional<Instant> thresholdObservedAt,
             SubscriptionStatus status,
             Instant createdAt,
-            Optional<Instant> endedAt
+            Optional<Instant> endedAt,
+            long version
     ) {
         if (id == null || userId == null || watchTargetId == null || notificationMode == null
                 || targetPrice == null || baselinePrice == null || baselineObservedAt == null
-                || thresholdState == null || status == null || createdAt == null || endedAt == null) {
+                || thresholdState == null || thresholdObservedAt == null || status == null
+                || createdAt == null || endedAt == null) {
             throw new IllegalArgumentException("subscription fields must not be null");
         }
-        validatePriceState(notificationMode, targetPrice, baselinePrice, baselineObservedAt, thresholdState);
+        if (version < 0) {
+            throw new IllegalArgumentException("subscription version must be non-negative");
+        }
+        validatePriceState(
+                notificationMode,
+                targetPrice,
+                baselinePrice,
+                baselineObservedAt,
+                thresholdState,
+                thresholdObservedAt
+        );
         validateLifecycle(status, createdAt, endedAt);
         this.id = id;
         this.userId = userId;
@@ -48,9 +63,11 @@ public final class Subscription {
         this.baselinePrice = baselinePrice;
         this.baselineObservedAt = baselineObservedAt;
         this.thresholdState = thresholdState;
+        this.thresholdObservedAt = thresholdObservedAt;
         this.status = status;
         this.createdAt = createdAt;
         this.endedAt = endedAt;
+        this.version = version;
     }
 
     public Subscription end(Instant endedAt) {
@@ -69,9 +86,11 @@ public final class Subscription {
                 baselinePrice,
                 baselineObservedAt,
                 thresholdState,
+                thresholdObservedAt,
                 SubscriptionStatus.ENDED,
                 createdAt,
-                Optional.of(endedAt)
+                Optional.of(endedAt),
+                version
         );
     }
 
@@ -94,18 +113,23 @@ public final class Subscription {
                 Optional.of(baselinePrice),
                 Optional.of(observedAt),
                 thresholdState,
+                thresholdObservedAt,
                 status,
                 createdAt,
-                endedAt
+                endedAt,
+                version
         );
     }
 
-    public Subscription withThresholdState(ThresholdState newState) {
+    public Subscription withThresholdObservation(ThresholdState newState, Instant observedAt) {
         if (notificationMode != NotificationMode.TARGET_PRICE) {
             throw new IllegalStateException("only TARGET_PRICE subscription has threshold state");
         }
         if (newState == null || newState == ThresholdState.NOT_APPLICABLE) {
             throw new IllegalArgumentException("TARGET_PRICE requires applicable threshold state");
+        }
+        if (observedAt == null || observedAt.isBefore(createdAt)) {
+            throw new IllegalArgumentException("threshold observation must belong to subscription period");
         }
         return new Subscription(
                 id,
@@ -116,9 +140,11 @@ public final class Subscription {
                 baselinePrice,
                 baselineObservedAt,
                 newState,
+                Optional.of(observedAt),
                 status,
                 createdAt,
-                endedAt
+                endedAt,
+                version
         );
     }
 
@@ -154,6 +180,10 @@ public final class Subscription {
         return thresholdState;
     }
 
+    public Optional<Instant> getThresholdObservedAt() {
+        return thresholdObservedAt;
+    }
+
     public SubscriptionStatus getStatus() {
         return status;
     }
@@ -166,12 +196,17 @@ public final class Subscription {
         return endedAt;
     }
 
+    public long getVersion() {
+        return version;
+    }
+
     private void validatePriceState(
             NotificationMode mode,
             Optional<RubleAmount> targetPrice,
             Optional<RubleAmount> baselinePrice,
             Optional<Instant> baselineObservedAt,
-            ThresholdState thresholdState
+            ThresholdState thresholdState,
+            Optional<Instant> thresholdObservedAt
     ) {
         if (baselinePrice.isPresent() != baselineObservedAt.isPresent()) {
             throw new IllegalArgumentException("baseline price and observation time must be set together");
@@ -181,7 +216,8 @@ public final class Subscription {
         }
 
         if (mode == NotificationMode.ANY_DECREASE) {
-            if (targetPrice.isPresent() || thresholdState != ThresholdState.NOT_APPLICABLE) {
+            if (targetPrice.isPresent() || thresholdState != ThresholdState.NOT_APPLICABLE
+                    || thresholdObservedAt.isPresent()) {
                 throw new IllegalArgumentException("ANY_DECREASE must not have target threshold state");
             }
             return;
@@ -192,6 +228,12 @@ public final class Subscription {
         }
         if (baselinePrice.isPresent() || thresholdState == ThresholdState.NOT_APPLICABLE) {
             throw new IllegalArgumentException("TARGET_PRICE has invalid notification state");
+        }
+        if (thresholdState == ThresholdState.UNKNOWN && thresholdObservedAt.isPresent()) {
+            throw new IllegalArgumentException("UNKNOWN threshold state must not have observation time");
+        }
+        if (thresholdState != ThresholdState.UNKNOWN && thresholdObservedAt.isEmpty()) {
+            throw new IllegalArgumentException("resolved threshold state requires observation time");
         }
     }
 

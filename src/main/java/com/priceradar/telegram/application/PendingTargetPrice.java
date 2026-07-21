@@ -40,6 +40,10 @@ public final class PendingTargetPrice {
         return watchTargetId;
     }
 
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
     public boolean isExpired(Instant now) {
         if (now == null) {
             throw new IllegalArgumentException("now must not be null");

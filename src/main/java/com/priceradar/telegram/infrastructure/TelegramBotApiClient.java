@@ -198,14 +198,15 @@ public class TelegramBotApiClient implements TelegramGateway {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new TelegramGatewayException("Telegram request was interrupted");
+            throw new TelegramGatewayException("Telegram request was interrupted", true);
         } catch (IOException exception) {
-            throw new TelegramGatewayException("Telegram API is temporarily unavailable");
+            throw new TelegramGatewayException("Telegram API is temporarily unavailable", true);
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new TelegramGatewayException(
-                    "Telegram API returned HTTP " + response.statusCode()
+                    "Telegram API returned HTTP " + response.statusCode(),
+                    response.statusCode() == 429 || response.statusCode() >= 500
             );
         }
 

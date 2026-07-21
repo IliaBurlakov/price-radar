@@ -48,7 +48,7 @@ public final class LatestSnapshotMessageFactory {
 
         if (!snapshot.hasSnapshot()) {
             text.append("\n\nСохранённых наблюдений пока нет.");
-            text.append("\nРегион: ").append(profile.getPriceContext().getCityName());
+            text.append("\nРегион: ").append(snapshot.getPriceContext().getCityName());
             text.append("\nСсылка: ").append(snapshot.getCanonicalUrl());
             text.append("\n\nНовый запрос к Wildberries не выполнялся.");
             return OutgoingTelegramMessage.text(chatId, text.toString());
@@ -58,7 +58,7 @@ public final class LatestSnapshotMessageFactory {
         text.append("\n\nПоследнее сохранённое наблюдение: ")
                 .append(OBSERVED_AT_FORMAT.format(snapshot.getObservedAt().orElseThrow()));
         appendPrice(text, price, profile);
-        text.append("\nРегион: ").append(profile.getPriceContext().getCityName());
+        text.append("\nРегион: ").append(snapshot.getPriceContext().getCityName());
         text.append("\nСсылка: ").append(snapshot.getCanonicalUrl());
         text.append("\n\nИсточник: сохранённый snapshot. Новый запрос к Wildberries не выполнялся.");
         text.append("\n").append(APPROXIMATE_PRICE_WARNING);

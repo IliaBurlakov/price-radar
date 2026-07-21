@@ -24,10 +24,10 @@ public interface WatchTargetJpaRepository extends JpaRepository<WatchTargetEntit
     @Query(value = """
             INSERT INTO watch_targets (
                 id, product_id, variant_kind, variant_value, variant_display_name,
-                dest, spp, next_check_at, created_at, version
+                city_name, dest, spp, next_check_at, created_at, version
             ) VALUES (
                 :id, :productId, :variantKind, :variantValue, :variantDisplayName,
-                :dest, :spp, :nextCheckAt, :createdAt, 0
+                :cityName, :dest, :spp, :nextCheckAt, :createdAt, 0
             )
             ON CONFLICT (product_id, variant_kind, variant_value, dest, spp) DO NOTHING
             """, nativeQuery = true)
@@ -37,6 +37,7 @@ public interface WatchTargetJpaRepository extends JpaRepository<WatchTargetEntit
             @Param("variantKind") String variantKind,
             @Param("variantValue") String variantValue,
             @Param("variantDisplayName") String variantDisplayName,
+            @Param("cityName") String cityName,
             @Param("dest") long dest,
             @Param("spp") int spp,
             @Param("nextCheckAt") Instant nextCheckAt,

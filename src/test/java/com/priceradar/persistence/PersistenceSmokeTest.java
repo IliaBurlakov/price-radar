@@ -8,6 +8,8 @@ import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.pricing.domain.RubleAmount;
+import com.priceradar.notification.domain.NotificationType;
+import com.priceradar.notification.infrastructure.persistence.NotificationOutboxJpaRepository;
 import com.priceradar.product.application.ResolvedQuotePersistenceCommand;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
 import com.priceradar.product.application.ResolvedQuoteService;
@@ -15,10 +17,19 @@ import com.priceradar.product.application.ResolvedVariant;
 import com.priceradar.product.infrastructure.persistence.ProductJpaRepository;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotJpaRepository;
 import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaRepository;
+import com.priceradar.tracking.application.SubscriptionCreationResult;
+import com.priceradar.tracking.application.SubscriptionService;
+import com.priceradar.tracking.domain.NotificationMode;
+import com.priceradar.telegram.application.PendingTargetPrice;
+import com.priceradar.telegram.application.PendingTargetPriceStore;
+import com.priceradar.user.application.UserProfile;
+import com.priceradar.user.application.UserProfileService;
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -72,6 +83,36 @@ class PersistenceSmokeTest {
     @Autowired
     private PriceSnapshotJpaRepository snapshotRepository;
 
+    @Autowired
+    private NotificationOutboxJpaRepository notificationOutboxRepository;
+
+    @Autowired
+    private UserProfileService userProfileService;
+
+    @Autowired
+    private SubscriptionService subscriptionService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PendingTargetPriceStore pendingTargetPriceStore;
+
+    @BeforeEach
+    void clearBusinessData() {
+        jdbcTemplate.execute("""
+                TRUNCATE TABLE
+                    notification_outbox,
+                    subscriptions,
+                    price_snapshots,
+                    telegram_pending_target_prices,
+                    watch_targets,
+                    products,
+                    user_profiles
+                CASCADE
+                """);
+    }
+
     @Test
     void startsContextWithFlywayAndPersistsProviderCooldown() {
         Instant updatedAt = Instant.parse("2026-07-12T10:00:00Z");
@@ -83,9 +124,55 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
+    }
+
+    @Test
+    void createsAlreadyReachedThresholdEventInSubscriptionTransaction() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UUID watchTargetId = quotePersistenceService.save(quoteCommand(777777L, now.minusSeconds(5)));
+        UserProfile user = userProfileService.getOrCreate(10001L, 10001L);
+
+        SubscriptionCreationResult result = subscriptionService.createFromQuote(
+                user.getId(),
+                watchTargetId,
+                NotificationMode.TARGET_PRICE,
+                Optional.of(RubleAmount.ofMinorUnits(11_000L)),
+                now
+        );
+
+        assertThat(result.isCreated()).isTrue();
+        assertThat(result.isTargetAlreadyReached()).isTrue();
+        assertThat(notificationOutboxRepository.findAll())
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.getSubscriptionId())
+                            .isEqualTo(result.getSubscription().orElseThrow().getId());
+                    assertThat(event.getNotificationType())
+                            .isEqualTo(NotificationType.TARGET_REACHED);
+                    assertThat(event.getSnapshotId()).isNotNull();
+                });
+    }
+
+    @Test
+    void persistsPendingTargetPriceInputAcrossStoreCalls() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UUID watchTargetId = quotePersistenceService.save(quoteCommand(888888L, now.minusSeconds(5)));
+        PendingTargetPrice pending = new PendingTargetPrice(
+                20001L,
+                20001L,
+                watchTargetId,
+                now.plus(15, ChronoUnit.MINUTES)
+        );
+
+        pendingTargetPriceStore.put(pending, now);
+
+        assertThat(pendingTargetPriceStore.find(20001L, 20001L, now))
+                .get()
+                .extracting(PendingTargetPrice::getWatchTargetId)
+                .isEqualTo(watchTargetId);
     }
 
     @Test

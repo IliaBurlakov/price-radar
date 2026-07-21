@@ -1,6 +1,7 @@
 package com.priceradar.tracking.application;
 
 import com.priceradar.pricing.application.InterpretedPrice;
+import com.priceradar.pricing.domain.PriceContext;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -14,6 +15,7 @@ public final class LatestSnapshotView {
     private final Optional<String> brand;
     private final String canonicalUrl;
     private final Optional<String> variantDisplayName;
+    private final PriceContext priceContext;
     private final Optional<InterpretedPrice> interpretedPrice;
     private final Optional<Instant> observedAt;
 
@@ -24,6 +26,7 @@ public final class LatestSnapshotView {
             Optional<String> brand,
             String canonicalUrl,
             Optional<String> variantDisplayName,
+            PriceContext priceContext,
             Optional<InterpretedPrice> interpretedPrice,
             Optional<Instant> observedAt
     ) {
@@ -37,7 +40,7 @@ public final class LatestSnapshotView {
             throw new IllegalArgumentException("canonicalUrl must not be blank");
         }
         if (title == null || brand == null || variantDisplayName == null
-                || interpretedPrice == null || observedAt == null) {
+                || priceContext == null || interpretedPrice == null || observedAt == null) {
             throw new IllegalArgumentException("latest snapshot optional fields must not be null");
         }
         if (interpretedPrice.isPresent() != observedAt.isPresent()) {
@@ -49,6 +52,7 @@ public final class LatestSnapshotView {
         this.brand = normalize(brand);
         this.canonicalUrl = canonicalUrl.trim();
         this.variantDisplayName = normalize(variantDisplayName);
+        this.priceContext = priceContext;
         this.interpretedPrice = interpretedPrice;
         this.observedAt = observedAt;
     }
@@ -75,6 +79,10 @@ public final class LatestSnapshotView {
 
     public Optional<String> getVariantDisplayName() {
         return variantDisplayName;
+    }
+
+    public PriceContext getPriceContext() {
+        return priceContext;
     }
 
     public Optional<InterpretedPrice> getInterpretedPrice() {

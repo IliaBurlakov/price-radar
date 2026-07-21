@@ -32,6 +32,9 @@ public class WatchTargetEntity {
     @Column(name = "variant_display_name", length = 255)
     private String variantDisplayName;
 
+    @Column(name = "city_name", nullable = false, length = 100)
+    private String cityName;
+
     @Column(name = "dest", nullable = false)
     private long dest;
 
@@ -63,6 +66,7 @@ public class WatchTargetEntity {
             VariantKind variantKind,
             String variantValue,
             String variantDisplayName,
+            String cityName,
             long dest,
             int spp,
             Instant nextCheckAt,
@@ -73,6 +77,7 @@ public class WatchTargetEntity {
         this.variantKind = variantKind;
         this.variantValue = variantValue;
         this.variantDisplayName = variantDisplayName;
+        this.cityName = cityName;
         this.dest = dest;
         this.spp = spp;
         this.nextCheckAt = nextCheckAt;
@@ -97,6 +102,10 @@ public class WatchTargetEntity {
 
     public String getVariantDisplayName() {
         return variantDisplayName;
+    }
+
+    public String getCityName() {
+        return cityName;
     }
 
     public long getDest() {

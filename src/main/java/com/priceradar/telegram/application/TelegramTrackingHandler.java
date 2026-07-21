@@ -24,6 +24,7 @@ public class TelegramTrackingHandler {
     private final UserProfileService userProfileService;
     private final SubscriptionService subscriptionService;
     private final TargetPriceParser targetPriceParser;
+    private final TrackingCallbackCodec trackingCallbackCodec;
     private final PendingTargetPriceStore pendingTargetPriceStore;
     private final TelegramGateway telegramGateway;
     private final Clock clock;
@@ -32,17 +33,20 @@ public class TelegramTrackingHandler {
             UserProfileService userProfileService,
             SubscriptionService subscriptionService,
             TargetPriceParser targetPriceParser,
+            TrackingCallbackCodec trackingCallbackCodec,
             PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
             Clock clock
     ) {
         if (userProfileService == null || subscriptionService == null || targetPriceParser == null
-                || pendingTargetPriceStore == null || telegramGateway == null || clock == null) {
+                || trackingCallbackCodec == null || pendingTargetPriceStore == null
+                || telegramGateway == null || clock == null) {
             throw new IllegalArgumentException("Telegram tracking handler dependencies must not be null");
         }
         this.userProfileService = userProfileService;
         this.subscriptionService = subscriptionService;
         this.targetPriceParser = targetPriceParser;
+        this.trackingCallbackCodec = trackingCallbackCodec;
         this.pendingTargetPriceStore = pendingTargetPriceStore;
         this.telegramGateway = telegramGateway;
         this.clock = clock;
@@ -53,7 +57,10 @@ public class TelegramTrackingHandler {
             if (!callback.isPrivateChat()) {
                 return;
             }
-            Optional<TrackingCallbackData> callbackData = TrackingCallbackData.parse(callback.getData());
+            Optional<TrackingCallbackData> callbackData = trackingCallbackCodec.decode(
+                    callback.getData(),
+                    callback.getTelegramUserId()
+            );
             if (callbackData.isEmpty()) {
                 telegramGateway.sendMessage(OutgoingTelegramMessage.text(
                         callback.getChatId(),
@@ -83,7 +90,8 @@ public class TelegramTrackingHandler {
         Instant now = clock.instant();
         Optional<PendingTargetPrice> pending = pendingTargetPriceStore.find(
                 message.getTelegramUserId(),
-                message.getChatId()
+                message.getChatId(),
+                now
         );
         if (pending.isEmpty() || message.getText().startsWith("/")) {
             return false;
@@ -173,7 +181,7 @@ public class TelegramTrackingHandler {
                 callback.getChatId(),
                 callbackData.getWatchTargetId(),
                 now.plus(TARGET_INPUT_TTL)
-        ));
+        ), now);
         telegramGateway.sendMessage(OutgoingTelegramMessage.text(
                 callback.getChatId(),
                 "Введите целевую цену в рублях, например 1500 или 1499,90. "

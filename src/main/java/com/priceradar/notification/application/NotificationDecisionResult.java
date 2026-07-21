@@ -21,6 +21,11 @@ public final class NotificationDecisionResult {
         if (notificationIntent.isPresent() && !stateChanged) {
             throw new IllegalArgumentException("notification requires a state transition");
         }
+        if (notificationIntent
+                .filter(intent -> !intent.getSubscriptionId().equals(subscription.getId()))
+                .isPresent()) {
+            throw new IllegalArgumentException("notification must belong to updated subscription");
+        }
         this.subscription = subscription;
         this.notificationIntent = notificationIntent;
         this.stateChanged = stateChanged;

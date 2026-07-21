@@ -136,8 +136,10 @@ public final class ResolvedQuoteService {
             throw new IllegalArgumentException("watchTargetId must not be null");
         }
 
+        Instant now = clock.instant();
         return quoteStore.findLatestObservationTime(watchTargetId)
-                .map(observedAt -> !clock.instant().isAfter(observedAt.plus(QUOTE_TTL)))
+                .filter(observedAt -> !observedAt.isAfter(now))
+                .map(observedAt -> !now.isAfter(observedAt.plus(QUOTE_TTL)))
                 .orElse(false);
     }
 

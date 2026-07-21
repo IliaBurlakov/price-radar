@@ -12,6 +12,7 @@ import com.priceradar.telegram.application.TargetPriceParser;
 import com.priceradar.telegram.application.TelegramPollingStateStore;
 import com.priceradar.telegram.application.TelegramQuoteMessageFactory;
 import com.priceradar.telegram.application.TelegramTrackingHandler;
+import com.priceradar.telegram.application.TrackingCallbackCodec;
 import com.priceradar.telegram.application.TelegramUpdateDispatcher;
 import com.priceradar.telegram.application.TrackedItemsMessageFactory;
 import com.priceradar.telegram.application.TrackedItemsMessageHandler;
@@ -54,8 +55,20 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
-    public TelegramQuoteMessageFactory telegramQuoteMessageFactory() {
-        return new TelegramQuoteMessageFactory(new WalletEstimateService());
+    public TrackingCallbackCodec trackingCallbackCodec(
+            @Value("${TELEGRAM_CALLBACK_SECRET}") String callbackSecret
+    ) {
+        return new TrackingCallbackCodec(callbackSecret);
+    }
+
+    @Bean
+    public TelegramQuoteMessageFactory telegramQuoteMessageFactory(
+            TrackingCallbackCodec trackingCallbackCodec
+    ) {
+        return new TelegramQuoteMessageFactory(
+                new WalletEstimateService(),
+                trackingCallbackCodec
+        );
     }
 
     @Bean
@@ -79,15 +92,11 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
-    public PendingTargetPriceStore pendingTargetPriceStore() {
-        return new PendingTargetPriceStore();
-    }
-
-    @Bean
     public TelegramTrackingHandler telegramTrackingHandler(
             UserProfileService userProfileService,
             SubscriptionService subscriptionService,
             TargetPriceParser targetPriceParser,
+            TrackingCallbackCodec trackingCallbackCodec,
             PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
             Clock providerClock
@@ -96,6 +105,7 @@ public class TelegramBotConfiguration {
                 userProfileService,
                 subscriptionService,
                 targetPriceParser,
+                trackingCallbackCodec,
                 pendingTargetPriceStore,
                 telegramGateway,
                 providerClock
@@ -171,7 +181,8 @@ public class TelegramBotConfiguration {
                 updateDispatcher,
                 pollingStateStore,
                 properties.getBotKey(),
-                properties.getLongPollingTimeout()
+                properties.getLongPollingTimeout(),
+                properties.getMaxUpdateAttempts()
         );
     }
 }

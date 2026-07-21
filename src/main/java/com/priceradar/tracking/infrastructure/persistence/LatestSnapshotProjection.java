@@ -17,6 +17,12 @@ public interface LatestSnapshotProjection {
 
     String getVariantDisplayName();
 
+    String getCityName();
+
+    long getDest();
+
+    int getSpp();
+
     String getSnapshotStatus();
 
     String getPriceSource();

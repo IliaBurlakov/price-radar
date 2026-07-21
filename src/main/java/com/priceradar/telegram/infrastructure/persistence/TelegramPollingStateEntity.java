@@ -19,6 +19,12 @@ public class TelegramPollingStateEntity {
     @Column(name = "last_confirmed_update_id")
     private Long lastConfirmedUpdateId;
 
+    @Column(name = "failed_update_id")
+    private Long failedUpdateId;
+
+    @Column(name = "failed_update_attempts", nullable = false)
+    private int failedUpdateAttempts;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -55,6 +61,14 @@ public class TelegramPollingStateEntity {
         return version;
     }
 
+    public Long getFailedUpdateId() {
+        return failedUpdateId;
+    }
+
+    public int getFailedUpdateAttempts() {
+        return failedUpdateAttempts;
+    }
+
     public boolean confirm(long updateId, Instant confirmedAt) {
         if (updateId < 0) {
             throw new IllegalArgumentException("updateId must be non-negative");
@@ -66,7 +80,29 @@ public class TelegramPollingStateEntity {
             return false;
         }
         lastConfirmedUpdateId = updateId;
+        failedUpdateId = null;
+        failedUpdateAttempts = 0;
         updatedAt = confirmedAt;
         return true;
+    }
+
+    public int recordFailure(long updateId, Instant failedAt) {
+        if (updateId < 0) {
+            throw new IllegalArgumentException("updateId must be non-negative");
+        }
+        if (failedAt == null) {
+            throw new IllegalArgumentException("failedAt must not be null");
+        }
+        if (lastConfirmedUpdateId != null && updateId <= lastConfirmedUpdateId) {
+            return 0;
+        }
+        if (failedUpdateId != null && failedUpdateId == updateId) {
+            failedUpdateAttempts = Math.addExact(failedUpdateAttempts, 1);
+        } else {
+            failedUpdateId = updateId;
+            failedUpdateAttempts = 1;
+        }
+        updatedAt = failedAt;
+        return failedUpdateAttempts;
     }
 }
