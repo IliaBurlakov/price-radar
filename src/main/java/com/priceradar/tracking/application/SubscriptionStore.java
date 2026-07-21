@@ -18,6 +18,11 @@ public interface SubscriptionStore {
 
     List<TrackedSubscriptionItem> findActiveByUserId(UUID userId);
 
+    Optional<LatestSnapshotView> findLatestSnapshotActiveOwned(
+            UUID userId,
+            UUID subscriptionId
+    );
+
     Optional<SubscriptionQuoteObservation> findLatestQuoteObservation(UUID watchTargetId);
 
     Optional<SubscriptionQuoteObservation> findLatestRegularPriceObservation(UUID watchTargetId);

@@ -75,10 +75,16 @@ public final class TrackedItemsMessageFactory {
             int displayNumber = offset + index + 1;
             TrackedSubscriptionItem item = items.get(index);
             appendItem(text, item, displayNumber);
-            keyboard.add(List.of(new TelegramInlineButton(
-                    "Удалить #" + displayNumber,
-                    "REMOVE_TRACKING:" + item.getSubscriptionId()
-            )));
+            keyboard.add(List.of(
+                    new TelegramInlineButton(
+                            "Последняя цена #" + displayNumber,
+                            "SHOW_LAST_KNOWN:" + item.getSubscriptionId()
+                    ),
+                    new TelegramInlineButton(
+                            "Удалить #" + displayNumber,
+                            "REMOVE_TRACKING:" + item.getSubscriptionId()
+                    )
+            ));
         }
         text.append("\n\nРегион: ").append(region);
         text.append("\n").append(APPROXIMATE_PRICE_WARNING);

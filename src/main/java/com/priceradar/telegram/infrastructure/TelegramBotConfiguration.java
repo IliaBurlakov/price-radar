@@ -3,6 +3,8 @@ package com.priceradar.telegram.infrastructure;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.product.application.ResolvedQuoteService;
+import com.priceradar.telegram.application.LatestSnapshotMessageFactory;
+import com.priceradar.telegram.application.ShowLastKnownCallbackHandler;
 import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
@@ -13,6 +15,7 @@ import com.priceradar.telegram.application.TelegramTrackingHandler;
 import com.priceradar.telegram.application.TelegramUpdateDispatcher;
 import com.priceradar.telegram.application.TrackedItemsMessageFactory;
 import com.priceradar.telegram.application.TrackedItemsMessageHandler;
+import com.priceradar.tracking.application.LatestSnapshotQueryService;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.user.application.UserProfileService;
 import org.springframework.beans.factory.annotation.Value;
@@ -122,15 +125,37 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public LatestSnapshotMessageFactory latestSnapshotMessageFactory() {
+        return new LatestSnapshotMessageFactory(new WalletEstimateService());
+    }
+
+    @Bean
+    public ShowLastKnownCallbackHandler showLastKnownCallbackHandler(
+            UserProfileService userProfileService,
+            LatestSnapshotQueryService queryService,
+            LatestSnapshotMessageFactory messageFactory,
+            TelegramGateway telegramGateway
+    ) {
+        return new ShowLastKnownCallbackHandler(
+                userProfileService,
+                queryService,
+                messageFactory,
+                telegramGateway
+        );
+    }
+
+    @Bean
     public TelegramUpdateDispatcher telegramUpdateDispatcher(
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramTrackingHandler trackingHandler,
-            TrackedItemsMessageHandler trackedItemsHandler
+            TrackedItemsMessageHandler trackedItemsHandler,
+            ShowLastKnownCallbackHandler showLastKnownHandler
     ) {
         return new TelegramUpdateDispatcher(
                 currentQuoteHandler,
                 trackingHandler,
-                trackedItemsHandler
+                trackedItemsHandler,
+                showLastKnownHandler
         );
     }
 
