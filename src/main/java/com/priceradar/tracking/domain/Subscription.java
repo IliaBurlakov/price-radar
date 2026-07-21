@@ -75,6 +75,53 @@ public final class Subscription {
         );
     }
 
+    public Subscription withBaseline(RubleAmount baselinePrice, Instant observedAt) {
+        if (notificationMode != NotificationMode.ANY_DECREASE) {
+            throw new IllegalStateException("only ANY_DECREASE subscription has a baseline");
+        }
+        if (baselinePrice == null || baselinePrice.getMinorUnits() == 0) {
+            throw new IllegalArgumentException("baselinePrice must be positive");
+        }
+        if (observedAt == null || observedAt.isBefore(createdAt)) {
+            throw new IllegalArgumentException("baseline observation must belong to subscription period");
+        }
+        return new Subscription(
+                id,
+                userId,
+                watchTargetId,
+                notificationMode,
+                targetPrice,
+                Optional.of(baselinePrice),
+                Optional.of(observedAt),
+                thresholdState,
+                status,
+                createdAt,
+                endedAt
+        );
+    }
+
+    public Subscription withThresholdState(ThresholdState newState) {
+        if (notificationMode != NotificationMode.TARGET_PRICE) {
+            throw new IllegalStateException("only TARGET_PRICE subscription has threshold state");
+        }
+        if (newState == null || newState == ThresholdState.NOT_APPLICABLE) {
+            throw new IllegalArgumentException("TARGET_PRICE requires applicable threshold state");
+        }
+        return new Subscription(
+                id,
+                userId,
+                watchTargetId,
+                notificationMode,
+                targetPrice,
+                baselinePrice,
+                baselineObservedAt,
+                newState,
+                status,
+                createdAt,
+                endedAt
+        );
+    }
+
     public UUID getId() {
         return id;
     }
