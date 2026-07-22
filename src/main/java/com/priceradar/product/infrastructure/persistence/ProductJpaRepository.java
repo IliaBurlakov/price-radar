@@ -38,4 +38,20 @@ public interface ProductJpaRepository extends JpaRepository<ProductEntity, UUID>
             @Param("metadataUpdatedAt") Instant metadataUpdatedAt,
             @Param("createdAt") Instant createdAt
     );
+
+    @Modifying
+    @Query(value = """
+            UPDATE products
+            SET title = COALESCE(:title, title),
+                brand = COALESCE(:brand, brand),
+                metadata_updated_at = :observedAt
+            WHERE id = :productId
+              AND (metadata_updated_at IS NULL OR metadata_updated_at <= :observedAt)
+            """, nativeQuery = true)
+    int updateMetadataIfNewer(
+            @Param("productId") UUID productId,
+            @Param("title") String title,
+            @Param("brand") String brand,
+            @Param("observedAt") Instant observedAt
+    );
 }

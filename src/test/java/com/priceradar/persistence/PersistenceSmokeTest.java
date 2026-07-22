@@ -10,6 +10,8 @@ import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.notification.domain.NotificationType;
 import com.priceradar.notification.application.NotificationDeliveryStore;
+import com.priceradar.notification.application.NotificationDecisionService;
+import com.priceradar.notification.application.NotificationOutboxWriter;
 import com.priceradar.notification.application.PendingNotificationDelivery;
 import com.priceradar.notification.infrastructure.persistence.NotificationOutboxJpaRepository;
 import com.priceradar.product.application.ResolvedQuotePersistenceCommand;
@@ -17,10 +19,15 @@ import com.priceradar.product.application.ResolvedQuotePersistenceService;
 import com.priceradar.product.application.ResolvedQuoteService;
 import com.priceradar.product.application.ResolvedVariant;
 import com.priceradar.product.infrastructure.persistence.ProductJpaRepository;
+import com.priceradar.scheduler.application.DueWatchTarget;
+import com.priceradar.scheduler.application.DueWatchTargetReader;
+import com.priceradar.scheduler.application.ScheduledObservationStore;
+import com.priceradar.scheduler.application.WatchTargetCheckTransaction;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotJpaRepository;
 import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaRepository;
 import com.priceradar.tracking.application.SubscriptionCreationResult;
 import com.priceradar.tracking.application.SubscriptionService;
+import com.priceradar.tracking.application.SubscriptionStore;
 import com.priceradar.tracking.domain.NotificationMode;
 import com.priceradar.telegram.application.PendingTargetPrice;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
@@ -32,6 +39,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -39,6 +48,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -102,6 +112,24 @@ class PersistenceSmokeTest {
 
     @Autowired
     private PendingTargetPriceStore pendingTargetPriceStore;
+
+    @Autowired
+    private DueWatchTargetReader dueWatchTargetReader;
+
+    @Autowired
+    private ScheduledObservationStore scheduledObservationStore;
+
+    @Autowired
+    private SubscriptionStore subscriptionStore;
+
+    @Autowired
+    private NotificationDecisionService notificationDecisionService;
+
+    @Autowired
+    private NotificationOutboxWriter notificationOutboxWriter;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void clearBusinessData() {
@@ -201,6 +229,81 @@ class PersistenceSmokeTest {
                 .get()
                 .extracting(PendingTargetPrice::getWatchTargetId)
                 .isEqualTo(watchTargetId);
+    }
+
+    @Test
+    void processesOneSharedDueWatchTargetForMultipleSubscriptions() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UUID watchTargetId = quotePersistenceService.save(quoteCommand(999999L, now.minusSeconds(5)));
+        jdbcTemplate.update(
+                "UPDATE watch_targets SET next_check_at = ? WHERE id = ?",
+                Timestamp.from(now.minusSeconds(1)),
+                watchTargetId
+        );
+
+        assertThat(dueWatchTargetReader.findDue(now, 10)).isEmpty();
+
+        UserProfile firstUser = userProfileService.getOrCreate(30001L, 30001L);
+        UserProfile secondUser = userProfileService.getOrCreate(30002L, 30002L);
+        subscriptionService.createFromQuote(
+                firstUser.getId(),
+                watchTargetId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                now
+        );
+        subscriptionService.createFromQuote(
+                secondUser.getId(),
+                watchTargetId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                now
+        );
+
+        List<DueWatchTarget> dueTargets = dueWatchTargetReader.findDue(now, 10);
+        assertThat(dueTargets)
+                .singleElement()
+                .extracting(DueWatchTarget::getWatchTargetId)
+                .isEqualTo(watchTargetId);
+        DueWatchTarget dueTarget = dueTargets.getFirst();
+
+        Instant observedAt = now.plusSeconds(1);
+        Instant completedAt = now.plusSeconds(2);
+        Instant nextCheckAt = completedAt.plus(6, ChronoUnit.HOURS);
+        ProviderPriceFields scheduledFields = new ProviderPriceFields(
+                true,
+                Optional.of(RubleAmount.ofMinorUnits(9_000L)),
+                Optional.of(RubleAmount.ofMinorUnits(12_000L))
+        );
+        MarketplaceProductDetails scheduledProduct = new MarketplaceProductDetails(
+                Marketplace.WILDBERRIES,
+                "999999",
+                Optional.of("Test product"),
+                Optional.of("Test brand"),
+                List.of(),
+                Map.of("NO_VARIANT", scheduledFields)
+        );
+        WatchTargetCheckTransaction checkTransaction = new WatchTargetCheckTransaction(
+                scheduledObservationStore,
+                subscriptionStore,
+                notificationDecisionService,
+                notificationOutboxWriter
+        );
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                checkTransaction.persistObservation(
+                        dueTarget,
+                        UUID.randomUUID(),
+                        scheduledProduct,
+                        new PriceSemanticsService().interpret(scheduledFields),
+                        observedAt,
+                        completedAt,
+                        nextCheckAt
+                ));
+
+        assertThat(snapshotRepository.count()).isEqualTo(2);
+        assertThat(notificationOutboxRepository.count()).isEqualTo(2);
+        assertThat(watchTargetRepository.findById(watchTargetId).orElseThrow().getNextCheckAt())
+                .isEqualTo(nextCheckAt);
     }
 
     @Test

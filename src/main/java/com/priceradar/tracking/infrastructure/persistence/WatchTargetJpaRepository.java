@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,5 +43,62 @@ public interface WatchTargetJpaRepository extends JpaRepository<WatchTargetEntit
             @Param("spp") int spp,
             @Param("nextCheckAt") Instant nextCheckAt,
             @Param("createdAt") Instant createdAt
+    );
+
+    @Query(value = """
+            SELECT
+                target.id AS "watchTargetId",
+                target.product_id AS "productId",
+                product.marketplace AS "marketplace",
+                product.external_product_id AS "externalProductId",
+                target.variant_kind AS "variantKind",
+                target.variant_value AS "variantValue",
+                target.dest AS "dest",
+                target.spp AS "spp",
+                target.next_check_at AS "nextCheckAt"
+            FROM watch_targets target
+            JOIN products product ON product.id = target.product_id
+            WHERE target.next_check_at <= :now
+              AND EXISTS (
+                  SELECT 1
+                  FROM subscriptions subscription
+                  WHERE subscription.watch_target_id = target.id
+                    AND subscription.status = 'ACTIVE'
+              )
+            ORDER BY target.next_check_at, target.id
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<DueWatchTargetProjection> findDueWithActiveSubscriptions(
+            @Param("now") Instant now,
+            @Param("limit") int limit
+    );
+
+    @Modifying
+    @Query(value = """
+            UPDATE watch_targets
+            SET last_checked_at = :completedAt,
+                last_successful_at = :completedAt,
+                next_check_at = :nextCheckAt,
+                version = version + 1
+            WHERE id = :watchTargetId
+            """, nativeQuery = true)
+    int markSuccessfulCheck(
+            @Param("watchTargetId") UUID watchTargetId,
+            @Param("completedAt") Instant completedAt,
+            @Param("nextCheckAt") Instant nextCheckAt
+    );
+
+    @Modifying
+    @Query(value = """
+            UPDATE watch_targets
+            SET last_checked_at = :completedAt,
+                next_check_at = :nextCheckAt,
+                version = version + 1
+            WHERE id = :watchTargetId
+            """, nativeQuery = true)
+    int markFailedCheck(
+            @Param("watchTargetId") UUID watchTargetId,
+            @Param("completedAt") Instant completedAt,
+            @Param("nextCheckAt") Instant nextCheckAt
     );
 }

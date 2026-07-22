@@ -46,3 +46,11 @@ priceradar:
       claim-timeout: PT30S
       base-backoff: PT10S
       max-backoff: PT15M
+  scheduler:
+    enabled: ${PRICE_SCHEDULER_ENABLED:true}
+    initial-delay: PT10S
+    poll-delay: PT60S
+    batch-size: 20
+    refresh-interval: PT6H
+    max-jitter: PT30M
+    failure-retry-delay: PT5M
