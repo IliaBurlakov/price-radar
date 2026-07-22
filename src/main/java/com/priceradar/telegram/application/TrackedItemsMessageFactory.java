@@ -2,6 +2,7 @@ package com.priceradar.telegram.application;
 
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
+import com.priceradar.statistics.domain.StatisticsPeriod;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
 import com.priceradar.tracking.domain.NotificationMode;
 
@@ -85,10 +86,45 @@ public final class TrackedItemsMessageFactory {
                             "REMOVE_TRACKING:" + item.getSubscriptionId()
                     )
             ));
+            keyboard.add(List.of(
+                    statisticsButton(
+                            "7 дней #" + displayNumber,
+                            item,
+                            StatisticsPeriod.LAST_7_DAYS
+                    ),
+                    statisticsButton(
+                            "30 дней #" + displayNumber,
+                            item,
+                            StatisticsPeriod.LAST_30_DAYS
+                    )
+            ));
+            keyboard.add(List.of(
+                    statisticsButton(
+                            "365 дней #" + displayNumber,
+                            item,
+                            StatisticsPeriod.LAST_365_DAYS
+                    ),
+                    statisticsButton(
+                            "Всё время #" + displayNumber,
+                            item,
+                            StatisticsPeriod.ALL_TIME
+                    )
+            ));
         }
         text.append("\n\nРегион: ").append(region);
         text.append("\n").append(APPROXIMATE_PRICE_WARNING);
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
+    }
+
+    private TelegramInlineButton statisticsButton(
+            String text,
+            TrackedSubscriptionItem item,
+            StatisticsPeriod period
+    ) {
+        return new TelegramInlineButton(
+                text,
+                StatisticsCallbackData.encode(item.getSubscriptionId(), period)
+        );
     }
 
     private void appendItem(
