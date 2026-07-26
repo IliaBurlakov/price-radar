@@ -5,6 +5,10 @@ spring:
     banner-mode: "off"
 
 priceradar:
+  operations:
+    actuator:
+      username: test-actuator
+      password: test-only-actuator-password
   telegram:
     enabled: false
   scheduler:

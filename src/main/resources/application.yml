@@ -12,7 +12,41 @@ spring:
     hibernate:
       ddl-auto: validate
 
+server:
+  error:
+    include-binding-errors: never
+    include-exception: false
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+      discovery:
+        enabled: false
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+  info:
+    build:
+      enabled: true
+    env:
+      enabled: false
+    java:
+      enabled: false
+    os:
+      enabled: false
+    process:
+      enabled: false
+
 priceradar:
+  operations:
+    actuator:
+      username: ${ACTUATOR_USERNAME}
+      password: ${ACTUATOR_PASSWORD}
   user:
     defaults:
       city-name: Moscow
