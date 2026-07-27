@@ -1,6 +1,7 @@
 package com.priceradar.telegram.application;
 
 import com.priceradar.pricing.application.InterpretedPrice;
+import com.priceradar.pricing.application.RublePriceFormatter;
 import com.priceradar.pricing.application.WalletEstimate;
 import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.pricing.domain.RubleAmount;
@@ -111,10 +112,6 @@ public final class LatestSnapshotMessageFactory {
     }
 
     private String format(RubleAmount amount) {
-        long rubles = amount.getMinorUnits() / 100;
-        long kopecks = amount.getMinorUnits() % 100;
-        return kopecks == 0
-                ? rubles + " ₽"
-                : rubles + "," + String.format(Locale.ROOT, "%02d", kopecks) + " ₽";
+        return RublePriceFormatter.format(amount);
     }
 }

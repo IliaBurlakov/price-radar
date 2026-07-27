@@ -23,7 +23,7 @@ public class WildberriesProviderConfiguration {
     public HttpClient wildberriesHttpClient(WildberriesProviderProperties properties) {
         return HttpClient.newBuilder()
                 .connectTimeout(properties.getRequestTimeout())
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
@@ -69,9 +69,12 @@ public class WildberriesProviderConfiguration {
                 accessCoordinator,
                 properties.getRequestTimeout(),
                 properties.getBaseBackoff(),
+                properties.getMaxBackoff(),
                 properties.getMaxAttempts(),
                 properties.getCacheTtl(),
                 properties.getCacheMaxEntries(),
+                properties.getMaxRetryAfter(),
+                properties.getMaxResponseBytes(),
                 providerClock
         );
     }

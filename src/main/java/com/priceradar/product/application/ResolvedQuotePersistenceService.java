@@ -21,7 +21,7 @@ public class ResolvedQuotePersistenceService {
     }
 
     @Transactional
-    public UUID save(ResolvedQuotePersistenceCommand command) {
+    public PersistedResolvedQuote save(ResolvedQuotePersistenceCommand command) {
         UUID productId = productStore.upsert(command);
         return quoteStore.save(productId, command);
     }

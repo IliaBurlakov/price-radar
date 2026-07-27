@@ -5,10 +5,12 @@ import com.priceradar.notification.application.NotificationDecisionService;
 import com.priceradar.notification.application.NotificationOutboxWriter;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.scheduler.application.DueWatchTargetReader;
+import com.priceradar.scheduler.application.NotificationFanOutService;
 import com.priceradar.scheduler.application.ScheduleJitter;
 import com.priceradar.scheduler.application.ScheduledObservationStore;
 import com.priceradar.scheduler.application.WatchTargetCheckService;
 import com.priceradar.scheduler.application.WatchTargetCheckTransaction;
+import com.priceradar.scheduler.application.SubscriptionNotificationProcessor;
 import com.priceradar.scheduler.infrastructure.RandomScheduleJitter;
 import com.priceradar.scheduler.infrastructure.WatchTargetSchedulerWorker;
 import com.priceradar.tracking.application.SubscriptionStore;
@@ -24,12 +26,6 @@ import java.util.List;
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
 @EnableConfigurationProperties(SchedulerProperties.class)
-@ConditionalOnProperty(
-        prefix = "priceradar.scheduler",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
 public class SchedulerConfiguration {
 
     @Bean
@@ -39,13 +35,18 @@ public class SchedulerConfiguration {
 
     @Bean
     public WatchTargetCheckTransaction watchTargetCheckTransaction(
-            ScheduledObservationStore observationStore,
+            ScheduledObservationStore observationStore
+    ) {
+        return new WatchTargetCheckTransaction(observationStore);
+    }
+
+    @Bean
+    public SubscriptionNotificationProcessor subscriptionNotificationProcessor(
             SubscriptionStore subscriptionStore,
             NotificationDecisionService decisionService,
             NotificationOutboxWriter outboxWriter
     ) {
-        return new WatchTargetCheckTransaction(
-                observationStore,
+        return new SubscriptionNotificationProcessor(
                 subscriptionStore,
                 decisionService,
                 outboxWriter
@@ -53,10 +54,19 @@ public class SchedulerConfiguration {
     }
 
     @Bean
+    public NotificationFanOutService notificationFanOutService(
+            SubscriptionStore subscriptionStore,
+            SubscriptionNotificationProcessor notificationProcessor
+    ) {
+        return new NotificationFanOutService(subscriptionStore, notificationProcessor);
+    }
+
+    @Bean
     public WatchTargetCheckService watchTargetCheckService(
             List<MarketplaceProvider> marketplaceProviders,
             PriceSemanticsService priceSemanticsService,
             WatchTargetCheckTransaction checkTransaction,
+            NotificationFanOutService notificationFanOutService,
             ScheduleJitter scheduleJitter,
             Clock providerClock,
             SchedulerProperties properties
@@ -65,6 +75,7 @@ public class SchedulerConfiguration {
                 marketplaceProviders,
                 priceSemanticsService,
                 checkTransaction,
+                notificationFanOutService,
                 scheduleJitter,
                 providerClock,
                 properties.getRefreshInterval(),
@@ -73,6 +84,12 @@ public class SchedulerConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(
+            prefix = "priceradar.scheduler",
+            name = "enabled",
+            havingValue = "true",
+            matchIfMissing = true
+    )
     public WatchTargetSchedulerWorker watchTargetSchedulerWorker(
             DueWatchTargetReader dueTargetReader,
             WatchTargetCheckService checkService,

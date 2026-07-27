@@ -6,7 +6,7 @@ import java.util.UUID;
 
 public interface ResolvedQuoteStore {
 
-    UUID save(UUID productId, ResolvedQuotePersistenceCommand command);
+    PersistedResolvedQuote save(UUID productId, ResolvedQuotePersistenceCommand command);
 
-    Optional<Instant> findLatestObservationTime(UUID watchTargetId);
+    Optional<Instant> findObservationTime(UUID snapshotId);
 }

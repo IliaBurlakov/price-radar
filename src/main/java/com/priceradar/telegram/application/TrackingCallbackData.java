@@ -10,21 +10,21 @@ public final class TrackingCallbackData {
     }
 
     private final Action action;
-    private final UUID watchTargetId;
+    private final UUID quoteSnapshotId;
 
-    TrackingCallbackData(Action action, UUID watchTargetId) {
-        if (action == null || watchTargetId == null) {
+    TrackingCallbackData(Action action, UUID quoteSnapshotId) {
+        if (action == null || quoteSnapshotId == null) {
             throw new IllegalArgumentException("tracking callback fields must not be null");
         }
         this.action = action;
-        this.watchTargetId = watchTargetId;
+        this.quoteSnapshotId = quoteSnapshotId;
     }
 
     public Action getAction() {
         return action;
     }
 
-    public UUID getWatchTargetId() {
-        return watchTargetId;
+    public UUID getQuoteSnapshotId() {
+        return quoteSnapshotId;
     }
 }

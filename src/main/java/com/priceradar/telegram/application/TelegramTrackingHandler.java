@@ -1,5 +1,6 @@
 package com.priceradar.telegram.application;
 
+import com.priceradar.pricing.application.RublePriceFormatter;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.tracking.application.SubscriptionCreationResult;
 import com.priceradar.tracking.application.SubscriptionPreparationResult;
@@ -13,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Optional;
 
 public class TelegramTrackingHandler {
@@ -121,7 +121,7 @@ public class TelegramTrackingHandler {
         );
         SubscriptionCreationResult result = subscriptionService.createFromQuote(
                 profile.getId(),
-                pending.get().getWatchTargetId(),
+                pending.get().getQuoteSnapshotId(),
                 NotificationMode.TARGET_PRICE,
                 targetPrice,
                 now
@@ -143,7 +143,7 @@ public class TelegramTrackingHandler {
     ) {
         SubscriptionCreationResult result = subscriptionService.createFromQuote(
                 profile.getId(),
-                callbackData.getWatchTargetId(),
+                callbackData.getQuoteSnapshotId(),
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
                 clock.instant()
@@ -164,7 +164,7 @@ public class TelegramTrackingHandler {
         Instant now = clock.instant();
         SubscriptionPreparationResult preparation = subscriptionService.prepareFromQuote(
                 profile.getId(),
-                callbackData.getWatchTargetId(),
+                callbackData.getQuoteSnapshotId(),
                 now
         );
         if (!preparation.isReady()) {
@@ -179,7 +179,7 @@ public class TelegramTrackingHandler {
         pendingTargetPriceStore.put(new PendingTargetPrice(
                 callback.getTelegramUserId(),
                 callback.getChatId(),
-                callbackData.getWatchTargetId(),
+                callbackData.getQuoteSnapshotId(),
                 now.plus(TARGET_INPUT_TTL)
         ), now);
         telegramGateway.sendMessage(OutgoingTelegramMessage.text(
@@ -268,11 +268,7 @@ public class TelegramTrackingHandler {
     }
 
     private String format(RubleAmount amount) {
-        long rubles = amount.getMinorUnits() / 100;
-        long kopecks = amount.getMinorUnits() % 100;
-        return kopecks == 0
-                ? rubles + " ₽"
-                : rubles + "," + String.format(Locale.ROOT, "%02d", kopecks) + " ₽";
+        return RublePriceFormatter.format(amount);
     }
 
     private void answerCallbackBestEffort(String callbackQueryId) {

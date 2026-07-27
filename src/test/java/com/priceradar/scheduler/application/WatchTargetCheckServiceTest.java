@@ -6,6 +6,7 @@ import com.priceradar.marketplace.application.MarketplaceProviderFailure;
 import com.priceradar.marketplace.application.MarketplaceProviderFailureCode;
 import com.priceradar.marketplace.application.MarketplaceProviderResult;
 import com.priceradar.marketplace.domain.Marketplace;
+import com.priceradar.notification.application.NotificationObservation;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.domain.RubleAmount;
@@ -20,6 +21,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,6 +45,9 @@ class WatchTargetCheckServiceTest {
     @Mock
     private WatchTargetCheckTransaction checkTransaction;
 
+    @Mock
+    private NotificationFanOutService notificationFanOutService;
+
     private WatchTargetCheckService checkService;
 
     @BeforeEach
@@ -51,6 +57,7 @@ class WatchTargetCheckServiceTest {
                 List.of(provider),
                 new PriceSemanticsService(),
                 checkTransaction,
+                notificationFanOutService,
                 () -> JITTER,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Duration.ofHours(6),
@@ -61,27 +68,47 @@ class WatchTargetCheckServiceTest {
     @Test
     void persistsOneSharedObservationAndSchedulesSixHoursWithJitter() {
         DueWatchTarget target = dueTarget();
-        UUID checkId = UUID.randomUUID();
         MarketplaceProductDetails product = productDetails();
+        var interpretedPrice = new PriceSemanticsService().interpret(
+                product.getPriceFieldsByVariantKey().get("SIZE:77")
+        );
+        UUID observationId = UUID.nameUUIDFromBytes((
+                "scheduled-observation:" + target.getWatchTargetId() + ":"
+                        + NOW.minusSeconds(1).truncatedTo(ChronoUnit.MICROS)
+        ).getBytes(StandardCharsets.UTF_8));
+        NotificationObservation observation = new NotificationObservation(
+                UUID.randomUUID(),
+                target.getWatchTargetId(),
+                interpretedPrice,
+                NOW.minusSeconds(1)
+        );
         when(provider.fetchCurrent(any())).thenReturn(
                 MarketplaceProviderResult.success(product, NOW.minusSeconds(1))
         );
+        when(checkTransaction.persistObservation(
+                target,
+                observationId,
+                product,
+                interpretedPrice,
+                NOW.minusSeconds(1),
+                NOW,
+                NOW.plus(Duration.ofHours(6)).plus(JITTER)
+        )).thenReturn(observation);
 
-        WatchTargetCheckOutcome outcome = checkService.check(target, checkId);
+        WatchTargetCheckOutcome outcome = checkService.check(target);
 
         assertThat(outcome).isEqualTo(WatchTargetCheckOutcome.OBSERVATION_SAVED);
         verify(provider).fetchCurrent(any());
         verify(checkTransaction).persistObservation(
                 target,
-                checkId,
+                observationId,
                 product,
-                new PriceSemanticsService().interpret(
-                        product.getPriceFieldsByVariantKey().get("SIZE:77")
-                ),
+                interpretedPrice,
                 NOW.minusSeconds(1),
                 NOW,
                 NOW.plus(Duration.ofHours(6)).plus(JITTER)
         );
+        verify(notificationFanOutService).process(observation, NOW);
     }
 
     @Test
@@ -96,7 +123,7 @@ class WatchTargetCheckServiceTest {
         );
         when(provider.fetchCurrent(any())).thenReturn(MarketplaceProviderResult.failure(failure));
 
-        WatchTargetCheckOutcome outcome = checkService.check(target, UUID.randomUUID());
+        WatchTargetCheckOutcome outcome = checkService.check(target);
 
         assertThat(outcome).isEqualTo(WatchTargetCheckOutcome.PROVIDER_COOLDOWN);
         verify(checkTransaction).persistFailure(target, NOW, retryNotBefore);

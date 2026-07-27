@@ -7,15 +7,18 @@ import com.priceradar.marketplace.application.MarketplaceProviderFailure;
 import com.priceradar.marketplace.application.MarketplaceProviderFailureCode;
 import com.priceradar.marketplace.application.MarketplaceProviderResult;
 import com.priceradar.marketplace.domain.Marketplace;
+import com.priceradar.notification.application.NotificationObservation;
 import com.priceradar.pricing.application.InterpretedPrice;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.application.ProviderPriceFields;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +31,7 @@ public final class WatchTargetCheckService {
     private final Map<Marketplace, MarketplaceProvider> providers;
     private final PriceSemanticsService priceSemanticsService;
     private final WatchTargetCheckTransaction checkTransaction;
+    private final NotificationFanOutService notificationFanOutService;
     private final ScheduleJitter scheduleJitter;
     private final Clock clock;
     private final Duration refreshInterval;
@@ -37,12 +41,14 @@ public final class WatchTargetCheckService {
             List<MarketplaceProvider> providers,
             PriceSemanticsService priceSemanticsService,
             WatchTargetCheckTransaction checkTransaction,
+            NotificationFanOutService notificationFanOutService,
             ScheduleJitter scheduleJitter,
             Clock clock,
             Duration refreshInterval,
             Duration failureRetryDelay
     ) {
         if (providers == null || priceSemanticsService == null || checkTransaction == null
+                || notificationFanOutService == null
                 || scheduleJitter == null || clock == null || refreshInterval == null
                 || failureRetryDelay == null) {
             throw new IllegalArgumentException("watch target check dependencies must not be null");
@@ -52,15 +58,16 @@ public final class WatchTargetCheckService {
         this.providers = indexProviders(providers);
         this.priceSemanticsService = priceSemanticsService;
         this.checkTransaction = checkTransaction;
+        this.notificationFanOutService = notificationFanOutService;
         this.scheduleJitter = scheduleJitter;
         this.clock = clock;
         this.refreshInterval = refreshInterval;
         this.failureRetryDelay = failureRetryDelay;
     }
 
-    public WatchTargetCheckOutcome check(DueWatchTarget target, UUID checkId) {
-        if (target == null || checkId == null) {
-            throw new IllegalArgumentException("watch target check fields must not be null");
+    public WatchTargetCheckOutcome check(DueWatchTarget target) {
+        if (target == null) {
+            throw new IllegalArgumentException("watch target must not be null");
         }
         MarketplaceProvider provider = providerFor(target.getWatchKey().getMarketplace());
         MarketplaceProviderResult result = provider.fetchCurrent(
@@ -93,16 +100,29 @@ public final class WatchTargetCheckService {
         Instant nextCheckAt = completedAt
                 .plus(refreshInterval)
                 .plus(scheduleJitter.next());
-        checkTransaction.persistObservation(
+        NotificationObservation observation = checkTransaction.persistObservation(
                 target,
-                checkId,
+                observationId(target, observedAt),
                 product,
                 price,
                 observedAt,
                 completedAt,
                 nextCheckAt
         );
+        notificationFanOutService.process(observation, completedAt);
         return WatchTargetCheckOutcome.OBSERVATION_SAVED;
+    }
+
+    public void rescheduleAfterUnexpectedFailure(DueWatchTarget target) {
+        if (target == null) {
+            throw new IllegalArgumentException("watch target must not be null");
+        }
+        Instant completedAt = clock.instant();
+        checkTransaction.persistFailure(
+                target,
+                completedAt,
+                completedAt.plus(failureRetryDelay)
+        );
     }
 
     private WatchTargetCheckOutcome handleFailure(
@@ -179,9 +199,15 @@ public final class WatchTargetCheckService {
         return code == MarketplaceProviderFailureCode.COOLDOWN_ACTIVE
                 || code == MarketplaceProviderFailureCode.ACCESS_FORBIDDEN
                 || code == MarketplaceProviderFailureCode.RATE_LIMITED
-                || code == MarketplaceProviderFailureCode.SERVER_ERROR
-                || code == MarketplaceProviderFailureCode.MALFORMED_RESPONSE
-                || code == MarketplaceProviderFailureCode.SCHEMA_VIOLATION;
+                || code == MarketplaceProviderFailureCode.SERVER_ERROR;
+    }
+
+    private UUID observationId(DueWatchTarget target, Instant observedAt) {
+        String identity = "scheduled-observation:"
+                + target.getWatchTargetId()
+                + ":"
+                + observedAt.truncatedTo(ChronoUnit.MICROS);
+        return UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8));
     }
 
     private void validatePositive(Duration duration, String fieldName) {

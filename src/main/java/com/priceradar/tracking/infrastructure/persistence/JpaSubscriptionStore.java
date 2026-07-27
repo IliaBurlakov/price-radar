@@ -37,11 +37,6 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
-    public boolean watchTargetExists(UUID watchTargetId) {
-        return watchTargetRepository.existsById(watchTargetId);
-    }
-
-    @Override
     public Optional<Subscription> findActive(UUID userId, UUID watchTargetId) {
         return subscriptionRepository.findByUserIdAndWatchTargetIdAndStatus(
                 userId,
@@ -68,15 +63,11 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
-    public List<Subscription> findActiveByWatchTargetId(UUID watchTargetId) {
-        return subscriptionRepository
-                .findByWatchTargetIdAndStatusOrderByCreatedAtAscIdAsc(
-                        watchTargetId,
-                        SubscriptionStatus.ACTIVE
-                )
-                .stream()
-                .map(this::toSubscription)
-                .toList();
+    public List<UUID> findActiveIdsByWatchTargetId(UUID watchTargetId) {
+        return subscriptionRepository.findIdsByWatchTargetIdAndStatus(
+                watchTargetId,
+                SubscriptionStatus.ACTIVE
+        );
     }
 
     @Override
@@ -102,29 +93,13 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
-    public Optional<SubscriptionQuoteObservation> findLatestQuoteObservation(UUID watchTargetId) {
-        return snapshotRepository.findFirstByWatchTargetIdOrderByObservedAtDesc(watchTargetId)
+    public Optional<SubscriptionQuoteObservation> findQuoteObservation(UUID snapshotId) {
+        return snapshotRepository.findById(snapshotId)
                 .map(snapshot -> new SubscriptionQuoteObservation(
                         snapshot.getId(),
+                        snapshot.getWatchTargetId(),
                         snapshot.getObservedAt(),
                         validRegularPrice(snapshot)
-                ));
-    }
-
-    @Override
-    public Optional<SubscriptionQuoteObservation> findLatestRegularPriceObservation(
-            UUID watchTargetId
-    ) {
-        return snapshotRepository
-                .findFirstByWatchTargetIdAndStatusAndPriceSourceOrderByObservedAtDesc(
-                        watchTargetId,
-                        SnapshotStatus.REGULAR_PRICE,
-                        PriceSource.PRODUCT
-                )
-                .map(snapshot -> new SubscriptionQuoteObservation(
-                        snapshot.getId(),
-                        snapshot.getObservedAt(),
-                        optionalAmount(snapshot.getRegularPriceMinor())
                 ));
     }
 

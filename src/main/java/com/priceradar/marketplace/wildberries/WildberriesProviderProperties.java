@@ -15,6 +15,9 @@ public final class WildberriesProviderProperties {
     private int cacheMaxEntries = 10_000;
     private int maxAttempts = 3;
     private Duration baseBackoff = Duration.ofSeconds(2);
+    private Duration maxBackoff = Duration.ofMinutes(1);
+    private Duration maxRetryAfter = Duration.ofHours(24);
+    private int maxResponseBytes = 2 * 1024 * 1024;
 
     public URI getEndpoint() {
         return endpoint;
@@ -70,5 +73,29 @@ public final class WildberriesProviderProperties {
 
     public void setBaseBackoff(Duration baseBackoff) {
         this.baseBackoff = baseBackoff;
+    }
+
+    public Duration getMaxBackoff() {
+        return maxBackoff;
+    }
+
+    public void setMaxBackoff(Duration maxBackoff) {
+        this.maxBackoff = maxBackoff;
+    }
+
+    public Duration getMaxRetryAfter() {
+        return maxRetryAfter;
+    }
+
+    public void setMaxRetryAfter(Duration maxRetryAfter) {
+        this.maxRetryAfter = maxRetryAfter;
+    }
+
+    public int getMaxResponseBytes() {
+        return maxResponseBytes;
+    }
+
+    public void setMaxResponseBytes(int maxResponseBytes) {
+        this.maxResponseBytes = maxResponseBytes;
     }
 }

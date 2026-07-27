@@ -31,9 +31,16 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
             SubscriptionStatus status
     );
 
-    List<SubscriptionEntity> findByWatchTargetIdAndStatusOrderByCreatedAtAscIdAsc(
-            UUID watchTargetId,
-            SubscriptionStatus status
+    @Query("""
+            SELECT subscription.id
+            FROM SubscriptionEntity subscription
+            WHERE subscription.watchTargetId = :watchTargetId
+              AND subscription.status = :status
+            ORDER BY subscription.createdAt, subscription.id
+            """)
+    List<UUID> findIdsByWatchTargetIdAndStatus(
+            @Param("watchTargetId") UUID watchTargetId,
+            @Param("status") SubscriptionStatus status
     );
 
     long countByUserIdAndStatus(UUID userId, SubscriptionStatus status);

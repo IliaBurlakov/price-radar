@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -42,7 +43,6 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
     private static final Duration RATE_LIMIT_COOLDOWN = Duration.ofMinutes(15);
     private static final Duration ACCESS_FORBIDDEN_COOLDOWN = Duration.ofMinutes(30);
     private static final Duration SERVER_ERROR_COOLDOWN = Duration.ofMinutes(5);
-    private static final Duration MAPPING_FAILURE_COOLDOWN = Duration.ofMinutes(15);
     private static final Duration MAX_BACKOFF_JITTER = Duration.ofSeconds(1);
 
     private final HttpClient httpClient;
@@ -51,7 +51,10 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
     private final ProviderAccessCoordinator accessCoordinator;
     private final Duration requestTimeout;
     private final Duration baseBackoff;
+    private final Duration maxBackoff;
     private final int maxAttempts;
+    private final Duration maxRetryAfter;
+    private final int maxResponseBytes;
     private final Clock clock;
     private final Duration cacheTtl;
     private final Map<RequestCacheKey, CachedProduct> cache;
@@ -63,9 +66,12 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
             ProviderAccessCoordinator accessCoordinator,
             Duration requestTimeout,
             Duration baseBackoff,
+            Duration maxBackoff,
             int maxAttempts,
             Duration cacheTtl,
             int cacheMaxEntries,
+            Duration maxRetryAfter,
+            int maxResponseBytes,
             Clock clock
     ) {
         if (httpClient == null)
@@ -84,14 +90,22 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
             throw new IllegalArgumentException("baseBackoff must not be null");
         if (baseBackoff.isNegative() || baseBackoff.isZero())
             throw new IllegalArgumentException("baseBackoff must be positive");
-        if (maxAttempts < 1)
-            throw new IllegalArgumentException("maxAttempts must be at least 1");
+        if (maxBackoff == null || maxBackoff.isNegative() || maxBackoff.isZero()
+                || baseBackoff.compareTo(maxBackoff) > 0)
+            throw new IllegalArgumentException("maxBackoff must be positive and not below baseBackoff");
+        if (maxAttempts < 1 || maxAttempts > 10)
+            throw new IllegalArgumentException("maxAttempts must be between 1 and 10");
         if (cacheTtl == null)
             throw new IllegalArgumentException("cacheTtl must not be null");
         if (cacheTtl.isNegative() || cacheTtl.isZero())
             throw new IllegalArgumentException("cacheTtl must be positive");
         if (cacheMaxEntries < 1)
             throw new IllegalArgumentException("cacheMaxEntries must be at least 1");
+        if (maxRetryAfter == null || maxRetryAfter.compareTo(Duration.ofSeconds(1)) < 0
+                || maxRetryAfter.compareTo(Duration.ofDays(7)) > 0)
+            throw new IllegalArgumentException("maxRetryAfter must be between 1 second and 7 days");
+        if (maxResponseBytes < 1 || maxResponseBytes > 16 * 1024 * 1024)
+            throw new IllegalArgumentException("maxResponseBytes must be between 1 and 16777216");
         if (clock == null)
             throw new IllegalArgumentException("clock must not be null");
 
@@ -101,8 +115,11 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
         this.accessCoordinator = accessCoordinator;
         this.requestTimeout = requestTimeout;
         this.baseBackoff = baseBackoff;
+        this.maxBackoff = maxBackoff;
         this.maxAttempts = maxAttempts;
         this.cacheTtl = cacheTtl;
+        this.maxRetryAfter = maxRetryAfter;
+        this.maxResponseBytes = maxResponseBytes;
         this.clock = clock;
         this.cache = createCache(cacheMaxEntries);
     }
@@ -183,6 +200,14 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
             return result;
 
         MarketplaceProductDetails product = result.getProduct().orElseThrow();
+        if (!product.getPriceFieldsByVariantKey().containsKey(watchKey.getVariantKey())) {
+            return failure(
+                    MarketplaceProviderFailureCode.VARIANT_NOT_FOUND,
+                    "Wildberries response omitted the fixed watch target variant",
+                    Optional.empty(),
+                    correlationId
+            );
+        }
         MarketplaceProductDetails fixedVariantProduct = selectFixedVariant(
                 product,
                 watchKey.getVariantKey()
@@ -232,15 +257,15 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                             cachedProduct.get().getObservedAt()
                     );
 
-                HttpResponse<String> response = httpClient.send(
+                HttpResponse<InputStream> response = httpClient.send(
                         httpRequest,
-                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+                        HttpResponse.BodyHandlers.ofInputStream()
                 );
                 int statusCode = response.statusCode();
 
                 if (statusCode == 200) {
                     MarketplaceProviderResult mappedResult = mapSuccessfulResponse(
-                            response.body(),
+                            readResponseBody(response.body()),
                             cacheKey.getNmId(),
                             correlationId
                     );
@@ -249,13 +274,12 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                         MarketplaceProductDetails product = mappedResult.getProduct().orElseThrow();
                         Instant observedAt = mappedResult.getObservedAt().orElseThrow();
                         saveCached(cacheKey, product, observedAt);
-                    } else if (isMappingFailure(mappedResult)) {
-                        providerCooldownUntil = Optional.of(clock.instant().plus(MAPPING_FAILURE_COOLDOWN));
-                        mappedResult = withRetryNotBefore(mappedResult, providerCooldownUntil.get());
                     }
 
                     return mappedResult;
                 }
+
+                response.body().close();
 
                 if (statusCode == 404)
                     return failure(
@@ -445,33 +469,31 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
         );
     }
 
-    private boolean isMappingFailure(MarketplaceProviderResult result) {
-        return result.getFailure()
-                .map(MarketplaceProviderFailure::getCode)
-                .filter(code -> code == MarketplaceProviderFailureCode.MALFORMED_RESPONSE
-                        || code == MarketplaceProviderFailureCode.SCHEMA_VIOLATION)
-                .isPresent();
-    }
-
-    private MarketplaceProviderResult withRetryNotBefore(
-            MarketplaceProviderResult result,
-            Instant retryNotBefore
-    ) {
-        MarketplaceProviderFailure previousFailure = result.getFailure().orElseThrow();
-        return failure(
-                previousFailure.getCode(),
-                previousFailure.getMessage(),
-                Optional.of(retryNotBefore),
-                previousFailure.getCorrelationId()
-        );
-    }
-
     private Duration calculateBackoff(int attempt) {
         long multiplier = 1L << Math.min(attempt - 1, 30);
-        Duration exponentialBackoff = baseBackoff.multipliedBy(multiplier);
+        Duration exponentialBackoff;
+        try {
+            exponentialBackoff = baseBackoff.multipliedBy(multiplier);
+        } catch (ArithmeticException exception) {
+            return maxBackoff;
+        }
+        if (exponentialBackoff.compareTo(maxBackoff) >= 0) {
+            return maxBackoff;
+        }
         long maxJitterMillis = MAX_BACKOFF_JITTER.toMillis();
         long jitterMillis = ThreadLocalRandom.current().nextLong(maxJitterMillis + 1);
-        return exponentialBackoff.plusMillis(jitterMillis);
+        Duration withJitter = exponentialBackoff.plusMillis(jitterMillis);
+        return withJitter.compareTo(maxBackoff) > 0 ? maxBackoff : withJitter;
+    }
+
+    private String readResponseBody(InputStream body) throws IOException {
+        try (body) {
+            byte[] bytes = body.readNBytes(maxResponseBytes + 1);
+            if (bytes.length > maxResponseBytes) {
+                throw new IOException("Wildberries response exceeds configured size limit");
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
     }
 
     private Instant resolveRateLimitCooldown(HttpResponse<?> response) {
@@ -491,22 +513,34 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
 
     private Optional<Instant> parseRetryAfter(String rawValue) {
         String normalizedValue = rawValue.trim();
+        Instant now = clock.instant();
+        Instant maximum = now.plus(maxRetryAfter);
 
         try {
             long seconds = Long.parseLong(normalizedValue);
-            if (seconds >= 0)
-                return Optional.of(clock.instant().plusSeconds(seconds));
-        } catch (NumberFormatException ignored) {
+            if (seconds >= 0) {
+                return Optional.of(cappedRetryAfter(now, maximum, seconds));
+            }
+        } catch (NumberFormatException | ArithmeticException ignored) {
         }
 
         try {
-            return Optional.of(ZonedDateTime.parse(
+            Instant parsed = ZonedDateTime.parse(
                     normalizedValue,
                     DateTimeFormatter.RFC_1123_DATE_TIME
-            ).toInstant());
+            ).toInstant();
+            return Optional.of(parsed.isAfter(maximum) ? maximum : parsed);
         } catch (DateTimeParseException ignored) {
             return Optional.empty();
         }
+    }
+
+    private Instant cappedRetryAfter(Instant now, Instant maximum, long seconds) {
+        if (seconds > maxRetryAfter.toSeconds()) {
+            return maximum;
+        }
+        Instant parsed = now.plusSeconds(seconds);
+        return parsed.isAfter(maximum) ? maximum : parsed;
     }
 
     private long parseNmId(String externalProductId) {

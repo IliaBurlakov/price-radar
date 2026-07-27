@@ -5,6 +5,8 @@ import java.util.List;
 
 public final class OutgoingTelegramMessage {
 
+    private static final int MAX_TEXT_CODE_POINTS = 4096;
+
     private final long chatId;
     private final String text;
     private final List<List<TelegramInlineButton>> inlineKeyboard;
@@ -20,11 +22,15 @@ public final class OutgoingTelegramMessage {
         if (text == null || text.isBlank()) {
             throw new IllegalArgumentException("message text must not be blank");
         }
+        String normalizedText = text.trim();
+        if (normalizedText.codePointCount(0, normalizedText.length()) > MAX_TEXT_CODE_POINTS) {
+            throw new IllegalArgumentException("message text must fit Telegram 4096-character limit");
+        }
         if (inlineKeyboard == null) {
             throw new IllegalArgumentException("inlineKeyboard must not be null");
         }
         this.chatId = chatId;
-        this.text = text.trim();
+        this.text = normalizedText;
         this.inlineKeyboard = copyKeyboard(inlineKeyboard);
     }
 

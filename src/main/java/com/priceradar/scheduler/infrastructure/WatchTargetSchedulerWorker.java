@@ -10,7 +10,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Clock;
 import java.util.List;
-import java.util.UUID;
 
 public final class WatchTargetSchedulerWorker {
 
@@ -47,10 +46,7 @@ public final class WatchTargetSchedulerWorker {
         List<DueWatchTarget> targets = dueTargetReader.findDue(clock.instant(), batchSize);
         for (DueWatchTarget target : targets) {
             try {
-                WatchTargetCheckOutcome outcome = checkService.check(
-                        target,
-                        UUID.randomUUID()
-                );
+                WatchTargetCheckOutcome outcome = checkService.check(target);
                 if (outcome == WatchTargetCheckOutcome.PROVIDER_COOLDOWN) {
                     return;
                 }
@@ -60,7 +56,20 @@ public final class WatchTargetSchedulerWorker {
                         target.getWatchTargetId(),
                         exception.getClass().getSimpleName()
                 );
+                rescheduleBestEffort(target);
             }
+        }
+    }
+
+    private void rescheduleBestEffort(DueWatchTarget target) {
+        try {
+            checkService.rescheduleAfterUnexpectedFailure(target);
+        } catch (RuntimeException rescheduleException) {
+            LOGGER.error(
+                    "Failed to reschedule watch target after unexpected error, watchTargetId={}, errorType={}",
+                    target.getWatchTargetId(),
+                    rescheduleException.getClass().getSimpleName()
+            );
         }
     }
 }

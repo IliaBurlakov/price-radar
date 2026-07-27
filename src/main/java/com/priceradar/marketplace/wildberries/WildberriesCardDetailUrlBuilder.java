@@ -12,9 +12,10 @@ public final class WildberriesCardDetailUrlBuilder {
             throw new IllegalArgumentException("baseUri must not be null!");
 
         String scheme = baseUri.getScheme();
-        if (scheme == null || (!scheme.equalsIgnoreCase("http")
-                && !scheme.equalsIgnoreCase("https")))
-            throw new IllegalArgumentException("baseUri must use http or https");
+        if (scheme == null || (!scheme.equalsIgnoreCase("https")
+                && !(scheme.equalsIgnoreCase("http") && baseUri.getHost() != null
+                && isLoopbackHost(baseUri.getHost()))))
+            throw new IllegalArgumentException("baseUri must use https, except for loopback testing");
 
         if (baseUri.getQuery() != null) {
             throw new IllegalArgumentException("baseUri must not contain query parameters");
@@ -31,6 +32,13 @@ public final class WildberriesCardDetailUrlBuilder {
         if (baseUri.getHost() == null || baseUri.getHost().isBlank()) {
             throw new IllegalArgumentException("baseUri must contain a host");
         }
+        if (!baseUri.getHost().equalsIgnoreCase("card.wb.ru")
+                && !isLoopbackHost(baseUri.getHost())) {
+            throw new IllegalArgumentException("baseUri host must be card.wb.ru");
+        }
+        if (baseUri.getUserInfo() != null) {
+            throw new IllegalArgumentException("baseUri must not contain user info");
+        }
 
         this.baseUri = baseUri;
     }
@@ -41,6 +49,13 @@ public final class WildberriesCardDetailUrlBuilder {
         if (priceContext == null)
             throw new IllegalArgumentException("priceContext must not be null");
         return build(nmId, priceContext.getDest(), priceContext.getSpp());
+    }
+
+    private boolean isLoopbackHost(String host) {
+        return host.equalsIgnoreCase("localhost")
+                || host.equals("127.0.0.1")
+                || host.equals("::1")
+                || host.equals("[::1]");
     }
 
     public URI build(long nmId, long dest, int spp) {

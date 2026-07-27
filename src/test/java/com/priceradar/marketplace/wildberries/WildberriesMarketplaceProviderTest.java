@@ -115,6 +115,26 @@ class WildberriesMarketplaceProviderTest {
         }
     }
 
+    @Test
+    void capsUntrustedRetryAfterValue() {
+        try (LocalHttpStub stub = LocalHttpStub.start()) {
+            stub.stub(
+                    "/cards/v4/detail",
+                    503,
+                    "{}",
+                    Map.of("Retry-After", String.valueOf(Long.MAX_VALUE))
+            );
+            WildberriesMarketplaceProvider provider = provider(stub, new TestCooldownStore());
+
+            MarketplaceProviderFailure failure = provider.resolveProduct(request())
+                    .getFailure()
+                    .orElseThrow();
+
+            assertThat(failure.getRetryNotBefore()).contains(NOW.plus(Duration.ofHours(24)));
+            assertThat(stub.requestCount()).isEqualTo(1);
+        }
+    }
+
     private WildberriesMarketplaceProvider provider(
             LocalHttpStub stub,
             ProviderCooldownStore cooldownStore
@@ -133,9 +153,12 @@ class WildberriesMarketplaceProviderTest {
                 coordinator,
                 Duration.ofSeconds(2),
                 Duration.ofMillis(1),
+                Duration.ofSeconds(10),
                 3,
                 Duration.ofMinutes(5),
                 100,
+                Duration.ofHours(24),
+                2 * 1024 * 1024,
                 clock
         );
     }

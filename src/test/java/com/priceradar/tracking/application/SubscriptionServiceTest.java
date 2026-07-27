@@ -21,31 +21,30 @@ class SubscriptionServiceTest {
 
     private final UserProfileStore userStore = mock(UserProfileStore.class);
     private final SubscriptionStore subscriptionStore = mock(SubscriptionStore.class);
-    private final ImmediateThresholdNotificationPort immediatePort =
-            mock(ImmediateThresholdNotificationPort.class);
     private final SubscriptionService service = new SubscriptionService(
             userStore,
-            subscriptionStore,
-            immediatePort
+            subscriptionStore
     );
 
     @Test
-    void alreadyReachedTargetCreatesSubscriptionAndImmediateEvent() {
+    void alreadyReachedTargetIsMarkedWithoutCreatingAnotherNotification() {
         UUID userId = UUID.randomUUID();
         UUID watchTargetId = UUID.randomUUID();
+        UUID quoteSnapshotId = UUID.randomUUID();
         Instant now = Instant.parse("2026-01-01T00:10:00Z");
         SubscriptionQuoteObservation observation = new SubscriptionQuoteObservation(
-                UUID.randomUUID(),
+                quoteSnapshotId,
+                watchTargetId,
                 now.minusSeconds(30),
                 Optional.of(RubleAmount.ofMinorUnits(8_000))
         );
-        ready(userId, watchTargetId, observation);
+        ready(userId, quoteSnapshotId, observation);
         when(subscriptionStore.create(any(Subscription.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         SubscriptionCreationResult result = service.createFromQuote(
                 userId,
-                watchTargetId,
+                quoteSnapshotId,
                 NotificationMode.TARGET_PRICE,
                 Optional.of(RubleAmount.ofMinorUnits(8_500)),
                 now
@@ -53,32 +52,30 @@ class SubscriptionServiceTest {
 
         assertThat(result.isCreated()).isTrue();
         assertThat(result.isTargetAlreadyReached()).isTrue();
-        verify(immediatePort).enqueue(
-                result.getSubscription().orElseThrow(),
-                observation,
-                now
-        );
+        assertThat(result.getSubscription().orElseThrow().getWatchTargetId())
+                .isEqualTo(watchTargetId);
     }
 
     @Test
     void futureObservationCannotAuthorizeTrackingCallback() {
         UUID userId = UUID.randomUUID();
         UUID watchTargetId = UUID.randomUUID();
+        UUID quoteSnapshotId = UUID.randomUUID();
         Instant now = Instant.parse("2026-01-01T00:10:00Z");
         SubscriptionQuoteObservation future = new SubscriptionQuoteObservation(
-                UUID.randomUUID(),
+                quoteSnapshotId,
+                watchTargetId,
                 now.plusSeconds(1),
                 Optional.of(RubleAmount.ofMinorUnits(8_000))
         );
         when(userStore.existsAndLockById(userId)).thenReturn(true);
-        when(subscriptionStore.findActive(userId, watchTargetId)).thenReturn(Optional.empty());
-        when(subscriptionStore.watchTargetExists(watchTargetId)).thenReturn(true);
-        when(subscriptionStore.findLatestQuoteObservation(watchTargetId))
+        when(subscriptionStore.findQuoteObservation(quoteSnapshotId))
                 .thenReturn(Optional.of(future));
+        when(subscriptionStore.findActive(userId, watchTargetId)).thenReturn(Optional.empty());
 
         SubscriptionCreationResult result = service.createFromQuote(
                 userId,
-                watchTargetId,
+                quoteSnapshotId,
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
                 now
@@ -86,20 +83,45 @@ class SubscriptionServiceTest {
 
         assertThat(result.getStatus()).isEqualTo(SubscriptionCreationResult.Status.QUOTE_EXPIRED);
         verify(subscriptionStore, never()).create(any());
-        verify(immediatePort, never()).enqueue(any(), any(), any());
+    }
+
+    @Test
+    void expiredQuoteSnapshotIsCheckedByItsOwnIdentity() {
+        UUID userId = UUID.randomUUID();
+        UUID watchTargetId = UUID.randomUUID();
+        UUID expiredSnapshotId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-01-01T00:20:00Z");
+        SubscriptionQuoteObservation expired = new SubscriptionQuoteObservation(
+                expiredSnapshotId,
+                watchTargetId,
+                now.minusSeconds(16 * 60L),
+                Optional.of(RubleAmount.ofMinorUnits(8_000))
+        );
+        when(userStore.existsAndLockById(userId)).thenReturn(true);
+        when(subscriptionStore.findQuoteObservation(expiredSnapshotId))
+                .thenReturn(Optional.of(expired));
+
+        SubscriptionCreationResult result = service.createFromQuote(
+                userId,
+                expiredSnapshotId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                now
+        );
+
+        assertThat(result.getStatus()).isEqualTo(SubscriptionCreationResult.Status.QUOTE_EXPIRED);
+        verify(subscriptionStore, never()).create(any());
+        verify(subscriptionStore, never()).findActive(userId, watchTargetId);
     }
 
     private void ready(
             UUID userId,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             SubscriptionQuoteObservation observation
     ) {
         when(userStore.existsAndLockById(userId)).thenReturn(true);
-        when(subscriptionStore.findActive(userId, watchTargetId)).thenReturn(Optional.empty());
-        when(subscriptionStore.watchTargetExists(watchTargetId)).thenReturn(true);
-        when(subscriptionStore.findLatestQuoteObservation(watchTargetId))
-                .thenReturn(Optional.of(observation));
-        when(subscriptionStore.findLatestRegularPriceObservation(watchTargetId))
+        when(subscriptionStore.findActive(userId, observation.getWatchTargetId())).thenReturn(Optional.empty());
+        when(subscriptionStore.findQuoteObservation(quoteSnapshotId))
                 .thenReturn(Optional.of(observation));
         when(subscriptionStore.countActive(userId)).thenReturn(0L);
     }

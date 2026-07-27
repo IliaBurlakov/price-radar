@@ -15,17 +15,17 @@ class TrackingCallbackCodecTest {
 
     @Test
     void callbackIsAcceptedOnlyForItsTelegramUser() {
-        UUID watchTargetId = UUID.randomUUID();
+        UUID quoteSnapshotId = UUID.randomUUID();
         String callback = codec.encode(
                 TrackingCallbackData.Action.TRACK_ANY_DECREASE,
-                watchTargetId,
+                quoteSnapshotId,
                 1001L
         );
 
         assertThat(codec.decode(callback, 1001L))
                 .get()
-                .extracting(TrackingCallbackData::getWatchTargetId)
-                .isEqualTo(watchTargetId);
+                .extracting(TrackingCallbackData::getQuoteSnapshotId)
+                .isEqualTo(quoteSnapshotId);
         assertThat(codec.decode(callback, 1002L)).isEmpty();
     }
 

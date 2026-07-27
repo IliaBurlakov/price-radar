@@ -1,6 +1,11 @@
 spring:
   application:
     name: price-radar
+  task:
+    scheduling:
+      pool:
+        size: 3
+      thread-name-prefix: priceradar-scheduled-
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -62,6 +67,9 @@ priceradar:
       cache-max-entries: 10000
       max-attempts: 3
       base-backoff: PT2S
+      max-backoff: PT1M
+      max-retry-after: PT24H
+      max-response-bytes: 2097152
   telegram:
     enabled: ${TELEGRAM_BOT_ENABLED:true}
     api-base-url: https://api.telegram.org/
@@ -71,6 +79,8 @@ priceradar:
     poll-delay: PT1S
     bot-key: primary
     max-update-attempts: 5
+    max-retry-after: PT1H
+    max-response-bytes: 1048576
   notification:
     delivery:
       initial-delay: PT5S

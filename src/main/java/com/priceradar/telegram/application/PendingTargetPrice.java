@@ -7,24 +7,24 @@ public final class PendingTargetPrice {
 
     private final long telegramUserId;
     private final long chatId;
-    private final UUID watchTargetId;
+    private final UUID quoteSnapshotId;
     private final Instant expiresAt;
 
     public PendingTargetPrice(
             long telegramUserId,
             long chatId,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             Instant expiresAt
     ) {
         if (telegramUserId <= 0 || chatId <= 0) {
             throw new IllegalArgumentException("Telegram identifiers must be positive");
         }
-        if (watchTargetId == null || expiresAt == null) {
+        if (quoteSnapshotId == null || expiresAt == null) {
             throw new IllegalArgumentException("pending target price fields must not be null");
         }
         this.telegramUserId = telegramUserId;
         this.chatId = chatId;
-        this.watchTargetId = watchTargetId;
+        this.quoteSnapshotId = quoteSnapshotId;
         this.expiresAt = expiresAt;
     }
 
@@ -36,8 +36,8 @@ public final class PendingTargetPrice {
         return chatId;
     }
 
-    public UUID getWatchTargetId() {
-        return watchTargetId;
+    public UUID getQuoteSnapshotId() {
+        return quoteSnapshotId;
     }
 
     public Instant getExpiresAt() {

@@ -38,17 +38,17 @@ public class JpaPendingTargetPriceStore implements PendingTargetPriceStore {
         );
         jdbcTemplate.update("""
                 INSERT INTO telegram_pending_target_prices (
-                    telegram_user_id, chat_id, watch_target_id, expires_at, created_at
+                    telegram_user_id, chat_id, quote_snapshot_id, expires_at, created_at
                 ) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT (telegram_user_id) DO UPDATE
                 SET chat_id = EXCLUDED.chat_id,
-                    watch_target_id = EXCLUDED.watch_target_id,
+                    quote_snapshot_id = EXCLUDED.quote_snapshot_id,
                     expires_at = EXCLUDED.expires_at,
                     created_at = EXCLUDED.created_at
                 """,
                 pending.getTelegramUserId(),
                 pending.getChatId(),
-                pending.getWatchTargetId(),
+                pending.getQuoteSnapshotId(),
                 Timestamp.from(pending.getExpiresAt()),
                 Timestamp.from(now)
         );
@@ -63,7 +63,7 @@ public class JpaPendingTargetPriceStore implements PendingTargetPriceStore {
     ) {
         validateIdentity(telegramUserId, chatId, now);
         List<PendingTargetPrice> found = jdbcTemplate.query("""
-                SELECT telegram_user_id, chat_id, watch_target_id, expires_at
+                SELECT telegram_user_id, chat_id, quote_snapshot_id, expires_at
                 FROM telegram_pending_target_prices
                 WHERE telegram_user_id = ?
                 """, this::map, telegramUserId);
@@ -89,12 +89,12 @@ public class JpaPendingTargetPriceStore implements PendingTargetPriceStore {
                         DELETE FROM telegram_pending_target_prices
                         WHERE telegram_user_id = ?
                           AND chat_id = ?
-                          AND watch_target_id = ?
+                          AND quote_snapshot_id = ?
                           AND expires_at = ?
                         """,
                 pending.getTelegramUserId(),
                 pending.getChatId(),
-                pending.getWatchTargetId(),
+                pending.getQuoteSnapshotId(),
                 Timestamp.from(pending.getExpiresAt())
         );
     }
@@ -103,7 +103,7 @@ public class JpaPendingTargetPriceStore implements PendingTargetPriceStore {
         return new PendingTargetPrice(
                 resultSet.getLong("telegram_user_id"),
                 resultSet.getLong("chat_id"),
-                resultSet.getObject("watch_target_id", UUID.class),
+                resultSet.getObject("quote_snapshot_id", UUID.class),
                 resultSet.getTimestamp("expires_at").toInstant()
         );
     }

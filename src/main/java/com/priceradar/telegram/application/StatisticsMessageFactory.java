@@ -1,11 +1,11 @@
 package com.priceradar.telegram.application;
 
+import com.priceradar.pricing.application.RublePriceFormatter;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.domain.StatisticsPeriod;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -69,17 +69,10 @@ public final class StatisticsMessageFactory {
     }
 
     private String formatAverage(BigDecimal averageMinorUnits) {
-        long roundedMinorUnits = averageMinorUnits
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValueExact();
-        return format(RubleAmount.ofMinorUnits(roundedMinorUnits));
+        return RublePriceFormatter.formatMinorUnits(averageMinorUnits);
     }
 
     private String format(RubleAmount amount) {
-        long rubles = amount.getMinorUnits() / 100;
-        long kopecks = amount.getMinorUnits() % 100;
-        return kopecks == 0
-                ? rubles + " ₽"
-                : rubles + "," + String.format(Locale.ROOT, "%02d", kopecks) + " ₽";
+        return RublePriceFormatter.format(amount);
     }
 }

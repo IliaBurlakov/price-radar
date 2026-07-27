@@ -114,10 +114,11 @@ public final class ResolvedQuoteService {
                 interpretedPrice,
                 observedAt
         );
-        UUID watchTargetId = persistenceService.save(persistenceCommand);
+        PersistedResolvedQuote persistedQuote = persistenceService.save(persistenceCommand);
 
         return ResolvedQuoteResult.success(new ResolvedQuote(
-                watchTargetId,
+                persistedQuote.getWatchTargetId(),
+                persistedQuote.getSnapshotId(),
                 product.getMarketplace(),
                 parsedUrl.getNmId(),
                 canonicalUrl,
@@ -131,13 +132,13 @@ public final class ResolvedQuoteService {
         ));
     }
 
-    public boolean isFresh(UUID watchTargetId) {
-        if (watchTargetId == null) {
-            throw new IllegalArgumentException("watchTargetId must not be null");
+    public boolean isFresh(UUID snapshotId) {
+        if (snapshotId == null) {
+            throw new IllegalArgumentException("snapshotId must not be null");
         }
 
         Instant now = clock.instant();
-        return quoteStore.findLatestObservationTime(watchTargetId)
+        return quoteStore.findObservationTime(snapshotId)
                 .filter(observedAt -> !observedAt.isAfter(now))
                 .map(observedAt -> !now.isAfter(observedAt.plus(QUOTE_TTL)))
                 .orElse(false);

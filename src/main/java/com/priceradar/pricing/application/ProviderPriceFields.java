@@ -22,6 +22,10 @@ public final class ProviderPriceFields {
         if (basicPrice == null) {
             throw new IllegalArgumentException("basicPrice must not be null");
         }
+        if (productPrice.filter(value -> value.getMinorUnits() == 0).isPresent()
+                || basicPrice.filter(value -> value.getMinorUnits() == 0).isPresent()) {
+            throw new IllegalArgumentException("provider prices must be positive when present");
+        }
         this.available = available;
         this.basicPrice = basicPrice;
         this.productPrice = productPrice;

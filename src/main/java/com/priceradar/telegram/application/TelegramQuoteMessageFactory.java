@@ -2,6 +2,7 @@ package com.priceradar.telegram.application;
 
 import com.priceradar.marketplace.application.MarketplaceProviderFailureCode;
 import com.priceradar.pricing.application.InterpretedPrice;
+import com.priceradar.pricing.application.RublePriceFormatter;
 import com.priceradar.pricing.application.WalletEstimate;
 import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.pricing.domain.RubleAmount;
@@ -11,7 +12,6 @@ import com.priceradar.product.application.ResolvedQuoteResult;
 import com.priceradar.user.application.UserProfile;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 public final class TelegramQuoteMessageFactory {
@@ -56,7 +56,7 @@ public final class TelegramQuoteMessageFactory {
                 chatId,
                 text.toString(),
                 trackingKeyboard(
-                        quote.getWatchTargetId(),
+                        quote.getQuoteSnapshotId(),
                         userProfile.getTelegramUserId()
                 )
         );
@@ -125,7 +125,7 @@ public final class TelegramQuoteMessageFactory {
     }
 
     private List<List<TelegramInlineButton>> trackingKeyboard(
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             long telegramUserId
     ) {
         return List.of(
@@ -133,7 +133,7 @@ public final class TelegramQuoteMessageFactory {
                         "Отслеживать любое снижение",
                         trackingCallbackCodec.encode(
                                 TrackingCallbackData.Action.TRACK_ANY_DECREASE,
-                                watchTargetId,
+                                quoteSnapshotId,
                                 telegramUserId
                         )
                 )),
@@ -141,7 +141,7 @@ public final class TelegramQuoteMessageFactory {
                         "Установить целевую цену",
                         trackingCallbackCodec.encode(
                                 TrackingCallbackData.Action.TRACK_TARGET,
-                                watchTargetId,
+                                quoteSnapshotId,
                                 telegramUserId
                         )
                 ))
@@ -169,13 +169,6 @@ public final class TelegramQuoteMessageFactory {
     }
 
     private String format(RubleAmount amount) {
-        long minorUnits = amount.getMinorUnits();
-        long rubles = minorUnits / 100;
-        long kopecks = minorUnits % 100;
-        String wholePart = String.format(Locale.forLanguageTag("ru-RU"), "%,d", rubles);
-        if (kopecks == 0) {
-            return wholePart + " ₽";
-        }
-        return wholePart + "," + String.format(Locale.ROOT, "%02d", kopecks) + " ₽";
+        return RublePriceFormatter.format(amount);
     }
 }
