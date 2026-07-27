@@ -52,6 +52,10 @@ public final class InterpretedPrice {
             if (priceSource.filter(PriceSource.PRODUCT::equals).isEmpty()) {
                 throw new IllegalArgumentException("REGULAR_PRICE status requires PRODUCT priceSource");
             }
+            if (regularPrice.orElseThrow().getMinorUnits() == 0
+                    || marketingBasePrice.filter(value -> value.getMinorUnits() == 0).isPresent()) {
+                throw new IllegalArgumentException("price observations must be positive");
+            }
             return;
         }
 
@@ -61,6 +65,9 @@ public final class InterpretedPrice {
             }
             if (marketingBasePrice.isEmpty()) {
                 throw new IllegalArgumentException("BASIC_FALLBACK status requires marketingBasePrice");
+            }
+            if (marketingBasePrice.orElseThrow().getMinorUnits() == 0) {
+                throw new IllegalArgumentException("fallback price must be positive");
             }
             if (priceSource.filter(PriceSource.BASIC_FALLBACK::equals).isEmpty()) {
                 throw new IllegalArgumentException("BASIC_FALLBACK status requires BASIC_FALLBACK priceSource");

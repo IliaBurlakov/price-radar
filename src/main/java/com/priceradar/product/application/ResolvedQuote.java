@@ -11,6 +11,7 @@ import java.util.UUID;
 public final class ResolvedQuote {
 
     private final UUID watchTargetId;
+    private final UUID quoteSnapshotId;
     private final Marketplace marketplace;
     private final long nmId;
     private final String canonicalUrl;
@@ -24,6 +25,7 @@ public final class ResolvedQuote {
 
     public ResolvedQuote(
             UUID watchTargetId,
+            UUID quoteSnapshotId,
             Marketplace marketplace,
             long nmId,
             String canonicalUrl,
@@ -35,7 +37,7 @@ public final class ResolvedQuote {
             Instant observedAt,
             Instant expiresAt
     ) {
-        if (watchTargetId == null || marketplace == null || resolvedVariant == null
+        if (watchTargetId == null || quoteSnapshotId == null || marketplace == null || resolvedVariant == null
                 || interpretedPrice == null || priceContext == null || observedAt == null || expiresAt == null) {
             throw new IllegalArgumentException("resolved quote fields must not be null");
         }
@@ -53,6 +55,7 @@ public final class ResolvedQuote {
         }
 
         this.watchTargetId = watchTargetId;
+        this.quoteSnapshotId = quoteSnapshotId;
         this.marketplace = marketplace;
         this.nmId = nmId;
         this.canonicalUrl = canonicalUrl;
@@ -67,6 +70,10 @@ public final class ResolvedQuote {
 
     public UUID getWatchTargetId() {
         return watchTargetId;
+    }
+
+    public UUID getQuoteSnapshotId() {
+        return quoteSnapshotId;
     }
 
     public Marketplace getMarketplace() {

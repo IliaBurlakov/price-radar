@@ -46,14 +46,16 @@ public class TelegramBotConfiguration {
     ) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getRequestTimeout())
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         return new TelegramBotApiClient(
                 httpClient,
                 objectMapper,
                 properties.getApiBaseUrl(),
                 botToken,
-                properties.getRequestTimeout()
+                properties.getRequestTimeout(),
+                properties.getMaxRetryAfter(),
+                properties.getMaxResponseBytes()
         );
     }
 
@@ -201,7 +203,8 @@ public class TelegramBotConfiguration {
             TelegramGateway telegramGateway,
             TelegramUpdateDispatcher updateDispatcher,
             TelegramPollingStateStore pollingStateStore,
-            TelegramBotProperties properties
+            TelegramBotProperties properties,
+            Clock providerClock
     ) {
         return new TelegramLongPollingWorker(
                 telegramGateway,
@@ -209,7 +212,8 @@ public class TelegramBotConfiguration {
                 pollingStateStore,
                 properties.getBotKey(),
                 properties.getLongPollingTimeout(),
-                properties.getMaxUpdateAttempts()
+                properties.getMaxUpdateAttempts(),
+                providerClock
         );
     }
 }

@@ -2,6 +2,7 @@ package com.priceradar.notification.application;
 
 import com.priceradar.notification.domain.NotificationType;
 import com.priceradar.pricing.application.InterpretedPrice;
+import com.priceradar.pricing.application.RublePriceFormatter;
 import com.priceradar.pricing.application.WalletEstimate;
 import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.pricing.domain.PriceSource;
@@ -93,13 +94,6 @@ public final class NotificationMessageRenderer {
     }
 
     private String format(RubleAmount amount) {
-        long minorUnits = amount.getMinorUnits();
-        long rubles = minorUnits / 100;
-        long kopecks = minorUnits % 100;
-        String wholePart = String.format(Locale.forLanguageTag("ru-RU"), "%,d", rubles);
-        if (kopecks == 0) {
-            return wholePart + " ₽";
-        }
-        return wholePart + "," + String.format(Locale.ROOT, "%02d", kopecks) + " ₽";
+        return RublePriceFormatter.format(amount);
     }
 }

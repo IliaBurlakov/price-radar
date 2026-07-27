@@ -7,17 +7,23 @@ import com.priceradar.notification.application.NotificationDeliveryStore;
 import com.priceradar.notification.application.PendingNotificationDelivery;
 import com.priceradar.notification.domain.NotificationType;
 import com.priceradar.pricing.domain.RubleAmount;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public class JpaNotificationDeliveryStore implements NotificationDeliveryStore {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(JpaNotificationDeliveryStore.class);
+    private static final String INVALID_PAYLOAD = "INVALID_PAYLOAD";
 
     private final NotificationOutboxJpaRepository repository;
     private final ObjectMapper objectMapper;
@@ -31,14 +37,37 @@ public class JpaNotificationDeliveryStore implements NotificationDeliveryStore {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<PendingNotificationDelivery> findDue(Instant now, int limit) {
         if (now == null || limit <= 0) {
             throw new IllegalArgumentException("delivery query fields are invalid");
         }
-        return repository.findDueDeliveries(now, limit).stream()
-                .map(this::toDelivery)
-                .toList();
+        List<PendingNotificationDelivery> deliveries = new ArrayList<>();
+        for (NotificationDeliveryProjection projection : repository.findDueDeliveries(now, limit)) {
+            try {
+                deliveries.add(toDelivery(projection));
+            } catch (RuntimeException exception) {
+                int invalidated = repository.markInvalidPayload(
+                        projection.getOutboxId(),
+                        projection.getNextAttemptAt(),
+                        projection.getAttemptCount() + 1,
+                        INVALID_PAYLOAD
+                );
+                if (invalidated == 1) {
+                    LOGGER.error(
+                            "Invalid notification payload moved to FAILED, outboxId={}, errorType={}",
+                            projection.getOutboxId(),
+                            exception.getClass().getSimpleName()
+                    );
+                } else {
+                    LOGGER.warn(
+                            "Invalid notification payload changed concurrently, outboxId={}",
+                            projection.getOutboxId()
+                    );
+                }
+            }
+        }
+        return List.copyOf(deliveries);
     }
 
     @Override

@@ -22,6 +22,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -86,7 +87,11 @@ class NotificationDeliveryServiceTest {
         OutgoingTelegramMessage message = OutgoingTelegramMessage.text(7001L, "message");
         dueAndClaimed(notification);
         when(messageRenderer.render(notification)).thenReturn(message);
-        doThrow(new TelegramDeliveryException("temporary", true))
+        doThrow(new TelegramDeliveryException(
+                "temporary",
+                true,
+                Optional.of(Duration.ofMinutes(1))
+        ))
                 .when(telegramGateway).sendMessage(message);
 
         deliveryService.deliverDue();
@@ -95,7 +100,7 @@ class NotificationDeliveryServiceTest {
                 notification.getOutboxId(),
                 NOW.plus(CLAIM_TIMEOUT),
                 2,
-                NOW.plusSeconds(20),
+                NOW.plusSeconds(60),
                 "TELEGRAM_TEMPORARY"
         );
         verify(deliveryStore, never()).markSent(any(), any(), any());
@@ -145,6 +150,8 @@ class NotificationDeliveryServiceTest {
                 NOW,
                 NOW.plus(CLAIM_TIMEOUT)
         )).thenReturn(true);
+        lenient().when(deliveryStore.markRetry(any(), any(), anyInt(), any(), any())).thenReturn(true);
+        lenient().when(deliveryStore.markFailed(any(), any(), anyInt(), any())).thenReturn(true);
     }
 
     private PendingNotificationDelivery notification(boolean active, int attemptCount) {

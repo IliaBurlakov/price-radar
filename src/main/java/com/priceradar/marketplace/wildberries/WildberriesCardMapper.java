@@ -19,6 +19,9 @@ import java.util.Optional;
 public final class WildberriesCardMapper {
 
     private static final String SIZE_ATTRIBUTE_NAME = "Size";
+    private static final int MAX_TITLE_LENGTH = 500;
+    private static final int MAX_BRAND_LENGTH = 255;
+    private static final int MAX_VARIANT_DISPLAY_LENGTH = 255;
 
     private final ObjectMapper objectMapper;
 
@@ -63,7 +66,16 @@ public final class WildberriesCardMapper {
         }
 
         JsonNode sizes = productNode.path("sizes");
-        if (sizes.isMissingNode() || !sizes.isArray() || sizes.isEmpty()) {
+        if (sizes.isMissingNode()) {
+            return mapNoVariantProduct(productNode, nmId.get());
+        }
+        if (!sizes.isArray()) {
+            return failure(
+                    WildberriesMappingFailureCode.SCHEMA_VIOLATION,
+                    "Product sizes must be an array"
+            );
+        }
+        if (sizes.isEmpty()) {
             return mapNoVariantProduct(productNode, nmId.get());
         }
 
@@ -79,8 +91,8 @@ public final class WildberriesCardMapper {
 
         return WildberriesMappingResult.success(new WildberriesMappedProduct(
                 nmId,
-                text(productNode, "name", "title"),
-                text(productNode, "brand", "brandName"),
+                limitedText(productNode, MAX_TITLE_LENGTH, "name", "title"),
+                limitedText(productNode, MAX_BRAND_LENGTH, "brand", "brandName"),
                 List.of(),
                 priceFieldsByVariant
         ));
@@ -104,7 +116,8 @@ public final class WildberriesCardMapper {
 
             List<VariantAttribute> attributes = List.of(new VariantAttribute(
                     SIZE_ATTRIBUTE_NAME,
-                    text(sizeNode, "name", "origName", "optionName").orElse(String.valueOf(sizeId.get()))
+                    limitedText(sizeNode, MAX_VARIANT_DISPLAY_LENGTH, "name", "origName", "optionName")
+                            .orElse(String.valueOf(sizeId.get()))
             ));
             VariantOption option = VariantOption.wildberriesSize(
                     sizeId.get(),
@@ -126,8 +139,8 @@ public final class WildberriesCardMapper {
 
         return WildberriesMappingResult.success(new WildberriesMappedProduct(
                 nmId,
-                text(productNode, "name", "title"),
-                text(productNode, "brand", "brandName"),
+                limitedText(productNode, MAX_TITLE_LENGTH, "name", "title"),
+                limitedText(productNode, MAX_BRAND_LENGTH, "brand", "brandName"),
                 options,
                 priceFieldsByVariant
         ));
@@ -222,6 +235,17 @@ public final class WildberriesCardMapper {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<String> limitedText(JsonNode node, int maxLength, String... fieldNames) {
+        return text(node, fieldNames).map(value -> truncate(value, maxLength));
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value.codePointCount(0, value.length()) <= maxLength) {
+            return value;
+        }
+        return value.substring(0, value.offsetByCodePoints(0, maxLength));
     }
 
     private Optional<RubleAmount> positiveAmount(JsonNode node, String fieldName) {

@@ -8,15 +8,13 @@ import java.util.UUID;
 
 public interface SubscriptionStore {
 
-    boolean watchTargetExists(UUID watchTargetId);
-
     Optional<Subscription> findActive(UUID userId, UUID watchTargetId);
 
     Optional<Subscription> findActiveOwned(UUID userId, UUID subscriptionId);
 
     Optional<Subscription> findActiveById(UUID subscriptionId);
 
-    List<Subscription> findActiveByWatchTargetId(UUID watchTargetId);
+    List<UUID> findActiveIdsByWatchTargetId(UUID watchTargetId);
 
     long countActive(UUID userId);
 
@@ -27,9 +25,7 @@ public interface SubscriptionStore {
             UUID subscriptionId
     );
 
-    Optional<SubscriptionQuoteObservation> findLatestQuoteObservation(UUID watchTargetId);
-
-    Optional<SubscriptionQuoteObservation> findLatestRegularPriceObservation(UUID watchTargetId);
+    Optional<SubscriptionQuoteObservation> findQuoteObservation(UUID snapshotId);
 
     Subscription create(Subscription subscription);
 

@@ -9,21 +9,24 @@ import java.util.UUID;
 public final class SubscriptionQuoteObservation {
 
     private final UUID snapshotId;
+    private final UUID watchTargetId;
     private final Instant observedAt;
     private final Optional<RubleAmount> regularPrice;
 
     public SubscriptionQuoteObservation(
             UUID snapshotId,
+            UUID watchTargetId,
             Instant observedAt,
             Optional<RubleAmount> regularPrice
     ) {
-        if (snapshotId == null || observedAt == null || regularPrice == null) {
+        if (snapshotId == null || watchTargetId == null || observedAt == null || regularPrice == null) {
             throw new IllegalArgumentException("quote observation fields must not be null");
         }
         if (regularPrice.filter(price -> price.getMinorUnits() == 0).isPresent()) {
             throw new IllegalArgumentException("regularPrice must be positive");
         }
         this.snapshotId = snapshotId;
+        this.watchTargetId = watchTargetId;
         this.observedAt = observedAt;
         this.regularPrice = regularPrice;
     }
@@ -34,6 +37,10 @@ public final class SubscriptionQuoteObservation {
 
     public UUID getSnapshotId() {
         return snapshotId;
+    }
+
+    public UUID getWatchTargetId() {
+        return watchTargetId;
     }
 
     public Optional<RubleAmount> getRegularPrice() {

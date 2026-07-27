@@ -34,11 +34,11 @@ public final class TrackingCallbackCodec {
 
     public String encode(
             TrackingCallbackData.Action action,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             long telegramUserId
     ) {
-        validateIdentity(action, watchTargetId, telegramUserId);
-        String unsigned = action.name() + ":" + watchTargetId;
+        validateIdentity(action, quoteSnapshotId, telegramUserId);
+        String unsigned = action.name() + ":" + quoteSnapshotId;
         String encoded = unsigned + ":" + signature(unsigned, telegramUserId);
         if (encoded.getBytes(StandardCharsets.UTF_8).length > TELEGRAM_CALLBACK_LIMIT_BYTES) {
             throw new IllegalStateException("signed tracking callback exceeds Telegram limit");
@@ -57,8 +57,8 @@ public final class TrackingCallbackCodec {
         }
         try {
             TrackingCallbackData.Action action = TrackingCallbackData.Action.valueOf(parts[0]);
-            UUID watchTargetId = UUID.fromString(parts[1]);
-            if (!watchTargetId.toString().equals(parts[1].toLowerCase(Locale.ROOT))) {
+            UUID quoteSnapshotId = UUID.fromString(parts[1]);
+            if (!quoteSnapshotId.toString().equals(parts[1].toLowerCase(Locale.ROOT))) {
                 return Optional.empty();
             }
             String unsigned = parts[0] + ":" + parts[1];
@@ -68,7 +68,7 @@ public final class TrackingCallbackCodec {
             if (!MessageDigest.isEqual(expected, actual)) {
                 return Optional.empty();
             }
-            return Optional.of(new TrackingCallbackData(action, watchTargetId));
+            return Optional.of(new TrackingCallbackData(action, quoteSnapshotId));
         } catch (IllegalArgumentException exception) {
             return Optional.empty();
         }
@@ -91,10 +91,10 @@ public final class TrackingCallbackCodec {
 
     private void validateIdentity(
             TrackingCallbackData.Action action,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             long telegramUserId
     ) {
-        if (action == null || watchTargetId == null) {
+        if (action == null || quoteSnapshotId == null) {
             throw new IllegalArgumentException("tracking callback fields must not be null");
         }
         if (telegramUserId <= 0) {

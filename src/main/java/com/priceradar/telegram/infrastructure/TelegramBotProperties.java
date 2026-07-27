@@ -14,6 +14,8 @@ public final class TelegramBotProperties {
     private Duration requestTimeout = Duration.ofSeconds(10);
     private String botKey = "primary";
     private int maxUpdateAttempts = 5;
+    private Duration maxRetryAfter = Duration.ofHours(1);
+    private int maxResponseBytes = 1024 * 1024;
 
     public boolean isEnabled() {
         return enabled;
@@ -64,5 +66,21 @@ public final class TelegramBotProperties {
             throw new IllegalArgumentException("maxUpdateAttempts must be positive");
         }
         this.maxUpdateAttempts = maxUpdateAttempts;
+    }
+
+    public Duration getMaxRetryAfter() {
+        return maxRetryAfter;
+    }
+
+    public void setMaxRetryAfter(Duration maxRetryAfter) {
+        this.maxRetryAfter = maxRetryAfter;
+    }
+
+    public int getMaxResponseBytes() {
+        return maxResponseBytes;
+    }
+
+    public void setMaxResponseBytes(int maxResponseBytes) {
+        this.maxResponseBytes = maxResponseBytes;
     }
 }

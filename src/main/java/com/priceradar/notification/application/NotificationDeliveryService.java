@@ -10,6 +10,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public final class NotificationDeliveryService {
 
@@ -72,11 +74,13 @@ public final class NotificationDeliveryService {
                 batchSize
         );
         for (PendingNotificationDelivery notification : notifications) {
-            deliver(notification);
+            if (!deliver(notification)) {
+                break;
+            }
         }
     }
 
-    private void deliver(PendingNotificationDelivery notification) {
+    private boolean deliver(PendingNotificationDelivery notification) {
         Instant claimedAt = clock.instant();
         Instant claimUntil = claimedAt.plus(claimTimeout);
         boolean claimed = deliveryStore.claim(
@@ -86,12 +90,12 @@ public final class NotificationDeliveryService {
                 claimUntil
         );
         if (!claimed) {
-            return;
+            return true;
         }
 
         if (!notification.hasActiveSubscription()) {
             markFailed(notification, claimUntil, SUBSCRIPTION_ENDED);
-            return;
+            return true;
         }
 
         try {
@@ -108,45 +112,60 @@ public final class NotificationDeliveryService {
                         notification.getOutboxId()
                 );
             }
+            return true;
         } catch (TelegramDeliveryException exception) {
             if (exception.isRetryable()) {
-                retryOrFail(notification, claimUntil, TELEGRAM_TEMPORARY);
-                return;
+                retryOrFail(
+                        notification,
+                        claimUntil,
+                        TELEGRAM_TEMPORARY,
+                        exception.getRetryAfter()
+                );
+                return false;
             }
             markFailed(notification, claimUntil, TELEGRAM_PERMANENT);
+            return true;
         } catch (RuntimeException exception) {
             LOGGER.error(
                     "Unexpected notification delivery failure, outboxId={}, errorType={}",
                     notification.getOutboxId(),
                     exception.getClass().getSimpleName()
             );
-            retryOrFail(notification, claimUntil, UNEXPECTED_DELIVERY_ERROR);
+            retryOrFail(notification, claimUntil, UNEXPECTED_DELIVERY_ERROR, Optional.empty());
+            return true;
         }
     }
 
     private void retryOrFail(
             PendingNotificationDelivery notification,
             Instant claimUntil,
-            String errorCode
+            String errorCode,
+            Optional<Duration> requestedDelay
     ) {
         int attemptCount = notification.getAttemptCount() + 1;
         if (attemptCount >= maxAttempts) {
-            deliveryStore.markFailed(
+            boolean failed = deliveryStore.markFailed(
                     notification.getOutboxId(),
                     claimUntil,
                     attemptCount,
                     errorCode
             );
+            logStateConflict(failed, notification.getOutboxId(), "FAILED");
             return;
         }
-        Instant nextAttemptAt = clock.instant().plus(backoff(attemptCount));
-        deliveryStore.markRetry(
+        Duration calculatedBackoff = backoff(attemptCount);
+        Duration retryDelay = requestedDelay
+                .filter(value -> value.compareTo(calculatedBackoff) > 0)
+                .orElse(calculatedBackoff);
+        Instant nextAttemptAt = clock.instant().plus(retryDelay);
+        boolean retried = deliveryStore.markRetry(
                 notification.getOutboxId(),
                 claimUntil,
                 attemptCount,
                 nextAttemptAt,
                 errorCode
         );
+        logStateConflict(retried, notification.getOutboxId(), "RETRY");
     }
 
     private void markFailed(
@@ -154,12 +173,23 @@ public final class NotificationDeliveryService {
             Instant claimUntil,
             String errorCode
     ) {
-        deliveryStore.markFailed(
+        boolean failed = deliveryStore.markFailed(
                 notification.getOutboxId(),
                 claimUntil,
                 notification.getAttemptCount() + 1,
                 errorCode
         );
+        logStateConflict(failed, notification.getOutboxId(), "FAILED");
+    }
+
+    private void logStateConflict(boolean updated, UUID outboxId, String targetState) {
+        if (!updated) {
+            LOGGER.warn(
+                    "Notification outbox claim changed before transition, outboxId={}, targetState={}",
+                    outboxId,
+                    targetState
+            );
+        }
     }
 
     private Duration backoff(int attemptCount) {

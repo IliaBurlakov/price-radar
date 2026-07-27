@@ -12,6 +12,7 @@ import com.priceradar.telegram.application.TelegramInlineButton;
 import com.priceradar.telegram.application.TelegramUpdate;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,13 +30,17 @@ public class TelegramBotApiClient implements TelegramGateway {
     private final URI apiBaseUrl;
     private final String botToken;
     private final Duration requestTimeout;
+    private final Duration maxRetryAfter;
+    private final int maxResponseBytes;
 
     public TelegramBotApiClient(
             HttpClient httpClient,
             ObjectMapper objectMapper,
             URI apiBaseUrl,
             String botToken,
-            Duration requestTimeout
+            Duration requestTimeout,
+            Duration maxRetryAfter,
+            int maxResponseBytes
     ) {
         if (httpClient == null || objectMapper == null || apiBaseUrl == null || requestTimeout == null) {
             throw new IllegalArgumentException("Telegram API client dependencies must not be null");
@@ -49,11 +54,25 @@ public class TelegramBotApiClient implements TelegramGateway {
         if (requestTimeout.isZero() || requestTimeout.isNegative()) {
             throw new IllegalArgumentException("Telegram request timeout must be positive");
         }
+        validateApiBaseUrl(apiBaseUrl);
+        if (maxRetryAfter == null || maxRetryAfter.compareTo(Duration.ofSeconds(1)) < 0
+                || maxRetryAfter.compareTo(Duration.ofHours(24)) > 0) {
+            throw new IllegalArgumentException(
+                    "Telegram max retry delay must be between 1 second and 24 hours"
+            );
+        }
+        if (maxResponseBytes <= 0 || maxResponseBytes > 4 * 1024 * 1024) {
+            throw new IllegalArgumentException(
+                    "Telegram response size limit must be between 1 and 4194304"
+            );
+        }
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.apiBaseUrl = ensureTrailingSlash(apiBaseUrl);
         this.botToken = botToken;
         this.requestTimeout = requestTimeout;
+        this.maxRetryAfter = maxRetryAfter;
+        this.maxResponseBytes = maxResponseBytes;
     }
 
     @Override
@@ -193,9 +212,9 @@ public class TelegramBotApiClient implements TelegramGateway {
                 .POST(HttpRequest.BodyPublishers.ofString(writeJson(requestBody)))
                 .build();
 
-        HttpResponse<String> response;
+        HttpResponse<InputStream> response;
         try {
-            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new TelegramGatewayException("Telegram request was interrupted", true);
@@ -203,14 +222,19 @@ public class TelegramBotApiClient implements TelegramGateway {
             throw new TelegramGatewayException("Telegram API is temporarily unavailable", true);
         }
 
+        String rawResponse = readBoundedBody(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            Optional<Duration> retryAfter = response.statusCode() == 429
+                    ? extractRetryAfter(rawResponse)
+                    : Optional.empty();
             throw new TelegramGatewayException(
                     "Telegram API returned HTTP " + response.statusCode(),
-                    response.statusCode() == 429 || response.statusCode() >= 500
+                    response.statusCode() == 429 || response.statusCode() >= 500,
+                    retryAfter
             );
         }
 
-        JsonNode responseBody = readJson(response.body());
+        JsonNode responseBody = readJson(rawResponse);
         JsonNode result = responseBody.path("result");
         if (!responseBody.path("ok").asBoolean(false) || result.isMissingNode() || result.isNull()) {
             throw new TelegramGatewayException("Telegram API returned an unsuccessful response");
@@ -234,12 +258,66 @@ public class TelegramBotApiClient implements TelegramGateway {
         }
     }
 
+    private String readBoundedBody(InputStream body) {
+        try (body) {
+            byte[] bytes = body.readNBytes(maxResponseBytes + 1);
+            if (bytes.length > maxResponseBytes) {
+                throw new TelegramGatewayException("Telegram API response is too large", true);
+            }
+            return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw new TelegramGatewayException("Could not read Telegram API response", true);
+        }
+    }
+
+    private Optional<Duration> extractRetryAfter(String rawResponse) {
+        try {
+            JsonNode response = objectMapper.readTree(rawResponse);
+            if (response == null) {
+                return Optional.empty();
+            }
+            JsonNode value = response
+                    .path("parameters")
+                    .path("retry_after");
+            if (!value.canConvertToLong() || value.longValue() <= 0) {
+                return Optional.empty();
+            }
+            long cappedSeconds = Math.min(value.longValue(), maxRetryAfter.toSeconds());
+            return Optional.of(Duration.ofSeconds(cappedSeconds));
+        } catch (IOException exception) {
+            return Optional.empty();
+        }
+    }
+
     private URI methodUri(String method) {
-        return apiBaseUrl.resolve("bot" + botToken + "/" + method);
+        return apiBaseUrl.resolve("./bot" + botToken + "/" + method);
     }
 
     private URI ensureTrailingSlash(URI uri) {
         String value = uri.toString();
         return value.endsWith("/") ? uri : URI.create(value + "/");
+    }
+
+    private void validateApiBaseUrl(URI uri) {
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        boolean loopbackHttp = "http".equalsIgnoreCase(scheme)
+                && host != null
+                && (host.equalsIgnoreCase("localhost")
+                || host.equals("127.0.0.1")
+                || host.equals("::1")
+                || host.equals("[::1]"));
+        boolean trustedHost = "api.telegram.org".equalsIgnoreCase(host) || loopbackHttp;
+        String path = uri.getPath();
+        boolean validPath = path == null || path.isEmpty() || path.equals("/");
+        if (!uri.isAbsolute() || host == null || host.isBlank()
+                || (!("https".equalsIgnoreCase(scheme)) && !loopbackHttp)
+                || !trustedHost
+                || !validPath
+                || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
+            throw new IllegalArgumentException(
+                    "Telegram apiBaseUrl must be an absolute HTTPS URI without user info, query or fragment"
+            );
+        }
     }
 }

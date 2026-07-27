@@ -7,6 +7,7 @@ import com.priceradar.telegram.application.TelegramUpdateDispatcher;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -36,7 +37,8 @@ class TelegramLongPollingWorkerTest {
                 stateStore,
                 "test",
                 Duration.ofSeconds(1),
-                2
+                2,
+                Clock.systemUTC()
         );
 
         worker.poll();
@@ -64,7 +66,8 @@ class TelegramLongPollingWorkerTest {
                 stateStore,
                 "test",
                 Duration.ofSeconds(1),
-                1
+                1,
+                Clock.systemUTC()
         );
 
         worker.poll();

@@ -133,4 +133,21 @@ public interface NotificationOutboxJpaRepository
             @Param("attemptCount") int attemptCount,
             @Param("errorCode") String errorCode
     );
+
+    @Modifying
+    @Query(value = """
+            UPDATE notification_outbox
+            SET status = 'FAILED',
+                attempt_count = :attemptCount,
+                last_error_code = :errorCode
+            WHERE id = :outboxId
+              AND status IN ('PENDING', 'RETRY')
+              AND next_attempt_at = :expectedNextAttemptAt
+            """, nativeQuery = true)
+    int markInvalidPayload(
+            @Param("outboxId") UUID outboxId,
+            @Param("expectedNextAttemptAt") Instant expectedNextAttemptAt,
+            @Param("attemptCount") int attemptCount,
+            @Param("errorCode") String errorCode
+    );
 }

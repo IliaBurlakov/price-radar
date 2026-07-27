@@ -10,20 +10,17 @@ import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
-import com.priceradar.notification.domain.NotificationType;
-import com.priceradar.notification.application.NotificationDeliveryStore;
-import com.priceradar.notification.application.NotificationDecisionService;
-import com.priceradar.notification.application.NotificationOutboxWriter;
-import com.priceradar.notification.application.PendingNotificationDelivery;
+import com.priceradar.notification.application.NotificationObservation;
 import com.priceradar.notification.infrastructure.persistence.NotificationOutboxJpaRepository;
 import com.priceradar.product.application.ResolvedQuotePersistenceCommand;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
+import com.priceradar.product.application.PersistedResolvedQuote;
 import com.priceradar.product.application.ResolvedQuoteService;
 import com.priceradar.product.application.ResolvedVariant;
 import com.priceradar.product.infrastructure.persistence.ProductJpaRepository;
 import com.priceradar.scheduler.application.DueWatchTarget;
 import com.priceradar.scheduler.application.DueWatchTargetReader;
-import com.priceradar.scheduler.application.ScheduledObservationStore;
+import com.priceradar.scheduler.application.NotificationFanOutService;
 import com.priceradar.scheduler.application.WatchTargetCheckTransaction;
 import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
@@ -33,7 +30,6 @@ import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotJpaReposi
 import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaRepository;
 import com.priceradar.tracking.application.SubscriptionCreationResult;
 import com.priceradar.tracking.application.SubscriptionService;
-import com.priceradar.tracking.application.SubscriptionStore;
 import com.priceradar.tracking.domain.NotificationMode;
 import com.priceradar.telegram.application.PendingTargetPrice;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
@@ -47,8 +43,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -114,9 +108,6 @@ class PersistenceSmokeTest {
     private NotificationOutboxJpaRepository notificationOutboxRepository;
 
     @Autowired
-    private NotificationDeliveryStore notificationDeliveryStore;
-
-    @Autowired
     private UserProfileService userProfileService;
 
     @Autowired
@@ -135,19 +126,10 @@ class PersistenceSmokeTest {
     private DueWatchTargetReader dueWatchTargetReader;
 
     @Autowired
-    private ScheduledObservationStore scheduledObservationStore;
+    private WatchTargetCheckTransaction watchTargetCheckTransaction;
 
     @Autowired
-    private SubscriptionStore subscriptionStore;
-
-    @Autowired
-    private NotificationDecisionService notificationDecisionService;
-
-    @Autowired
-    private NotificationOutboxWriter notificationOutboxWriter;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
+    private NotificationFanOutService notificationFanOutService;
 
     @Autowired
     private MockMvc mockMvc;
@@ -178,7 +160,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("5");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -208,14 +190,16 @@ class PersistenceSmokeTest {
     }
 
     @Test
-    void createsAlreadyReachedThresholdEventInSubscriptionTransaction() {
+    void marksAlreadyReachedThresholdWithoutDuplicateOutboxEvent() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        UUID watchTargetId = quotePersistenceService.save(quoteCommand(777777L, now.minusSeconds(5)));
+        PersistedResolvedQuote quote = quotePersistenceService.save(
+                quoteCommand(777777L, now.minusSeconds(5))
+        );
         UserProfile user = userProfileService.getOrCreate(10001L, 10001L);
 
         SubscriptionCreationResult result = subscriptionService.createFromQuote(
                 user.getId(),
-                watchTargetId,
+                quote.getSnapshotId(),
                 NotificationMode.TARGET_PRICE,
                 Optional.of(RubleAmount.ofMinorUnits(11_000L)),
                 now
@@ -223,48 +207,19 @@ class PersistenceSmokeTest {
 
         assertThat(result.isCreated()).isTrue();
         assertThat(result.isTargetAlreadyReached()).isTrue();
-        assertThat(notificationOutboxRepository.findAll())
-                .singleElement()
-                .satisfies(event -> {
-                    assertThat(event.getSubscriptionId())
-                            .isEqualTo(result.getSubscription().orElseThrow().getId());
-                    assertThat(event.getNotificationType())
-                            .isEqualTo(NotificationType.TARGET_REACHED);
-                    assertThat(event.getSnapshotId()).isNotNull();
-                });
-
-        PendingNotificationDelivery pending = notificationDeliveryStore.findDue(now, 10)
-                .getFirst();
-        Instant claimUntil = now.plusSeconds(30);
-        assertThat(pending.getType()).isEqualTo(NotificationType.TARGET_REACHED);
-        assertThat(pending.getTargetPrice())
-                .contains(RubleAmount.ofMinorUnits(11_000L));
-        assertThat(notificationDeliveryStore.claim(
-                pending.getOutboxId(),
-                pending.getNextAttemptAt(),
-                now,
-                claimUntil
-        )).isTrue();
-        assertThat(notificationDeliveryStore.markSent(
-                pending.getOutboxId(),
-                claimUntil,
-                now.plusSeconds(1)
-        )).isTrue();
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT status FROM notification_outbox WHERE id = ?",
-                String.class,
-                pending.getOutboxId()
-        )).isEqualTo("SENT");
+        assertThat(notificationOutboxRepository.findAll()).isEmpty();
     }
 
     @Test
     void persistsPendingTargetPriceInputAcrossStoreCalls() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        UUID watchTargetId = quotePersistenceService.save(quoteCommand(888888L, now.minusSeconds(5)));
+        PersistedResolvedQuote quote = quotePersistenceService.save(
+                quoteCommand(888888L, now.minusSeconds(5))
+        );
         PendingTargetPrice pending = new PendingTargetPrice(
                 20001L,
                 20001L,
-                watchTargetId,
+                quote.getSnapshotId(),
                 now.plus(15, ChronoUnit.MINUTES)
         );
 
@@ -272,14 +227,17 @@ class PersistenceSmokeTest {
 
         assertThat(pendingTargetPriceStore.find(20001L, 20001L, now))
                 .get()
-                .extracting(PendingTargetPrice::getWatchTargetId)
-                .isEqualTo(watchTargetId);
+                .extracting(PendingTargetPrice::getQuoteSnapshotId)
+                .isEqualTo(quote.getSnapshotId());
     }
 
     @Test
     void processesOneSharedDueWatchTargetForMultipleSubscriptions() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        UUID watchTargetId = quotePersistenceService.save(quoteCommand(999999L, now.minusSeconds(5)));
+        PersistedResolvedQuote quote = quotePersistenceService.save(
+                quoteCommand(999999L, now.minusSeconds(5))
+        );
+        UUID watchTargetId = quote.getWatchTargetId();
         jdbcTemplate.update(
                 "UPDATE watch_targets SET next_check_at = ? WHERE id = ?",
                 Timestamp.from(now.minusSeconds(1)),
@@ -292,14 +250,14 @@ class PersistenceSmokeTest {
         UserProfile secondUser = userProfileService.getOrCreate(30002L, 30002L);
         subscriptionService.createFromQuote(
                 firstUser.getId(),
-                watchTargetId,
+                quote.getSnapshotId(),
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
                 now
         );
         subscriptionService.createFromQuote(
                 secondUser.getId(),
-                watchTargetId,
+                quote.getSnapshotId(),
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
                 now
@@ -328,22 +286,16 @@ class PersistenceSmokeTest {
                 List.of(),
                 Map.of("NO_VARIANT", scheduledFields)
         );
-        WatchTargetCheckTransaction checkTransaction = new WatchTargetCheckTransaction(
-                scheduledObservationStore,
-                subscriptionStore,
-                notificationDecisionService,
-                notificationOutboxWriter
+        NotificationObservation observation = watchTargetCheckTransaction.persistObservation(
+                dueTarget,
+                UUID.randomUUID(),
+                scheduledProduct,
+                new PriceSemanticsService().interpret(scheduledFields),
+                observedAt,
+                completedAt,
+                nextCheckAt
         );
-        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
-                checkTransaction.persistObservation(
-                        dueTarget,
-                        UUID.randomUUID(),
-                        scheduledProduct,
-                        new PriceSemanticsService().interpret(scheduledFields),
-                        observedAt,
-                        completedAt,
-                        nextCheckAt
-                ));
+        notificationFanOutService.process(observation, completedAt);
 
         assertThat(snapshotRepository.count()).isEqualTo(2);
         assertThat(notificationOutboxRepository.count()).isEqualTo(2);
@@ -354,13 +306,14 @@ class PersistenceSmokeTest {
     @Test
     void calculatesStatisticsOnlyForTheCurrentSubscriptionPeriod() {
         Instant subscriptionStartedAt = Instant.parse("2026-07-18T10:00:00Z");
-        UUID watchTargetId = quotePersistenceService.save(
+        PersistedResolvedQuote quote = quotePersistenceService.save(
                 quoteCommand(444444L, subscriptionStartedAt.minusSeconds(1))
         );
+        UUID watchTargetId = quote.getWatchTargetId();
         UserProfile user = userProfileService.getOrCreate(40001L, 40001L);
         SubscriptionCreationResult firstSubscription = subscriptionService.createFromQuote(
                 user.getId(),
-                watchTargetId,
+                quote.getSnapshotId(),
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
                 subscriptionStartedAt
@@ -438,7 +391,7 @@ class PersistenceSmokeTest {
         );
         SubscriptionCreationResult secondSubscription = subscriptionService.createFromQuote(
                 user.getId(),
-                watchTargetId,
+                quote.getSnapshotId(),
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
                 subscriptionStartedAt.plusSeconds(8)
@@ -487,20 +440,21 @@ class PersistenceSmokeTest {
         Instant freshObservation = Instant.now().minus(1, ChronoUnit.MINUTES);
         ResolvedQuotePersistenceCommand freshQuote = quoteCommand(123456L, freshObservation);
 
-        UUID firstTargetId = quotePersistenceService.save(freshQuote);
-        UUID repeatedTargetId = quotePersistenceService.save(freshQuote);
+        PersistedResolvedQuote first = quotePersistenceService.save(freshQuote);
+        PersistedResolvedQuote repeated = quotePersistenceService.save(freshQuote);
 
-        assertThat(repeatedTargetId).isEqualTo(firstTargetId);
-        assertThat(resolvedQuoteService.isFresh(firstTargetId)).isTrue();
+        assertThat(repeated.getWatchTargetId()).isEqualTo(first.getWatchTargetId());
+        assertThat(repeated.getSnapshotId()).isEqualTo(first.getSnapshotId());
+        assertThat(resolvedQuoteService.isFresh(first.getSnapshotId())).isTrue();
         assertThat(productRepository.count()).isEqualTo(1);
         assertThat(watchTargetRepository.count()).isEqualTo(1);
         assertThat(snapshotRepository.count()).isEqualTo(1);
 
         Instant expiredObservation = Instant.now().minus(16, ChronoUnit.MINUTES);
         ResolvedQuotePersistenceCommand expiredQuote = quoteCommand(654321L, expiredObservation);
-        UUID expiredTargetId = quotePersistenceService.save(expiredQuote);
+        PersistedResolvedQuote expired = quotePersistenceService.save(expiredQuote);
 
-        assertThat(resolvedQuoteService.isFresh(expiredTargetId)).isFalse();
+        assertThat(resolvedQuoteService.isFresh(expired.getSnapshotId())).isFalse();
         assertThat(productRepository.count()).isEqualTo(2);
         assertThat(watchTargetRepository.count()).isEqualTo(2);
         assertThat(snapshotRepository.count()).isEqualTo(2);

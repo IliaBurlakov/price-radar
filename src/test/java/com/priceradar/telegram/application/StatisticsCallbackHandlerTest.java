@@ -102,8 +102,8 @@ class StatisticsCallbackHandlerTest {
         assertThat(messageCaptor.getValue().getText())
                 .contains("за последние 30 дней")
                 .contains("Минимальная цена: 90 ₽")
-                .contains("Максимальная цена: 110,01 ₽")
-                .contains("Средняя цена: 100,01 ₽")
+                .contains("Максимальная цена: 110 ₽")
+                .contains("Средняя цена: 100 ₽")
                 .contains("Количество наблюдений: 2")
                 .contains("Регион: Moscow")
                 .contains("Цены приблизительные");

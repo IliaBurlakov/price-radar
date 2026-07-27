@@ -5,12 +5,9 @@ import com.priceradar.product.application.ResolvedQuoteResult;
 import com.priceradar.product.application.ResolvedQuoteService;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class TelegramCurrentQuoteHandler {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TelegramCurrentQuoteHandler.class);
     private static final String START_MESSAGE = """
             PriceRadar показывает приблизительную цену товара Wildberries и помогает начать отслеживание.
             Отправьте ссылку вида https://www.wildberries.ru/catalog/123456/detail.aspx
@@ -91,15 +88,6 @@ public class TelegramCurrentQuoteHandler {
                             + "https://www.wildberries.ru/catalog/123456/detail.aspx. "
                             + "Если вы вводили целевую цену после перезапуска бота, снова нажмите "
                             + "кнопку «Установить целевую цену» в актуальной карточке товара."
-            );
-        } catch (RuntimeException exception) {
-            LOGGER.error(
-                    "Failed to process Telegram current quote, errorType={}",
-                    exception.getClass().getSimpleName()
-            );
-            return OutgoingTelegramMessage.text(
-                    message.getChatId(),
-                    "Не удалось обработать ссылку из-за внутренней ошибки. Попробуйте позже."
             );
         }
     }

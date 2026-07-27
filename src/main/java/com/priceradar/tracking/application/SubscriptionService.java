@@ -21,70 +21,59 @@ public class SubscriptionService {
 
     private final UserProfileStore userProfileStore;
     private final SubscriptionStore subscriptionStore;
-    private final ImmediateThresholdNotificationPort immediateThresholdNotificationPort;
 
     public SubscriptionService(
             UserProfileStore userProfileStore,
-            SubscriptionStore subscriptionStore,
-            ImmediateThresholdNotificationPort immediateThresholdNotificationPort
+            SubscriptionStore subscriptionStore
     ) {
-        if (userProfileStore == null || subscriptionStore == null
-                || immediateThresholdNotificationPort == null) {
+        if (userProfileStore == null || subscriptionStore == null) {
             throw new IllegalArgumentException("subscription service dependencies must not be null");
         }
         this.userProfileStore = userProfileStore;
         this.subscriptionStore = subscriptionStore;
-        this.immediateThresholdNotificationPort = immediateThresholdNotificationPort;
     }
 
     @Transactional
     public SubscriptionPreparationResult prepareFromQuote(
             UUID userId,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             Instant now
     ) {
-        validateIdentity(userId, watchTargetId, now);
-        return checkEligibility(userId, watchTargetId, now);
+        validateIdentity(userId, quoteSnapshotId, now);
+        return checkEligibility(userId, quoteSnapshotId, now);
     }
 
     @Transactional
     public SubscriptionCreationResult createFromQuote(
             UUID userId,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             NotificationMode mode,
             Optional<RubleAmount> targetPrice,
             Instant now
     ) {
-        validateCreationInput(userId, watchTargetId, mode, targetPrice, now);
-        SubscriptionPreparationResult preparation = checkEligibility(userId, watchTargetId, now);
+        validateCreationInput(userId, quoteSnapshotId, mode, targetPrice, now);
+        SubscriptionPreparationResult preparation = checkEligibility(userId, quoteSnapshotId, now);
         if (!preparation.isReady()) {
             return creationResultFrom(preparation);
         }
 
-        Instant freshNotBefore = now.minus(QUOTE_TTL);
-        Optional<SubscriptionQuoteObservation> currentRegularPrice = subscriptionStore
-                .findLatestRegularPriceObservation(watchTargetId)
-                .filter(observation -> !observation.getObservedAt().isBefore(freshNotBefore))
-                .filter(observation -> !observation.getObservedAt().isAfter(now))
-                .filter(observation -> observation.getRegularPrice().isPresent());
+        SubscriptionQuoteObservation quoteObservation = subscriptionStore
+                .findQuoteObservation(quoteSnapshotId)
+                .orElseThrow(() -> new IllegalStateException("Eligible quote snapshot disappeared"));
+        Optional<SubscriptionQuoteObservation> currentRegularPrice = quoteObservation
+                .getRegularPrice()
+                .isPresent()
+                ? Optional.of(quoteObservation)
+                : Optional.empty();
         Subscription subscription = createSubscription(
                 userId,
-                watchTargetId,
+                quoteObservation.getWatchTargetId(),
                 mode,
                 targetPrice,
                 currentRegularPrice,
                 now
         );
-        Subscription created = subscriptionStore.create(subscription);
-        if (created.getNotificationMode() == NotificationMode.TARGET_PRICE
-                && created.getThresholdState() == ThresholdState.REACHED_NOTIFIED) {
-            immediateThresholdNotificationPort.enqueue(
-                    created,
-                    currentRegularPrice.orElseThrow(),
-                    now
-            );
-        }
-        return SubscriptionCreationResult.created(created);
+        return SubscriptionCreationResult.created(subscriptionStore.create(subscription));
     }
 
     @Transactional
@@ -163,12 +152,12 @@ public class SubscriptionService {
 
     private void validateCreationInput(
             UUID userId,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             NotificationMode mode,
             Optional<RubleAmount> targetPrice,
             Instant now
     ) {
-        if (userId == null || watchTargetId == null || mode == null
+        if (userId == null || quoteSnapshotId == null || mode == null
                 || targetPrice == null || now == null) {
             throw new IllegalArgumentException("subscription creation fields must not be null");
         }
@@ -181,15 +170,15 @@ public class SubscriptionService {
         }
     }
 
-    private void validateIdentity(UUID userId, UUID watchTargetId, Instant now) {
-        if (userId == null || watchTargetId == null || now == null) {
+    private void validateIdentity(UUID userId, UUID quoteSnapshotId, Instant now) {
+        if (userId == null || quoteSnapshotId == null || now == null) {
             throw new IllegalArgumentException("subscription identity fields must not be null");
         }
     }
 
     private SubscriptionPreparationResult checkEligibility(
             UUID userId,
-            UUID watchTargetId,
+            UUID quoteSnapshotId,
             Instant now
     ) {
         if (!userProfileStore.existsAndLockById(userId)) {
@@ -197,25 +186,26 @@ public class SubscriptionService {
                     SubscriptionPreparationResult.Status.USER_NOT_FOUND
             );
         }
-        Optional<Subscription> existing = subscriptionStore.findActive(userId, watchTargetId);
-        if (existing.isPresent()) {
-            return SubscriptionPreparationResult.alreadyActive(existing.get());
-        }
-        if (!subscriptionStore.watchTargetExists(watchTargetId)) {
+        Optional<SubscriptionQuoteObservation> quoteObservation =
+                subscriptionStore.findQuoteObservation(quoteSnapshotId);
+        if (quoteObservation.isEmpty()) {
             return SubscriptionPreparationResult.failed(
                     SubscriptionPreparationResult.Status.WATCH_TARGET_NOT_FOUND
             );
         }
+        UUID watchTargetId = quoteObservation.get().getWatchTargetId();
         Instant freshNotBefore = now.minus(QUOTE_TTL);
-        Optional<SubscriptionQuoteObservation> latestObservation =
-                subscriptionStore.findLatestQuoteObservation(watchTargetId);
-        if (latestObservation
+        if (quoteObservation
                 .filter(value -> !value.getObservedAt().isBefore(freshNotBefore))
                 .filter(value -> !value.getObservedAt().isAfter(now))
                 .isEmpty()) {
             return SubscriptionPreparationResult.failed(
                     SubscriptionPreparationResult.Status.QUOTE_EXPIRED
             );
+        }
+        Optional<Subscription> existing = subscriptionStore.findActive(userId, watchTargetId);
+        if (existing.isPresent()) {
+            return SubscriptionPreparationResult.alreadyActive(existing.get());
         }
         if (subscriptionStore.countActive(userId) >= ACTIVE_SUBSCRIPTION_LIMIT) {
             return SubscriptionPreparationResult.failed(

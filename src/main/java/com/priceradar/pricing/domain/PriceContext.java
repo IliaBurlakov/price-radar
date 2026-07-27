@@ -16,6 +16,9 @@ public final class PriceContext {
         if (normalizedCityName.isEmpty()) {
             throw new IllegalArgumentException("cityName must not be blank");
         }
+        if (normalizedCityName.codePointCount(0, normalizedCityName.length()) > 100) {
+            throw new IllegalArgumentException("cityName must not exceed 100 characters");
+        }
         if (dest == 0) {
             throw new IllegalArgumentException("dest must not be zero");
         }
