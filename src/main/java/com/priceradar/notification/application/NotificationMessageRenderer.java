@@ -9,9 +9,10 @@ import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.telegram.application.OutgoingTelegramMessage;
+import com.priceradar.telegram.application.TelegramDisplayFormatter;
 import com.priceradar.user.domain.UserPricePreferences;
 
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
@@ -19,10 +20,10 @@ import java.util.Optional;
 public final class NotificationMessageRenderer {
 
     private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цена приблизительная и может отличаться в вашем аккаунте Wildberries.";
+            "⚠️ Цена может отличаться в приложении Wildberries.";
     private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter
-            .ofPattern("dd.MM.yyyy HH:mm:ss 'UTC'", Locale.ROOT)
-            .withZone(ZoneOffset.UTC);
+            .ofPattern("dd.MM.yyyy HH:mm 'МСК'", Locale.ROOT)
+            .withZone(ZoneId.of("Europe/Moscow"));
 
     private final WalletEstimateService walletEstimateService;
 
@@ -44,8 +45,9 @@ public final class NotificationMessageRenderer {
                 "Товар Wildberries #" + notification.getExternalProductId()
         ));
         notification.getBrand().ifPresent(brand -> text.append("\nБренд: ").append(brand));
-        notification.getVariantDisplayName().ifPresent(variant ->
-                text.append("\nВариант: ").append(variant));
+        notification.getVariantDisplayName()
+                .flatMap(TelegramDisplayFormatter::variant)
+                .ifPresent(variant -> text.append("\n").append(variant));
 
         if (notification.getType() == NotificationType.PRICE_DECREASE) {
             text.append("\n\nПредыдущая цена: ")
@@ -54,11 +56,12 @@ public final class NotificationMessageRenderer {
             text.append("\n\nЦелевая цена: ")
                     .append(format(notification.getTargetPrice().orElseThrow()));
         }
-        text.append("\nНовая обычная цена: ").append(format(notification.getCurrentPrice()));
+        text.append("\nНовая цена: ").append(format(notification.getCurrentPrice()));
         appendWalletEstimate(text, notification);
-        text.append("\nРегион: ").append(notification.getCityName());
-        text.append("\nНаблюдение: ").append(OBSERVED_AT_FORMAT.format(notification.getObservedAt()));
-        text.append("\nСсылка: ").append(notification.getCanonicalUrl());
+        text.append("\nРегион: ")
+                .append(TelegramDisplayFormatter.region(notification.getCityName()));
+        text.append("\nПроверено: ").append(OBSERVED_AT_FORMAT.format(notification.getObservedAt()));
+        text.append("\nОткрыть товар: ").append(notification.getCanonicalUrl());
         text.append("\n\n").append(APPROXIMATE_PRICE_WARNING);
 
         return OutgoingTelegramMessage.text(notification.getChatId(), text.toString());
@@ -86,11 +89,11 @@ public final class NotificationMessageRenderer {
                 regularPrice,
                 new UserPricePreferences(notification.getWalletDiscountPercent())
         ).orElseThrow();
-        text.append("\nС WB Кошельком (оценка, скидка ")
-                .append(estimate.getWalletDiscountPercent())
-                .append("%): ")
+        text.append("\nС WB Кошельком: ≈ ")
                 .append(format(estimate.getAmount()))
-                .append(" · ESTIMATED_BY_PERCENT");
+                .append(" (скидка ")
+                .append(estimate.getWalletDiscountPercent())
+                .append("%)");
     }
 
     private String format(RubleAmount amount) {

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 public class TelegramTrackingHandler {
@@ -110,7 +111,7 @@ public class TelegramTrackingHandler {
         if (targetPrice.isEmpty()) {
             telegramGateway.sendMessage(OutgoingTelegramMessage.text(
                     message.getChatId(),
-                    "Введите положительную цену в рублях, например 1500 или 1499,90."
+                    "Введите цену в рублях, например 1500."
             ));
             return true;
         }
@@ -184,8 +185,8 @@ public class TelegramTrackingHandler {
         ), now);
         telegramGateway.sendMessage(OutgoingTelegramMessage.text(
                 callback.getChatId(),
-                "Введите целевую цену в рублях, например 1500 или 1499,90. "
-                        + "Ответ действителен 15 минут."
+                "Введите желаемую цену в рублях, например 1500.\n"
+                        + "Ответ можно отправить в течение 15 минут."
         ));
     }
 
@@ -195,42 +196,33 @@ public class TelegramTrackingHandler {
             UserProfile profile,
             Optional<RubleAmount> targetPrice
     ) {
-        String region = profile.getPriceContext().getCityName();
+        String region = TelegramDisplayFormatter.region(
+                profile.getPriceContext().getCityName()
+        );
         return switch (result.getStatus()) {
             case CREATED -> {
-                if (result.isTargetAlreadyReached()) {
-                    yield OutgoingTelegramMessage.text(
-                            chatId,
-                            "Отслеживание включено. Целевая цена "
-                                    + format(targetPrice.orElseThrow())
-                                    + " уже достигнута по текущему "
-                                    + "приблизительному наблюдению. Повтор без предварительного "
-                                    + "роста цены отправлен не будет.\nРегион: " + region
-                                    + "\n⚠️ Цена Wildberries приблизительная."
-                    );
-                }
                 String mode = targetPrice.isPresent()
-                        ? "целевая цена " + format(targetPrice.orElseThrow())
-                        : "любое снижение обычной цены";
-                yield OutgoingTelegramMessage.text(
+                        ? "уведомить при цене " + format(targetPrice.orElseThrow())
+                        : "уведомлять о снижении цены";
+                yield withTrackedButton(
                         chatId,
-                        "Отслеживание включено. Режим: " + mode
-                                + ". Выбранный вариант товара зафиксирован.\nРегион: " + region
+                        "Отслеживание включено.\nРежим: " + mode
+                                + "\nРегион: " + region
                 );
             }
-            case ALREADY_ACTIVE -> OutgoingTelegramMessage.text(
+            case ALREADY_ACTIVE -> withTrackedButton(
                     chatId,
-                    "Этот вариант товара уже отслеживается. Новая подписка не создана.\nРегион: "
-                            + region
+                    "Этот товар уже отслеживается.\nРегион: " + region
             );
-            case LIMIT_REACHED -> OutgoingTelegramMessage.text(
+            case LIMIT_REACHED -> withTrackedButton(
                     chatId,
-                    "Достигнут лимит: 50 активных подписок. Удалите один из отслеживаемых товаров."
+                    "Можно отслеживать не больше 50 товаров. "
+                            + "Удалите один из списка, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
-            case USER_NOT_FOUND, WATCH_TARGET_NOT_FOUND -> OutgoingTelegramMessage.text(
+            case USER_NOT_FOUND, WATCH_TARGET_NOT_FOUND -> withAddButton(
                     chatId,
-                    "Не удалось найти актуальные данные товара. Отправьте ссылку заново."
+                    "Данные товара устарели. Отправьте ссылку ещё раз."
             );
         };
     }
@@ -241,29 +233,65 @@ public class TelegramTrackingHandler {
             UserProfile profile
     ) {
         return switch (result.getStatus()) {
-            case ALREADY_ACTIVE -> OutgoingTelegramMessage.text(
+            case ALREADY_ACTIVE -> withTrackedButton(
                     chatId,
-                    "Этот вариант товара уже отслеживается. Новая подписка не создана.\nРегион: "
-                            + profile.getPriceContext().getCityName()
+                    "Этот товар уже отслеживается.\nРегион: "
+                            + TelegramDisplayFormatter.region(
+                                    profile.getPriceContext().getCityName()
+                            )
             );
-            case LIMIT_REACHED -> OutgoingTelegramMessage.text(
+            case LIMIT_REACHED -> withTrackedButton(
                     chatId,
-                    "Достигнут лимит: 50 активных подписок. Удалите один из отслеживаемых товаров."
+                    "Можно отслеживать не больше 50 товаров. "
+                            + "Удалите один из списка, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
-            case USER_NOT_FOUND, WATCH_TARGET_NOT_FOUND -> OutgoingTelegramMessage.text(
+            case USER_NOT_FOUND, WATCH_TARGET_NOT_FOUND -> withAddButton(
                     chatId,
-                    "Не удалось найти актуальные данные товара. Отправьте ссылку заново."
+                    "Данные товара устарели. Отправьте ссылку ещё раз."
             );
             case READY -> throw new IllegalArgumentException("READY preparation does not need a message");
         };
     }
 
     private OutgoingTelegramMessage expiredQuoteMessage(long chatId) {
-        return OutgoingTelegramMessage.text(
+        return withAddButton(
                 chatId,
-                "Карточка цены устарела. Отправьте ссылку Wildberries заново. "
-                        + "Автоматическое обновление из этой кнопки не выполняется."
+                "Эта карточка цены устарела. Отправьте ссылку на товар ещё раз."
+        );
+    }
+
+    private OutgoingTelegramMessage withTrackedButton(long chatId, String text) {
+        return withMenuButton(
+                chatId,
+                text,
+                "Мои товары",
+                MainMenuCallbackData.Action.TRACKED_ITEMS
+        );
+    }
+
+    private OutgoingTelegramMessage withAddButton(long chatId, String text) {
+        return withMenuButton(
+                chatId,
+                text,
+                "Добавить товар",
+                MainMenuCallbackData.Action.ADD_PRODUCT
+        );
+    }
+
+    private OutgoingTelegramMessage withMenuButton(
+            long chatId,
+            String text,
+            String buttonText,
+            MainMenuCallbackData.Action action
+    ) {
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                List.of(List.of(new TelegramInlineButton(
+                        buttonText,
+                        MainMenuCallbackData.encode(action)
+                )))
         );
     }
 

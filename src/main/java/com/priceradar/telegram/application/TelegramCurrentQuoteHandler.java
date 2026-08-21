@@ -8,16 +8,8 @@ import com.priceradar.user.application.UserProfileService;
 
 public class TelegramCurrentQuoteHandler {
 
-    private static final String START_MESSAGE = """
-            PriceRadar показывает приблизительную цену товара Wildberries и помогает начать отслеживание.
-            Отправьте ссылку вида https://www.wildberries.ru/catalog/123456/detail.aspx
-            Список активных подписок: /tracked
-            """;
-    private static final String HELP_MESSAGE = """
-            Отправьте ссылку на товар Wildberries. Я покажу последнюю полученную цену, регион и оценку цены с WB Кошельком.
-            Команда /tracked показывает активные подписки и позволяет остановить отслеживание.
-            Цены приблизительные и могут отличаться в вашем аккаунте.
-            """;
+    private static final String INPUT_HELP_MESSAGE =
+            "Отправьте ссылку на товар Wildberries или откройте /menu.";
 
     private final UserProfileService userProfileService;
     private final ResolvedQuoteService resolvedQuoteService;
@@ -46,16 +38,11 @@ public class TelegramCurrentQuoteHandler {
         }
 
         String text = message.getText();
-        if (isCommand(text, "/start")) {
-            telegramGateway.sendMessage(OutgoingTelegramMessage.text(message.getChatId(), START_MESSAGE));
-            return;
-        }
-        if (isCommand(text, "/help")) {
-            telegramGateway.sendMessage(OutgoingTelegramMessage.text(message.getChatId(), HELP_MESSAGE));
-            return;
-        }
-        if (text.isBlank()) {
-            telegramGateway.sendMessage(OutgoingTelegramMessage.text(message.getChatId(), HELP_MESSAGE));
+        if (text.isBlank() || text.startsWith("/")) {
+            telegramGateway.sendMessage(OutgoingTelegramMessage.text(
+                    message.getChatId(),
+                    INPUT_HELP_MESSAGE
+            ));
             return;
         }
 
@@ -84,15 +71,9 @@ public class TelegramCurrentQuoteHandler {
         } catch (InvalidProductUrlException exception) {
             return OutgoingTelegramMessage.text(
                     message.getChatId(),
-                    "Некорректная ссылка. Отправьте URL вида "
-                            + "https://www.wildberries.ru/catalog/123456/detail.aspx. "
-                            + "Если вы вводили целевую цену после перезапуска бота, снова нажмите "
-                            + "кнопку «Установить целевую цену» в актуальной карточке товара."
+                    "Не получилось распознать ссылку. Отправьте ссылку на товар в формате:\n"
+                            + "https://www.wildberries.ru/catalog/123456/detail.aspx"
             );
         }
-    }
-
-    private boolean isCommand(String text, String command) {
-        return text.equals(command) || text.startsWith(command + "@");
     }
 }

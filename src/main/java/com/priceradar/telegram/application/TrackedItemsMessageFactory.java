@@ -1,175 +1,260 @@
 package com.priceradar.telegram.application;
 
+import com.priceradar.pricing.application.InterpretedPrice;
 import com.priceradar.pricing.application.RublePriceFormatter;
+import com.priceradar.pricing.application.WalletEstimate;
+import com.priceradar.pricing.application.WalletEstimateService;
+import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
-import com.priceradar.statistics.domain.StatisticsPeriod;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
 import com.priceradar.tracking.domain.NotificationMode;
+import com.priceradar.user.domain.UserPricePreferences;
 
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 public final class TrackedItemsMessageFactory {
 
-    private static final int ITEMS_PER_MESSAGE = 8;
-    private static final int MAX_TITLE_LENGTH = 90;
+    public static final int ITEMS_PER_PAGE = 8;
+
+    private static final int MAX_BUTTON_TITLE_LENGTH = 48;
     private static final int MAX_DETAIL_LENGTH = 60;
     private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цены приблизительные и могут отличаться в вашем аккаунте Wildberries.";
+            "⚠️ Цена может отличаться в приложении Wildberries.";
     private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter
-            .ofPattern("dd.MM.yyyy HH:mm 'UTC'", Locale.ROOT)
-            .withZone(ZoneOffset.UTC);
+            .ofPattern("dd.MM.yyyy HH:mm 'МСК'", Locale.ROOT)
+            .withZone(ZoneId.of("Europe/Moscow"));
 
-    public List<OutgoingTelegramMessage> create(
-            long chatId,
-            List<TrackedSubscriptionItem> items,
-            String region
-    ) {
-        if (items == null || region == null || region.isBlank()) {
-            throw new IllegalArgumentException("tracked items message fields must not be null or blank");
-        }
-        if (items.isEmpty()) {
-            return List.of(OutgoingTelegramMessage.text(
-                    chatId,
-                    "У вас пока нет отслеживаемых товаров. Отправьте ссылку Wildberries, "
-                            + "чтобы добавить первый товар."
-            ));
-        }
+    private final WalletEstimateService walletEstimateService;
 
-        List<OutgoingTelegramMessage> messages = new ArrayList<>();
-        int pageCount = (items.size() + ITEMS_PER_MESSAGE - 1) / ITEMS_PER_MESSAGE;
-        for (int from = 0, page = 1; from < items.size(); from += ITEMS_PER_MESSAGE, page++) {
-            int to = Math.min(from + ITEMS_PER_MESSAGE, items.size());
-            messages.add(createPage(
-                    chatId,
-                    items.subList(from, to),
-                    region.trim(),
-                    from,
-                    page,
-                    pageCount,
-                    items.size()
-            ));
+    public TrackedItemsMessageFactory(WalletEstimateService walletEstimateService) {
+        if (walletEstimateService == null) {
+            throw new IllegalArgumentException("walletEstimateService must not be null");
         }
-        return List.copyOf(messages);
+        this.walletEstimateService = walletEstimateService;
     }
 
-    private OutgoingTelegramMessage createPage(
+    public OutgoingTelegramMessage createList(
             long chatId,
             List<TrackedSubscriptionItem> items,
-            String region,
-            int offset,
-            int page,
-            int pageCount,
-            int totalCount
+            int pageNumber
     ) {
-        StringBuilder text = new StringBuilder("Отслеживаемые товары: ")
-                .append(totalCount);
-        if (pageCount > 1) {
-            text.append(" · страница ").append(page).append('/').append(pageCount);
+        validateItems(items);
+        if (pageNumber < 0) {
+            throw new IllegalArgumentException("pageNumber must not be negative");
+        }
+        if (items.isEmpty()) {
+            return emptyList(chatId);
         }
 
-        List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
-        for (int index = 0; index < items.size(); index++) {
-            int displayNumber = offset + index + 1;
-            TrackedSubscriptionItem item = items.get(index);
-            appendItem(text, item, displayNumber);
-            keyboard.add(List.of(
-                    new TelegramInlineButton(
-                            "Последняя цена #" + displayNumber,
-                            "SHOW_LAST_KNOWN:" + item.getSubscriptionId()
-                    ),
-                    new TelegramInlineButton(
-                            "Удалить #" + displayNumber,
-                            "REMOVE_TRACKING:" + item.getSubscriptionId()
-                    )
-            ));
-            keyboard.add(List.of(
-                    statisticsButton(
-                            "7 дней #" + displayNumber,
-                            item,
-                            StatisticsPeriod.LAST_7_DAYS
-                    ),
-                    statisticsButton(
-                            "30 дней #" + displayNumber,
-                            item,
-                            StatisticsPeriod.LAST_30_DAYS
-                    )
-            ));
-            keyboard.add(List.of(
-                    statisticsButton(
-                            "365 дней #" + displayNumber,
-                            item,
-                            StatisticsPeriod.LAST_365_DAYS
-                    ),
-                    statisticsButton(
-                            "Всё время #" + displayNumber,
-                            item,
-                            StatisticsPeriod.ALL_TIME
-                    )
-            ));
+        int pageCount = pageCount(items.size());
+        if (pageNumber >= pageCount) {
+            throw new IllegalArgumentException("pageNumber is outside available pages");
         }
-        text.append("\n\nРегион: ").append(region);
-        text.append("\n").append(APPROXIMATE_PRICE_WARNING);
+
+        int from = pageNumber * ITEMS_PER_PAGE;
+        int to = Math.min(from + ITEMS_PER_PAGE, items.size());
+        StringBuilder text = new StringBuilder("Мои товары: ")
+                .append(items.size());
+        if (pageCount > 1) {
+            text.append("\nСтраница ")
+                    .append(pageNumber + 1)
+                    .append(" из ")
+                    .append(pageCount);
+        }
+        text.append("\n\nВыберите товар:");
+
+        List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
+        for (int index = from; index < to; index++) {
+            TrackedSubscriptionItem item = items.get(index);
+            keyboard.add(List.of(new TelegramInlineButton(
+                    itemButtonText(item, index + 1),
+                    TrackedItemsCallbackData.item(item.getSubscriptionId())
+            )));
+        }
+        appendPagination(keyboard, pageNumber, pageCount);
+        keyboard.add(List.of(
+                new TelegramInlineButton(
+                        "Добавить товар",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.ADD_PRODUCT)
+                ),
+                new TelegramInlineButton(
+                        "Главное меню",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
+                )
+        ));
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
     }
 
-    private TelegramInlineButton statisticsButton(
-            String text,
+    public OutgoingTelegramMessage createDetails(
+            long chatId,
             TrackedSubscriptionItem item,
-            StatisticsPeriod period
+            int displayNumber,
+            int listPage,
+            String region,
+            UserPricePreferences preferences
     ) {
-        return new TelegramInlineButton(
-                text,
-                StatisticsCallbackData.encode(item.getSubscriptionId(), period)
+        if (item == null || preferences == null || region == null || region.isBlank()) {
+            throw new IllegalArgumentException("tracked item details must not be null or blank");
+        }
+        if (displayNumber <= 0 || listPage < 0) {
+            throw new IllegalArgumentException("tracked item position must be valid");
+        }
+
+        StringBuilder text = new StringBuilder()
+                .append(displayNumber)
+                .append(". ")
+                .append(item.getTitle().orElse("Товар Wildberries #" + item.getNmId()));
+        item.getBrand().ifPresent(brand -> text.append("\nБренд: ")
+                .append(truncate(brand, MAX_DETAIL_LENGTH)));
+        item.getVariantDisplayName()
+                .flatMap(TelegramDisplayFormatter::variant)
+                .ifPresent(variant -> text.append("\n")
+                        .append(truncate(variant, MAX_DETAIL_LENGTH)));
+        text.append("\nРежим: ").append(mode(item));
+        appendLatestPrice(text, item, preferences);
+        item.getLatestObservedAt().ifPresent(observedAt -> text.append("\nПроверено: ")
+                .append(OBSERVED_AT_FORMAT.format(observedAt)));
+        text.append("\nРегион: ").append(TelegramDisplayFormatter.region(region));
+        text.append("\nОткрыть товар: ").append(item.getCanonicalUrl());
+        text.append("\n\n").append(APPROXIMATE_PRICE_WARNING);
+
+        List<List<TelegramInlineButton>> keyboard = List.of(
+                List.of(
+                        new TelegramInlineButton(
+                                "💰 Последняя цена",
+                                ShowLastKnownCallbackData.encode(item.getSubscriptionId())
+                        ),
+                        new TelegramInlineButton(
+                                "📊 Статистика",
+                                StatisticsMenuCallbackData.encode(item.getSubscriptionId())
+                        )
+                ),
+                List.of(new TelegramInlineButton(
+                        "❌ Удалить товар",
+                        RemoveTrackingCallbackData.encode(item.getSubscriptionId())
+                )),
+                List.of(new TelegramInlineButton(
+                        "← К списку",
+                        TrackedItemsCallbackData.page(listPage)
+                ))
+        );
+        return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
+    }
+
+    private OutgoingTelegramMessage emptyList(long chatId) {
+        return new OutgoingTelegramMessage(
+                chatId,
+                "У вас пока нет отслеживаемых товаров.\n\n"
+                        + "Отправьте ссылку Wildberries, чтобы добавить первый товар.",
+                List.of(List.of(
+                        new TelegramInlineButton(
+                                "Добавить товар",
+                                MainMenuCallbackData.encode(MainMenuCallbackData.Action.ADD_PRODUCT)
+                        ),
+                        new TelegramInlineButton(
+                                "Главное меню",
+                                MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
+                        )
+                ))
         );
     }
 
-    private void appendItem(
+    private void appendPagination(
+            List<List<TelegramInlineButton>> keyboard,
+            int pageNumber,
+            int pageCount
+    ) {
+        if (pageCount <= 1) {
+            return;
+        }
+        List<TelegramInlineButton> row = new ArrayList<>(2);
+        if (pageNumber > 0) {
+            row.add(new TelegramInlineButton(
+                    "← Назад",
+                    TrackedItemsCallbackData.page(pageNumber - 1)
+            ));
+        }
+        if (pageNumber + 1 < pageCount) {
+            row.add(new TelegramInlineButton(
+                    "Дальше →",
+                    TrackedItemsCallbackData.page(pageNumber + 1)
+            ));
+        }
+        keyboard.add(List.copyOf(row));
+    }
+
+    private void appendLatestPrice(
             StringBuilder text,
             TrackedSubscriptionItem item,
-            int displayNumber
+            UserPricePreferences preferences
     ) {
-        text.append("\n\n").append(displayNumber).append(". ")
-                .append(truncate(
-                        item.getTitle().orElse("Товар Wildberries #" + item.getNmId()),
-                        MAX_TITLE_LENGTH
-                ));
-        item.getBrand().ifPresent(brand -> text.append("\nБренд: ")
-                .append(truncate(brand, MAX_DETAIL_LENGTH)));
-        item.getVariantDisplayName().ifPresent(variant -> text.append("\nВариант: ")
-                .append(truncate(variant, MAX_DETAIL_LENGTH)));
-        text.append("\nРежим: ").append(mode(item));
-        text.append("\nПоследнее состояние: ").append(latestState(item));
-        item.getLatestObservedAt().ifPresent(observedAt -> text.append(" · ")
-                .append(OBSERVED_AT_FORMAT.format(observedAt)));
-        text.append("\n").append(item.getCanonicalUrl());
+        if (item.getLatestSnapshotStatus().isEmpty()) {
+            text.append("\nПоследняя цена: ещё не проверялась");
+            return;
+        }
+
+        SnapshotStatus status = item.getLatestSnapshotStatus().orElseThrow();
+        if (status == SnapshotStatus.REGULAR_PRICE) {
+            RubleAmount regularPrice = item.getLatestRegularPrice().orElseThrow();
+            text.append("\nЦена без WB Кошелька: ").append(format(regularPrice));
+            estimateWalletPrice(regularPrice, preferences)
+                    .ifPresent(estimate -> text.append("\nС WB Кошельком: ≈ ")
+                            .append(format(estimate.getAmount()))
+                            .append(" (скидка ")
+                            .append(estimate.getWalletDiscountPercent())
+                            .append("%)"));
+            return;
+        }
+        if (status == SnapshotStatus.BASIC_FALLBACK) {
+            text.append("\nПоследняя цена: точная цена пока недоступна");
+            return;
+        }
+        if (status == SnapshotStatus.UNAVAILABLE) {
+            text.append("\nПоследняя цена: товар недоступен");
+            return;
+        }
+        text.append("\nПоследняя цена: цена не найдена");
+    }
+
+    private Optional<WalletEstimate> estimateWalletPrice(
+            RubleAmount regularPrice,
+            UserPricePreferences preferences
+    ) {
+        InterpretedPrice interpretedPrice = new InterpretedPrice(
+                Optional.of(regularPrice),
+                Optional.empty(),
+                Optional.of(PriceSource.PRODUCT),
+                SnapshotStatus.REGULAR_PRICE
+        );
+        return walletEstimateService.estimate(interpretedPrice, preferences);
+    }
+
+    private String itemButtonText(TrackedSubscriptionItem item, int displayNumber) {
+        String title = item.getTitle().orElse("Товар Wildberries #" + item.getNmId());
+        return displayNumber + ". " + truncate(title, MAX_BUTTON_TITLE_LENGTH);
     }
 
     private String mode(TrackedSubscriptionItem item) {
         if (item.getNotificationMode() == NotificationMode.ANY_DECREASE) {
-            return "любое снижение обычной цены";
+            return "сообщать о снижении";
         }
-        return "целевая цена " + format(item.getTargetPrice().orElseThrow());
+        return "сообщить при цене " + format(item.getTargetPrice().orElseThrow());
     }
 
-    private String latestState(TrackedSubscriptionItem item) {
-        if (item.getLatestSnapshotStatus().isEmpty()) {
-            return "наблюдений пока нет";
+    private int pageCount(int itemCount) {
+        return (itemCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+    }
+
+    private void validateItems(List<TrackedSubscriptionItem> items) {
+        if (items == null || items.stream().anyMatch(item -> item == null)) {
+            throw new IllegalArgumentException("tracked items must not contain nulls");
         }
-        SnapshotStatus status = item.getLatestSnapshotStatus().orElseThrow();
-        return switch (status) {
-            case REGULAR_PRICE -> item.getLatestRegularPrice()
-                    .map(this::format)
-                    .orElse("обычная цена недоступна");
-            case BASIC_FALLBACK ->
-                    "обычная цена недоступна, есть только маркетинговая цена (fallback)";
-            case UNAVAILABLE -> "товар недоступен";
-            case NO_PRICE -> "цена не найдена";
-        };
     }
 
     private String format(RubleAmount amount) {

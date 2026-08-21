@@ -17,7 +17,7 @@ import java.util.UUID;
 public final class TelegramQuoteMessageFactory {
 
     private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цена приблизительная и может отличаться в вашем аккаунте Wildberries.";
+            "⚠️ Цена может отличаться в приложении Wildberries.";
 
     private final WalletEstimateService walletEstimateService;
     private final TrackingCallbackCodec trackingCallbackCodec;
@@ -44,12 +44,15 @@ public final class TelegramQuoteMessageFactory {
 
         StringBuilder text = new StringBuilder();
         text.append(quote.getTitle().orElse("Товар Wildberries #" + quote.getNmId()));
-        text.append("\nБренд: ").append(quote.getBrand().orElse("не указан"));
+        quote.getBrand().ifPresent(brand -> text.append("\nБренд: ").append(brand));
         appendAvailability(text, quote.getInterpretedPrice());
         appendPrice(text, quote.getInterpretedPrice(), userProfile);
-        text.append("\nРегион: ").append(quote.getPriceContext().getCityName());
+        text.append("\nРегион: ")
+                .append(TelegramDisplayFormatter.region(
+                        quote.getPriceContext().getCityName()
+                ));
         appendAutoSelectedVariant(text, quote);
-        text.append("\nСсылка: ").append(quote.getCanonicalUrl());
+        text.append("\nОткрыть товар: ").append(quote.getCanonicalUrl());
         text.append("\n\n").append(APPROXIMATE_PRICE_WARNING);
 
         return new OutgoingTelegramMessage(
@@ -87,32 +90,33 @@ public final class TelegramQuoteMessageFactory {
     ) {
         if (price.getStatus() == SnapshotStatus.REGULAR_PRICE) {
             RubleAmount regularPrice = price.getRegularPrice().orElseThrow();
-            text.append("\nОбычная цена: ").append(format(regularPrice));
+            text.append("\nЦена: ").append(format(regularPrice));
             walletEstimateService.estimate(price, userProfile.getPricePreferences())
                     .ifPresent(estimate -> appendWalletEstimate(text, estimate));
             return;
         }
 
         if (price.getStatus() == SnapshotStatus.BASIC_FALLBACK) {
-            text.append("\nМаркетинговая цена (fallback): ")
+            text.append("\nДоступная цена: ")
                     .append(format(price.getMarketingBasePrice().orElseThrow()));
-            text.append("\nНадёжная обычная цена сейчас недоступна.");
+            text.append("\nТочную текущую цену сейчас показать не удалось.");
             return;
         }
 
         if (price.getStatus() == SnapshotStatus.UNAVAILABLE) {
-            text.append("\nНадёжную текущую цену показать нельзя: товар недоступен.");
+            text.append("\nТекущую цену показать нельзя: товара нет в наличии.");
             return;
         }
 
-        text.append("\nНадёжная текущая цена пока недоступна.");
+        text.append("\nТекущая цена пока недоступна.");
     }
 
     private void appendWalletEstimate(StringBuilder text, WalletEstimate estimate) {
-        text.append("\nС WB Кошельком (оценка, скидка ")
+        text.append("\nС WB Кошельком: ≈ ")
+                .append(format(estimate.getAmount()))
+                .append(" (скидка ")
                 .append(estimate.getWalletDiscountPercent())
-                .append("%): ")
-                .append(format(estimate.getAmount()));
+                .append("%)");
     }
 
     private void appendAutoSelectedVariant(StringBuilder text, ResolvedQuote quote) {
@@ -120,8 +124,10 @@ public final class TelegramQuoteMessageFactory {
             return;
         }
         quote.getResolvedVariant().getDisplayName()
-                .ifPresent(displayName -> text.append("\nАвтоматически выбран вариант: ")
-                        .append(displayName));
+                .flatMap(TelegramDisplayFormatter::variant)
+                .ifPresent(displayName -> text.append("\n")
+                        .append(displayName)
+                        .append(" (выбран автоматически)"));
     }
 
     private List<List<TelegramInlineButton>> trackingKeyboard(
@@ -130,7 +136,7 @@ public final class TelegramQuoteMessageFactory {
     ) {
         return List.of(
                 List.of(new TelegramInlineButton(
-                        "Отслеживать любое снижение",
+                        "Следить за снижением",
                         trackingCallbackCodec.encode(
                                 TrackingCallbackData.Action.TRACK_ANY_DECREASE,
                                 quoteSnapshotId,
@@ -138,7 +144,7 @@ public final class TelegramQuoteMessageFactory {
                         )
                 )),
                 List.of(new TelegramInlineButton(
-                        "Установить целевую цену",
+                        "Указать желаемую цену",
                         trackingCallbackCodec.encode(
                                 TrackingCallbackData.Action.TRACK_TARGET,
                                 quoteSnapshotId,
@@ -152,19 +158,19 @@ public final class TelegramQuoteMessageFactory {
         return switch (code) {
             case PRODUCT_NOT_FOUND -> "Товар Wildberries не найден.";
             case COOLDOWN_ACTIVE, RATE_LIMITED, ACCESS_FORBIDDEN ->
-                    "Wildberries временно ограничил запросы. Попробуйте отправить ссылку позже.";
-            case INVALID_REQUEST -> "Не удалось обработать данные товара. Проверьте ссылку.";
-            default -> "Сейчас не удалось получить данные Wildberries. Попробуйте позже.";
+                    "Сервис временно не может проверить цену. Попробуйте немного позже.";
+            case INVALID_REQUEST -> "Не получилось обработать товар. Проверьте ссылку.";
+            default -> "Сейчас не получилось проверить цену. Попробуйте позже.";
         };
     }
 
     private String quoteFailureText(ResolvedQuoteResult.FailureCode code) {
         return switch (code) {
             case VARIANT_NOT_RESOLVED ->
-                    "Не удалось определить доступный вариант товара с обычной ценой.";
+                    "Не получилось выбрать доступный вариант товара.";
             case PRICE_FIELDS_NOT_FOUND -> "Для выбранного варианта цена сейчас недоступна.";
             case PROVIDER_DATA_MISMATCH, PROVIDER_FAILURE ->
-                    "Сейчас не удалось безопасно обработать данные товара. Попробуйте позже.";
+                    "Сейчас не получилось обработать данные товара. Попробуйте позже.";
         };
     }
 

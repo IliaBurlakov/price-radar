@@ -67,8 +67,7 @@ public class ShowLastKnownCallbackHandler {
     private OutgoingTelegramMessage notFoundMessage(long chatId) {
         return OutgoingTelegramMessage.text(
                 chatId,
-                "Активная подписка не найдена или уже удалена. Новый запрос к Wildberries "
-                        + "не выполнялся.\n\nОбновить список: /tracked"
+                "Этот товар больше не отслеживается. Откройте раздел «Мои товары»."
         );
     }
 

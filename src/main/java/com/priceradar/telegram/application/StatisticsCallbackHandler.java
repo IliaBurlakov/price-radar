@@ -8,7 +8,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public class StatisticsCallbackHandler {
 
@@ -39,10 +42,13 @@ public class StatisticsCallbackHandler {
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
+        Optional<UUID> menuSubscriptionId = StatisticsMenuCallbackData.parse(
+                callback.getData()
+        );
         Optional<StatisticsCallbackData> callbackData = StatisticsCallbackData.parse(
                 callback.getData()
         );
-        if (callbackData.isEmpty()) {
+        if (menuSubscriptionId.isEmpty() && callbackData.isEmpty()) {
             return false;
         }
 
@@ -54,12 +60,17 @@ public class StatisticsCallbackHandler {
                     callback.getTelegramUserId(),
                     callback.getChatId()
             );
+            Instant now = clock.instant();
+            if (menuSubscriptionId.isPresent()) {
+                showPeriodMenu(callback, profile, menuSubscriptionId.orElseThrow(), now);
+                return true;
+            }
             StatisticsCallbackData data = callbackData.get();
             Optional<SubscriptionStatistics> statistics = statisticsService.calculate(
                     profile.getId(),
                     data.getSubscriptionId(),
                     data.getPeriod(),
-                    clock.instant()
+                    now
             );
             OutgoingTelegramMessage message = statistics
                     .map(value -> messageFactory.create(
@@ -75,11 +86,62 @@ public class StatisticsCallbackHandler {
         }
     }
 
+    private void showPeriodMenu(
+            IncomingTelegramCallback callback,
+            UserProfile profile,
+            UUID subscriptionId,
+            Instant now
+    ) {
+        boolean activeAndOwned = statisticsService.calculate(
+                profile.getId(),
+                subscriptionId,
+                com.priceradar.statistics.domain.StatisticsPeriod.ALL_TIME,
+                now
+        ).isPresent();
+        if (!activeAndOwned) {
+            telegramGateway.sendMessage(notFoundMessage(callback.getChatId()));
+            return;
+        }
+        List<List<TelegramInlineButton>> keyboard = List.of(
+                List.of(
+                        periodButton("7 дней", subscriptionId,
+                                com.priceradar.statistics.domain.StatisticsPeriod.LAST_7_DAYS),
+                        periodButton("30 дней", subscriptionId,
+                                com.priceradar.statistics.domain.StatisticsPeriod.LAST_30_DAYS)
+                ),
+                List.of(
+                        periodButton("365 дней", subscriptionId,
+                                com.priceradar.statistics.domain.StatisticsPeriod.LAST_365_DAYS),
+                        periodButton("Всё время", subscriptionId,
+                                com.priceradar.statistics.domain.StatisticsPeriod.ALL_TIME)
+                ),
+                List.of(new TelegramInlineButton(
+                        "Мои товары",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
+                ))
+        );
+        telegramGateway.sendMessage(new OutgoingTelegramMessage(
+                callback.getChatId(),
+                "За какой период показать статистику?",
+                keyboard
+        ));
+    }
+
+    private TelegramInlineButton periodButton(
+            String text,
+            UUID subscriptionId,
+            com.priceradar.statistics.domain.StatisticsPeriod period
+    ) {
+        return new TelegramInlineButton(
+                text,
+                StatisticsCallbackData.encode(subscriptionId, period)
+        );
+    }
+
     private OutgoingTelegramMessage notFoundMessage(long chatId) {
         return OutgoingTelegramMessage.text(
                 chatId,
-                "Активная подписка не найдена или уже удалена."
-                        + "\n\nОбновить список: /tracked"
+                "Этот товар больше не отслеживается. Откройте раздел «Мои товары»."
         );
     }
 

@@ -9,17 +9,18 @@ import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.tracking.application.LatestSnapshotView;
 import com.priceradar.user.application.UserProfile;
 
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 
 public final class LatestSnapshotMessageFactory {
 
     private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цены приблизительные и могут отличаться в вашем аккаунте Wildberries.";
+            "⚠️ Цена может отличаться в приложении Wildberries.";
     private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter
-            .ofPattern("dd.MM.yyyy HH:mm:ss 'UTC'", Locale.ROOT)
-            .withZone(ZoneOffset.UTC);
+            .ofPattern("dd.MM.yyyy HH:mm 'МСК'", Locale.ROOT)
+            .withZone(ZoneId.of("Europe/Moscow"));
 
     private final WalletEstimateService walletEstimateService;
 
@@ -44,26 +45,24 @@ public final class LatestSnapshotMessageFactory {
                 "Товар Wildberries #" + snapshot.getNmId()
         ));
         snapshot.getBrand().ifPresent(brand -> text.append("\nБренд: ").append(brand));
-        snapshot.getVariantDisplayName().ifPresent(variant ->
-                text.append("\nВариант: ").append(variant));
+        snapshot.getVariantDisplayName()
+                .flatMap(TelegramDisplayFormatter::variant)
+                .ifPresent(variant -> text.append("\n").append(variant));
 
         if (!snapshot.hasSnapshot()) {
-            text.append("\n\nСохранённых наблюдений пока нет.");
-            text.append("\nРегион: ").append(snapshot.getPriceContext().getCityName());
-            text.append("\nСсылка: ").append(snapshot.getCanonicalUrl());
-            text.append("\n\nНовый запрос к Wildberries не выполнялся.");
-            return OutgoingTelegramMessage.text(chatId, text.toString());
+            text.append("\n\nЦена пока не проверялась.");
+            appendRegionAndLink(text, snapshot);
+            return withTrackedButton(chatId, text.toString());
         }
 
         InterpretedPrice price = snapshot.getInterpretedPrice().orElseThrow();
-        text.append("\n\nПоследнее сохранённое наблюдение: ")
+        text.append("\n\nПроверено: ")
                 .append(OBSERVED_AT_FORMAT.format(snapshot.getObservedAt().orElseThrow()));
         appendPrice(text, price, profile);
-        text.append("\nРегион: ").append(snapshot.getPriceContext().getCityName());
-        text.append("\nСсылка: ").append(snapshot.getCanonicalUrl());
-        text.append("\n\nИсточник: сохранённый snapshot. Новый запрос к Wildberries не выполнялся.");
+        appendRegionAndLink(text, snapshot);
+        text.append("\n\nПоказана последняя сохранённая цена.");
         text.append("\n").append(APPROXIMATE_PRICE_WARNING);
-        return OutgoingTelegramMessage.text(chatId, text.toString());
+        return withTrackedButton(chatId, text.toString());
     }
 
     private void appendPrice(
@@ -73,42 +72,56 @@ public final class LatestSnapshotMessageFactory {
     ) {
         SnapshotStatus status = price.getStatus();
         if (status == SnapshotStatus.REGULAR_PRICE) {
-            text.append("\nОбычная цена: ")
+            text.append("\nЦена: ")
                     .append(format(price.getRegularPrice().orElseThrow()));
-            price.getMarketingBasePrice().ifPresent(marketing -> text
-                    .append("\nМаркетинговая цена: ")
-                    .append(format(marketing))
-                    .append(" (не историческая цена)"));
             walletEstimateService.estimate(price, profile.getPricePreferences())
                     .ifPresent(estimate -> appendWalletEstimate(text, estimate));
             text.append("\nНаличие: в наличии");
             return;
         }
         if (status == SnapshotStatus.BASIC_FALLBACK) {
-            text.append("\nМаркетинговая цена (fallback): ")
+            text.append("\nДоступная цена: ")
                     .append(format(price.getMarketingBasePrice().orElseThrow()));
-            text.append("\nНадёжная обычная цена недоступна.");
+            text.append("\nТочную текущую цену сейчас показать не удалось.");
             text.append("\nНаличие: в наличии");
             return;
         }
         if (status == SnapshotStatus.UNAVAILABLE) {
-            text.append("\nСостояние: товар недоступен");
-            text.append("\nНадёжная обычная цена недоступна.");
+            text.append("\nНаличие: нет в наличии");
             return;
         }
-        text.append("\nСостояние: цена не найдена");
-        text.append("\nНаличие: в наличии, но надёжной цены нет.");
+        text.append("\nЦена пока недоступна");
+        text.append("\nНаличие: в наличии");
     }
 
     private void appendWalletEstimate(
             StringBuilder text,
             WalletEstimate estimate
     ) {
-        text.append("\nС WB Кошельком (оценка, скидка ")
-                .append(estimate.getWalletDiscountPercent())
-                .append("%): ")
+        text.append("\nС WB Кошельком: ≈ ")
                 .append(format(estimate.getAmount()))
-                .append(" · ESTIMATED_BY_PERCENT");
+                .append(" (скидка ")
+                .append(estimate.getWalletDiscountPercent())
+                .append("%)");
+    }
+
+    private void appendRegionAndLink(StringBuilder text, LatestSnapshotView snapshot) {
+        text.append("\nРегион: ")
+                .append(TelegramDisplayFormatter.region(
+                        snapshot.getPriceContext().getCityName()
+                ));
+        text.append("\nОткрыть товар: ").append(snapshot.getCanonicalUrl());
+    }
+
+    private OutgoingTelegramMessage withTrackedButton(long chatId, String text) {
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                List.of(List.of(new TelegramInlineButton(
+                        "Мои товары",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
+                )))
+        );
     }
 
     private String format(RubleAmount amount) {

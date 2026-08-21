@@ -104,9 +104,9 @@ class StatisticsCallbackHandlerTest {
                 .contains("Минимальная цена: 90 ₽")
                 .contains("Максимальная цена: 110 ₽")
                 .contains("Средняя цена: 100 ₽")
-                .contains("Количество наблюдений: 2")
-                .contains("Регион: Moscow")
-                .contains("Цены приблизительные");
+                .contains("Проверок с доступной ценой: 2")
+                .contains("Регион: Москва")
+                .contains("Цена может отличаться");
         verify(telegramGateway).answerCallbackQuery("statistics-callback");
     }
 
@@ -137,13 +137,13 @@ class StatisticsCallbackHandlerTest {
         verify(telegramGateway).sendMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getText())
                 .contains("за всё время текущей подписки")
-                .contains("Статистика пока недоступна")
-                .contains("Регион: Moscow")
-                .contains("Цены приблизительные")
+                .contains("пока недостаточно данных")
+                .contains("Регион: Москва")
+                .contains("Цена может отличаться")
                 .doesNotContain("Минимальная цена")
                 .doesNotContain("Максимальная цена")
                 .doesNotContain("Средняя цена")
-                .doesNotContain("Количество наблюдений");
+                .doesNotContain("Проверок с доступной ценой");
     }
 
     private IncomingTelegramCallback callback(String data) {
