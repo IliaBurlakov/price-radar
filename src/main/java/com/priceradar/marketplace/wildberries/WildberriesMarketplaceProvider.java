@@ -43,6 +43,7 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
     private static final Duration RATE_LIMIT_COOLDOWN = Duration.ofMinutes(15);
     private static final Duration ACCESS_FORBIDDEN_COOLDOWN = Duration.ofMinutes(30);
     private static final Duration SERVER_ERROR_COOLDOWN = Duration.ofMinutes(5);
+    private static final Duration INVALID_RESPONSE_COOLDOWN = Duration.ofMinutes(15);
     private static final Duration MAX_BACKOFF_JITTER = Duration.ofSeconds(1);
 
     private final HttpClient httpClient;
@@ -274,6 +275,10 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                         MarketplaceProductDetails product = mappedResult.getProduct().orElseThrow();
                         Instant observedAt = mappedResult.getObservedAt().orElseThrow();
                         saveCached(cacheKey, product, observedAt);
+                    } else {
+                        providerCooldownUntil = mappedResult.getFailure()
+                                .orElseThrow()
+                                .getRetryNotBefore();
                     }
 
                     return mappedResult;
@@ -433,7 +438,13 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
             case SCHEMA_VIOLATION -> MarketplaceProviderFailureCode.SCHEMA_VIOLATION;
         };
 
-        return failure(failureCode, mappingFailure.getMessage(), Optional.empty(), correlationId);
+        Optional<Instant> retryNotBefore = switch (failureCode) {
+            case MALFORMED_RESPONSE, SCHEMA_VIOLATION -> Optional.of(
+                    clock.instant().plus(INVALID_RESPONSE_COOLDOWN)
+            );
+            default -> Optional.empty();
+        };
+        return failure(failureCode, mappingFailure.getMessage(), retryNotBefore, correlationId);
     }
 
     private MarketplaceProductDetails selectFixedVariant(
