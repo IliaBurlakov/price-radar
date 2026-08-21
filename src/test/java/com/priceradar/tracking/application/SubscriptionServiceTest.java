@@ -21,13 +21,16 @@ class SubscriptionServiceTest {
 
     private final UserProfileStore userStore = mock(UserProfileStore.class);
     private final SubscriptionStore subscriptionStore = mock(SubscriptionStore.class);
+    private final InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer =
+            mock(InitialThresholdNotificationEnqueuer.class);
     private final SubscriptionService service = new SubscriptionService(
             userStore,
-            subscriptionStore
+            subscriptionStore,
+            thresholdNotificationEnqueuer
     );
 
     @Test
-    void alreadyReachedTargetIsMarkedWithoutCreatingAnotherNotification() {
+    void alreadyReachedTargetIsMarkedAndNotificationIsEnqueued() {
         UUID userId = UUID.randomUUID();
         UUID watchTargetId = UUID.randomUUID();
         UUID quoteSnapshotId = UUID.randomUUID();
@@ -54,6 +57,11 @@ class SubscriptionServiceTest {
         assertThat(result.isTargetAlreadyReached()).isTrue();
         assertThat(result.getSubscription().orElseThrow().getWatchTargetId())
                 .isEqualTo(watchTargetId);
+        verify(thresholdNotificationEnqueuer).enqueue(
+                result.getSubscription().orElseThrow(),
+                observation,
+                now
+        );
     }
 
     @Test

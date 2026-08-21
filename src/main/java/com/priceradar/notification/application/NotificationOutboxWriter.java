@@ -1,16 +1,23 @@
 package com.priceradar.notification.application;
 
-import com.priceradar.tracking.application.SubscriptionStore;
+import com.priceradar.notification.domain.NotificationType;
+import com.priceradar.tracking.application.InitialThresholdNotificationEnqueuer;
 import com.priceradar.tracking.application.NotificationStateUpdateResult;
+import com.priceradar.tracking.application.SubscriptionQuoteObservation;
+import com.priceradar.tracking.application.SubscriptionStore;
+import com.priceradar.tracking.domain.NotificationMode;
+import com.priceradar.tracking.domain.Subscription;
 import com.priceradar.tracking.domain.SubscriptionStatus;
+import com.priceradar.tracking.domain.ThresholdState;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Optional;
 
-public class NotificationOutboxWriter {
+public class NotificationOutboxWriter implements InitialThresholdNotificationEnqueuer {
 
     private static final String IDEMPOTENCY_KEY_PREFIX = "scheduled:v1";
+    private static final String INITIAL_THRESHOLD_KEY_PREFIX = "subscription-created:v1";
 
     private final SubscriptionStore subscriptionStore;
     private final NotificationOutboxStore outboxStore;
@@ -66,10 +73,62 @@ public class NotificationOutboxWriter {
                 : NotificationOutboxWriteResult.NOTIFICATION_ALREADY_ENQUEUED;
     }
 
+    @Override
+    @Transactional
+    public void enqueue(
+            Subscription subscription,
+            SubscriptionQuoteObservation observation,
+            Instant createdAt
+    ) {
+        validateInitialThresholdNotification(subscription, observation, createdAt);
+        NotificationIntent intent = new NotificationIntent(
+                subscription.getId(),
+                observation.getSnapshotId(),
+                NotificationType.TARGET_REACHED,
+                Optional.empty(),
+                observation.getRegularPrice().orElseThrow(),
+                observation.getObservedAt()
+        );
+        outboxStore.enqueueIfAbsent(
+                intent,
+                INITIAL_THRESHOLD_KEY_PREFIX
+                        + ":" + subscription.getId()
+                        + ":" + observation.getSnapshotId(),
+                createdAt
+        );
+    }
+
     private String idempotencyKey(NotificationIntent intent) {
         return IDEMPOTENCY_KEY_PREFIX
                 + ":" + intent.getSubscriptionId()
                 + ":" + intent.getType()
                 + ":" + intent.getSnapshotId();
+    }
+
+    private void validateInitialThresholdNotification(
+            Subscription subscription,
+            SubscriptionQuoteObservation observation,
+            Instant createdAt
+    ) {
+        if (subscription == null || observation == null || createdAt == null) {
+            throw new IllegalArgumentException("initial threshold notification fields must not be null");
+        }
+        if (subscription.getStatus() != SubscriptionStatus.ACTIVE
+                || subscription.getNotificationMode() != NotificationMode.TARGET_PRICE
+                || subscription.getThresholdState() != ThresholdState.REACHED_NOTIFIED) {
+            throw new IllegalArgumentException("initial threshold notification requires an active reached subscription");
+        }
+        if (!subscription.getWatchTargetId().equals(observation.getWatchTargetId())) {
+            throw new IllegalArgumentException("initial threshold observation belongs to another watch target");
+        }
+        long currentPrice = observation.getRegularPrice()
+                .orElseThrow(() -> new IllegalArgumentException("initial threshold notification requires regular price"))
+                .getMinorUnits();
+        if (currentPrice > subscription.getTargetPrice().orElseThrow().getMinorUnits()) {
+            throw new IllegalArgumentException("initial threshold price must be at or below target");
+        }
+        if (createdAt.isBefore(observation.getObservedAt())) {
+            throw new IllegalArgumentException("outbox creation time must not precede observation");
+        }
     }
 }
