@@ -9,6 +9,8 @@ import com.priceradar.telegram.application.ShowLastKnownCallbackHandler;
 import com.priceradar.telegram.application.StatisticsCallbackHandler;
 import com.priceradar.telegram.application.StatisticsMessageFactory;
 import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
+import com.priceradar.telegram.application.TelegramMenuHandler;
+import com.priceradar.telegram.application.TelegramMenuMessageFactory;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
 import com.priceradar.telegram.application.TargetPriceParser;
@@ -119,7 +121,7 @@ public class TelegramBotConfiguration {
 
     @Bean
     public TrackedItemsMessageFactory trackedItemsMessageFactory() {
-        return new TrackedItemsMessageFactory();
+        return new TrackedItemsMessageFactory(new WalletEstimateService());
     }
 
     @Bean
@@ -136,6 +138,24 @@ public class TelegramBotConfiguration {
                 messageFactory,
                 telegramGateway,
                 providerClock
+        );
+    }
+
+    @Bean
+    public TelegramMenuMessageFactory telegramMenuMessageFactory() {
+        return new TelegramMenuMessageFactory();
+    }
+
+    @Bean
+    public TelegramMenuHandler telegramMenuHandler(
+            TelegramMenuMessageFactory messageFactory,
+            TrackedItemsMessageHandler trackedItemsHandler,
+            TelegramGateway telegramGateway
+    ) {
+        return new TelegramMenuHandler(
+                messageFactory,
+                trackedItemsHandler,
+                telegramGateway
         );
     }
 
@@ -184,6 +204,7 @@ public class TelegramBotConfiguration {
     @Bean
     public TelegramUpdateDispatcher telegramUpdateDispatcher(
             TelegramCurrentQuoteHandler currentQuoteHandler,
+            TelegramMenuHandler menuHandler,
             TelegramTrackingHandler trackingHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
             ShowLastKnownCallbackHandler showLastKnownHandler,
@@ -191,6 +212,7 @@ public class TelegramBotConfiguration {
     ) {
         return new TelegramUpdateDispatcher(
                 currentQuoteHandler,
+                menuHandler,
                 trackingHandler,
                 trackedItemsHandler,
                 showLastKnownHandler,

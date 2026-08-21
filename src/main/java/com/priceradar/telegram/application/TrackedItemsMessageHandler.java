@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.UUID;
 
 public class TrackedItemsMessageHandler {
 
@@ -44,24 +46,29 @@ public class TrackedItemsMessageHandler {
         if (!message.isPrivateChat() || !isTrackedCommand(message.getText())) {
             return false;
         }
-        UserProfile profile = userProfileService.getOrCreate(
-                message.getTelegramUserId(),
-                message.getChatId()
-        );
-        List<TrackedSubscriptionItem> items = subscriptionService.findActive(profile.getId());
-        messageFactory.create(
-                message.getChatId(),
-                items,
-                profile.getPriceContext().getCityName()
-        ).forEach(telegramGateway::sendMessage);
+        showTracked(message.getTelegramUserId(), message.getChatId());
         return true;
     }
 
+    public void showTracked(long telegramUserId, long chatId) {
+        if (telegramUserId <= 0 || chatId <= 0) {
+            throw new IllegalArgumentException("Telegram identifiers must be positive");
+        }
+        UserProfile profile = userProfileService.getOrCreate(
+                telegramUserId,
+                chatId
+        );
+        List<TrackedSubscriptionItem> items = subscriptionService.findActive(profile.getId());
+        telegramGateway.sendMessage(messageFactory.createList(chatId, items, 0));
+    }
+
     public boolean handleCallback(IncomingTelegramCallback callback) {
-        Optional<RemoveTrackingCallbackData> callbackData = RemoveTrackingCallbackData.parse(
+        Optional<RemoveTrackingCallbackData> removeData = RemoveTrackingCallbackData.parse(
                 callback.getData()
         );
-        if (callbackData.isEmpty()) {
+        Optional<UUID> itemId = TrackedItemsCallbackData.parseItem(callback.getData());
+        OptionalInt requestedPage = TrackedItemsCallbackData.parsePage(callback.getData());
+        if (removeData.isEmpty() && itemId.isEmpty() && requestedPage.isEmpty()) {
             return false;
         }
 
@@ -73,9 +80,19 @@ public class TrackedItemsMessageHandler {
                     callback.getTelegramUserId(),
                     callback.getChatId()
             );
+            if (requestedPage.isPresent() || itemId.isPresent()) {
+                List<TrackedSubscriptionItem> items =
+                        subscriptionService.findActive(profile.getId());
+                if (requestedPage.isPresent()) {
+                    showPage(callback.getChatId(), items, requestedPage.getAsInt());
+                    return true;
+                }
+                showItemDetails(callback.getChatId(), profile, items, itemId.orElseThrow());
+                return true;
+            }
             SubscriptionEndResult result = subscriptionService.end(
                     profile.getId(),
-                    callbackData.get().getSubscriptionId(),
+                    removeData.orElseThrow().getSubscriptionId(),
                     clock.instant()
             );
             telegramGateway.sendMessage(removalMessage(callback.getChatId(), result));
@@ -85,23 +102,74 @@ public class TrackedItemsMessageHandler {
         }
     }
 
+    private void showPage(
+            long chatId,
+            List<TrackedSubscriptionItem> items,
+            int requestedPage
+    ) {
+        int pageNumber = normalizedPage(requestedPage, items.size());
+        telegramGateway.sendMessage(messageFactory.createList(
+                chatId,
+                items,
+                pageNumber
+        ));
+    }
+
+    private void showItemDetails(
+            long chatId,
+            UserProfile profile,
+            List<TrackedSubscriptionItem> items,
+            UUID subscriptionId
+    ) {
+        for (int index = 0; index < items.size(); index++) {
+            TrackedSubscriptionItem item = items.get(index);
+            if (item.getSubscriptionId().equals(subscriptionId)) {
+                telegramGateway.sendMessage(messageFactory.createDetails(
+                        chatId,
+                        item,
+                        index + 1,
+                        index / TrackedItemsMessageFactory.ITEMS_PER_PAGE,
+                        profile.getPriceContext().getCityName(),
+                        profile.getPricePreferences()
+                ));
+                return;
+            }
+        }
+        telegramGateway.sendMessage(new OutgoingTelegramMessage(
+                chatId,
+                "Этот товар больше не отслеживается.",
+                List.of(List.of(new TelegramInlineButton(
+                        "Мои товары",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
+                )))
+        ));
+    }
+
+    private int normalizedPage(int requestedPage, int itemCount) {
+        if (itemCount == 0) {
+            return 0;
+        }
+        int lastPage = (itemCount - 1) / TrackedItemsMessageFactory.ITEMS_PER_PAGE;
+        return Math.min(requestedPage, lastPage);
+    }
+
     private OutgoingTelegramMessage removalMessage(
             long chatId,
             SubscriptionEndResult result
     ) {
-        return switch (result.getStatus()) {
-            case ENDED -> OutgoingTelegramMessage.text(
-                    chatId,
-                    "Отслеживание остановлено. Текущий период подписки завершён, дальнейшие "
-                            + "уведомления по нему отправляться не будут. Если добавить этот товар "
-                            + "снова, начнётся новый период отслеживания.\n\nОткрыть список: /tracked"
-            );
-            case NOT_FOUND -> OutgoingTelegramMessage.text(
-                    chatId,
-                    "Активная подписка не найдена или уже удалена."
-                            + "\n\nОбновить список: /tracked"
-            );
+        String text = switch (result.getStatus()) {
+            case ENDED -> "Отслеживание остановлено. Уведомления по этому товару "
+                    + "больше не придут.";
+            case NOT_FOUND -> "Этот товар уже удалён из списка отслеживания.";
         };
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                List.of(List.of(new TelegramInlineButton(
+                        "Мои товары",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
+                )))
+        );
     }
 
     private boolean isTrackedCommand(String text) {

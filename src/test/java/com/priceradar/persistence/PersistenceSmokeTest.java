@@ -11,6 +11,8 @@ import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.notification.application.NotificationObservation;
+import com.priceradar.notification.domain.NotificationType;
+import com.priceradar.notification.domain.OutboxStatus;
 import com.priceradar.notification.infrastructure.persistence.NotificationOutboxJpaRepository;
 import com.priceradar.product.application.ResolvedQuotePersistenceCommand;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
@@ -190,7 +192,7 @@ class PersistenceSmokeTest {
     }
 
     @Test
-    void marksAlreadyReachedThresholdWithoutDuplicateOutboxEvent() {
+    void createsAlreadyReachedThresholdWithOnePendingOutboxEvent() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         PersistedResolvedQuote quote = quotePersistenceService.save(
                 quoteCommand(777777L, now.minusSeconds(5))
@@ -207,7 +209,15 @@ class PersistenceSmokeTest {
 
         assertThat(result.isCreated()).isTrue();
         assertThat(result.isTargetAlreadyReached()).isTrue();
-        assertThat(notificationOutboxRepository.findAll()).isEmpty();
+        assertThat(notificationOutboxRepository.findAll())
+                .singleElement()
+                .satisfies(outbox -> {
+                    assertThat(outbox.getSubscriptionId())
+                            .isEqualTo(result.getSubscription().orElseThrow().getId());
+                    assertThat(outbox.getSnapshotId()).isEqualTo(quote.getSnapshotId());
+                    assertThat(outbox.getNotificationType()).isEqualTo(NotificationType.TARGET_REACHED);
+                    assertThat(outbox.getStatus()).isEqualTo(OutboxStatus.PENDING);
+                });
     }
 
     @Test

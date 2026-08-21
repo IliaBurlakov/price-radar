@@ -98,7 +98,7 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
             ) latest ON TRUE
             WHERE s.user_id = :userId
               AND s.status = 'ACTIVE'
-            ORDER BY s.created_at DESC, s.id
+            ORDER BY s.created_at, s.id
             """, nativeQuery = true)
     List<TrackedSubscriptionProjection> findActiveTrackedItems(
             @Param("userId") UUID userId

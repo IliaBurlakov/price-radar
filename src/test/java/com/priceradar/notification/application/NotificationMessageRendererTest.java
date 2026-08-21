@@ -32,11 +32,11 @@ class NotificationMessageRendererTest {
                 .contains("Цена снизилась")
                 .contains("Кофемолка")
                 .contains("Предыдущая цена: 120 ₽")
-                .contains("Новая обычная цена: 100 ₽")
-                .contains("97 ₽ · ESTIMATED_BY_PERCENT")
-                .contains("Регион: Moscow")
+                .contains("Новая цена: 100 ₽")
+                .contains("С WB Кошельком: ≈ 97 ₽")
+                .contains("Регион: Москва")
                 .contains("https://www.wildberries.ru/catalog/123456/detail.aspx")
-                .contains("Цена приблизительная");
+                .contains("Цена может отличаться");
     }
 
     @Test
@@ -50,8 +50,8 @@ class NotificationMessageRendererTest {
         assertThat(renderer.render(notification).getText())
                 .contains("Целевая цена достигнута")
                 .contains("Целевая цена: 110 ₽")
-                .contains("Новая обычная цена: 100 ₽")
-                .contains("Наблюдение: 18.07.2026 06:00:00 UTC");
+                .contains("Новая цена: 100 ₽")
+                .contains("Проверено: 18.07.2026 09:00 МСК");
     }
 
     private PendingNotificationDelivery notification(

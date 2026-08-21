@@ -4,14 +4,11 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
-public final class RemoveTrackingCallbackData {
+public final class StatisticsMenuCallbackData {
 
-    private static final String PREFIX = "REMOVE_TRACKING:";
+    private static final String PREFIX = "SHOW_STATS_MENU:";
 
-    private final UUID subscriptionId;
-
-    private RemoveTrackingCallbackData(UUID subscriptionId) {
-        this.subscriptionId = subscriptionId;
+    private StatisticsMenuCallbackData() {
     }
 
     public static String encode(UUID subscriptionId) {
@@ -21,7 +18,7 @@ public final class RemoveTrackingCallbackData {
         return PREFIX + subscriptionId;
     }
 
-    public static Optional<RemoveTrackingCallbackData> parse(String data) {
+    public static Optional<UUID> parse(String data) {
         if (data == null || !data.startsWith(PREFIX)) {
             return Optional.empty();
         }
@@ -31,13 +28,9 @@ public final class RemoveTrackingCallbackData {
             if (!subscriptionId.toString().equals(rawId.toLowerCase(Locale.ROOT))) {
                 return Optional.empty();
             }
-            return Optional.of(new RemoveTrackingCallbackData(subscriptionId));
+            return Optional.of(subscriptionId);
         } catch (IllegalArgumentException exception) {
             return Optional.empty();
         }
-    }
-
-    public UUID getSubscriptionId() {
-        return subscriptionId;
     }
 }

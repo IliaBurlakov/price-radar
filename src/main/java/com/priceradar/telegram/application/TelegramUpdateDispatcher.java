@@ -3,6 +3,7 @@ package com.priceradar.telegram.application;
 public class TelegramUpdateDispatcher {
 
     private final TelegramCurrentQuoteHandler currentQuoteHandler;
+    private final TelegramMenuHandler menuHandler;
     private final TelegramTrackingHandler trackingHandler;
     private final TrackedItemsMessageHandler trackedItemsHandler;
     private final ShowLastKnownCallbackHandler showLastKnownHandler;
@@ -10,16 +11,19 @@ public class TelegramUpdateDispatcher {
 
     public TelegramUpdateDispatcher(
             TelegramCurrentQuoteHandler currentQuoteHandler,
+            TelegramMenuHandler menuHandler,
             TelegramTrackingHandler trackingHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler
     ) {
-        if (currentQuoteHandler == null || trackingHandler == null || trackedItemsHandler == null
+        if (currentQuoteHandler == null || menuHandler == null || trackingHandler == null
+                || trackedItemsHandler == null
                 || showLastKnownHandler == null || statisticsHandler == null) {
             throw new IllegalArgumentException("Telegram update dispatcher dependencies must not be null");
         }
         this.currentQuoteHandler = currentQuoteHandler;
+        this.menuHandler = menuHandler;
         this.trackingHandler = trackingHandler;
         this.trackedItemsHandler = trackedItemsHandler;
         this.showLastKnownHandler = showLastKnownHandler;
@@ -32,6 +36,9 @@ public class TelegramUpdateDispatcher {
         }
         if (update.getCallback().isPresent()) {
             IncomingTelegramCallback callback = update.getCallback().orElseThrow();
+            if (menuHandler.handleCallback(callback)) {
+                return;
+            }
             if (showLastKnownHandler.handleCallback(callback)) {
                 return;
             }
@@ -46,6 +53,9 @@ public class TelegramUpdateDispatcher {
         }
         update.getMessage().ifPresent(message -> {
             if (trackingHandler.handleTargetPriceInput(message)) {
+                return;
+            }
+            if (menuHandler.handleMessage(message)) {
                 return;
             }
             if (trackedItemsHandler.handleMessage(message)) {

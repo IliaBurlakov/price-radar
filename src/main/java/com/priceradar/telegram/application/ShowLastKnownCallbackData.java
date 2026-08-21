@@ -14,6 +14,13 @@ public final class ShowLastKnownCallbackData {
         this.subscriptionId = subscriptionId;
     }
 
+    public static String encode(UUID subscriptionId) {
+        if (subscriptionId == null) {
+            throw new IllegalArgumentException("subscriptionId must not be null");
+        }
+        return PREFIX + subscriptionId;
+    }
+
     public static Optional<ShowLastKnownCallbackData> parse(String data) {
         if (data == null || !data.startsWith(PREFIX)) {
             return Optional.empty();

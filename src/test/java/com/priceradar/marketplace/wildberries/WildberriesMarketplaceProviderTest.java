@@ -135,6 +135,61 @@ class WildberriesMarketplaceProviderTest {
         }
     }
 
+    @Test
+    void activatesCooldownForMalformedResponse() {
+        assertInvalidResponseActivatesCooldown(
+                "{not-json",
+                MarketplaceProviderFailureCode.MALFORMED_RESPONSE
+        );
+    }
+
+    @Test
+    void activatesCooldownForSchemaViolation() {
+        String duplicateSizeIds = """
+                {
+                  "data": {
+                    "products": [{
+                      "id": 123456789,
+                      "sizes": [
+                        {"optionId": 111, "stocks": [{"qty": 1}], "price": {"product": 10000}},
+                        {"optionId": 111, "stocks": [{"qty": 1}], "price": {"product": 9000}}
+                      ]
+                    }]
+                  }
+                }
+                """;
+
+        assertInvalidResponseActivatesCooldown(
+                duplicateSizeIds,
+                MarketplaceProviderFailureCode.SCHEMA_VIOLATION
+        );
+    }
+
+    private void assertInvalidResponseActivatesCooldown(
+            String responseBody,
+            MarketplaceProviderFailureCode expectedCode
+    ) {
+        try (LocalHttpStub stub = LocalHttpStub.start()) {
+            stub.stub("/cards/v4/detail", 200, responseBody);
+            TestCooldownStore cooldownStore = new TestCooldownStore();
+            WildberriesMarketplaceProvider provider = provider(stub, cooldownStore);
+
+            MarketplaceProviderFailure failure = provider.resolveProduct(request())
+                    .getFailure()
+                    .orElseThrow();
+
+            assertThat(failure.getCode()).isEqualTo(expectedCode);
+            assertThat(failure.getRetryNotBefore()).contains(NOW.plus(Duration.ofMinutes(15)));
+            assertThat(cooldownStore.cooldownUntil).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
+
+            MarketplaceProviderFailure blocked = provider.resolveProduct(request())
+                    .getFailure()
+                    .orElseThrow();
+            assertThat(blocked.getCode()).isEqualTo(MarketplaceProviderFailureCode.COOLDOWN_ACTIVE);
+            assertThat(stub.requestCount()).isEqualTo(1);
+        }
+    }
+
     private WildberriesMarketplaceProvider provider(
             LocalHttpStub stub,
             ProviderCooldownStore cooldownStore

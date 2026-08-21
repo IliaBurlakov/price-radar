@@ -21,16 +21,20 @@ public class SubscriptionService {
 
     private final UserProfileStore userProfileStore;
     private final SubscriptionStore subscriptionStore;
+    private final InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer;
 
     public SubscriptionService(
             UserProfileStore userProfileStore,
-            SubscriptionStore subscriptionStore
+            SubscriptionStore subscriptionStore,
+            InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer
     ) {
-        if (userProfileStore == null || subscriptionStore == null) {
+        if (userProfileStore == null || subscriptionStore == null
+                || thresholdNotificationEnqueuer == null) {
             throw new IllegalArgumentException("subscription service dependencies must not be null");
         }
         this.userProfileStore = userProfileStore;
         this.subscriptionStore = subscriptionStore;
+        this.thresholdNotificationEnqueuer = thresholdNotificationEnqueuer;
     }
 
     @Transactional
@@ -73,7 +77,15 @@ public class SubscriptionService {
                 currentRegularPrice,
                 now
         );
-        return SubscriptionCreationResult.created(subscriptionStore.create(subscription));
+        Subscription persisted = subscriptionStore.create(subscription);
+        if (persisted.getThresholdState() == ThresholdState.REACHED_NOTIFIED) {
+            thresholdNotificationEnqueuer.enqueue(
+                    persisted,
+                    currentRegularPrice.orElseThrow(),
+                    now
+            );
+        }
+        return SubscriptionCreationResult.created(persisted);
     }
 
     @Transactional

@@ -95,6 +95,6 @@ priceradar:
     initial-delay: PT10S
     poll-delay: PT60S
     batch-size: 20
-    refresh-interval: PT6H
-    max-jitter: PT30M
+    refresh-interval: ${PRICE_SCHEDULER_REFRESH_INTERVAL:PT6H}
+    max-jitter: ${PRICE_SCHEDULER_MAX_JITTER:PT30M}
     failure-retry-delay: PT5M

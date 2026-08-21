@@ -6,17 +6,18 @@ import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.domain.StatisticsPeriod;
 
 import java.math.BigDecimal;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 
 public final class StatisticsMessageFactory {
 
     private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цены приблизительные и могут отличаться в вашем аккаунте Wildberries.";
+            "⚠️ Цена может отличаться в приложении Wildberries.";
     private static final DateTimeFormatter PERIOD_FORMAT = DateTimeFormatter
-            .ofPattern("dd.MM.yyyy HH:mm:ss 'UTC'", Locale.ROOT)
-            .withZone(ZoneOffset.UTC);
+            .ofPattern("dd.MM.yyyy", Locale.ROOT)
+            .withZone(ZoneId.of("Europe/Moscow"));
 
     public OutgoingTelegramMessage create(
             long chatId,
@@ -27,7 +28,7 @@ public final class StatisticsMessageFactory {
             throw new IllegalArgumentException("statistics message fields must not be null or blank");
         }
 
-        StringBuilder text = new StringBuilder("Статистика обычной цены ")
+        StringBuilder text = new StringBuilder("Статистика ")
                 .append(periodLabel(statistics.getPeriod()))
                 .append("\nПериод: ")
                 .append(PERIOD_FORMAT.format(statistics.getEffectivePeriodStart()))
@@ -35,13 +36,12 @@ public final class StatisticsMessageFactory {
                 .append(PERIOD_FORMAT.format(statistics.getEffectivePeriodEnd()));
 
         if (!statistics.hasData()) {
-            text.append("\n\nСтатистика пока недоступна: в выбранном периоде ещё нет "
-                    + "наблюдений обычной цены.");
-            text.append("\nРегион: ").append(region.trim());
-            text.append("\n\nУчитываются только обычные цены, наблюдавшиеся в текущем "
-                    + "периоде подписки.");
+            text.append("\n\nЗа этот период пока недостаточно данных.");
+            text.append("\nРегион: ")
+                    .append(TelegramDisplayFormatter.region(region));
+            text.append("\nИстория начинается с момента добавления товара.");
             text.append("\n").append(APPROXIMATE_PRICE_WARNING);
-            return OutgoingTelegramMessage.text(chatId, text.toString());
+            return withTrackedButton(chatId, text.toString());
         }
 
         text.append("\n\nМинимальная цена: ")
@@ -50,13 +50,24 @@ public final class StatisticsMessageFactory {
                 .append(format(statistics.getMaximumPrice().orElseThrow()));
         text.append("\nСредняя цена: ")
                 .append(formatAverage(statistics.getAverageMinorUnits().orElseThrow()));
-        text.append("\nКоличество наблюдений: ")
+        text.append("\nПроверок с доступной ценой: ")
                 .append(statistics.getObservationCount());
-        text.append("\nРегион: ").append(region.trim());
-        text.append("\n\nУчитываются только обычные цены, наблюдавшиеся в текущем "
-                + "периоде подписки.");
+        text.append("\nРегион: ")
+                .append(TelegramDisplayFormatter.region(region));
+        text.append("\nИстория начинается с момента добавления товара.");
         text.append("\n").append(APPROXIMATE_PRICE_WARNING);
-        return OutgoingTelegramMessage.text(chatId, text.toString());
+        return withTrackedButton(chatId, text.toString());
+    }
+
+    private OutgoingTelegramMessage withTrackedButton(long chatId, String text) {
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                List.of(List.of(new TelegramInlineButton(
+                        "Мои товары",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
+                )))
+        );
     }
 
     private String periodLabel(StatisticsPeriod period) {
