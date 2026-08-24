@@ -61,12 +61,36 @@ public final class SubscriptionStatistics {
         return observedPrices.getMinimumPrice();
     }
 
+    public Optional<Instant> getMinimumObservedAt() {
+        return observedPrices.getMinimumObservedAt();
+    }
+
     public Optional<RubleAmount> getMaximumPrice() {
         return observedPrices.getMaximumPrice();
     }
 
     public Optional<BigDecimal> getAverageMinorUnits() {
         return observedPrices.getAverageMinorUnits();
+    }
+
+    public Optional<RubleAmount> getFirstPrice() {
+        return observedPrices.getFirstPrice();
+    }
+
+    public Optional<RubleAmount> getLatestPrice() {
+        return observedPrices.getLatestPrice();
+    }
+
+    public Optional<Long> getPriceChangeMinorUnits() {
+        return observedPrices.getPriceChangeMinorUnits();
+    }
+
+    public Optional<BigDecimal> getPriceChangePercent() {
+        return observedPrices.getPriceChangePercent();
+    }
+
+    public Optional<RubleAmount> getLatestPriceDifferenceFromMinimum() {
+        return observedPrices.getLatestPriceDifferenceFromMinimum();
     }
 
     public boolean hasData() {

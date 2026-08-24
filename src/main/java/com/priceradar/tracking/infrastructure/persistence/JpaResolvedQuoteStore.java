@@ -60,13 +60,6 @@ public class JpaResolvedQuoteStore implements ResolvedQuoteStore {
         return new PersistedResolvedQuote(watchTargetId, snapshotId);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public Optional<Instant> findObservationTime(UUID snapshotId) {
-        return snapshotRepository.findById(snapshotId)
-                .map(PriceSnapshotEntity::getObservedAt);
-    }
-
     private UUID upsertWatchTarget(
             ResolvedQuotePersistenceCommand command,
             UUID productId,

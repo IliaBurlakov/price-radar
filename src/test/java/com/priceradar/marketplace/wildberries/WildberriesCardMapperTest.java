@@ -17,40 +17,23 @@ class WildberriesCardMapperTest {
     private final WildberriesCardMapper mapper = new WildberriesCardMapper();
 
     @Test
-    void returnsEmptyResponseFailureForBlankInput() {
-        WildberriesMappingResult result = mapper.map("   ", 123456789);
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getFailure()).get()
+    void classifiesInvalidAndMissingProviderResponses() {
+        assertThat(mapper.map("   ", 123456789).getFailure()).get()
                 .extracting(WildberriesMappingFailure::getCode)
                 .isEqualTo(WildberriesMappingFailureCode.EMPTY_RESPONSE);
-    }
-
-    @Test
-    void returnsMalformedJsonFailureForInvalidJson() {
-        WildberriesMappingResult result = mapper.map("{not-json", 123456789);
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getFailure()).get()
+        assertThat(mapper.map("{not-json", 123456789).getFailure()).get()
                 .extracting(WildberriesMappingFailure::getCode)
                 .isEqualTo(WildberriesMappingFailureCode.MALFORMED_JSON);
-    }
-
-    @Test
-    void returnsProductNotFoundFailureWhenExpectedNmIdIsAbsent() {
-        WildberriesMappingResult result = mapper.map(
+        assertThat(mapper.map(
                 fixture("wildberries/card-detail/product-not-found-card-v4-detail.json"),
                 123456789
-        );
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getFailure()).get()
+        ).getFailure()).get()
                 .extracting(WildberriesMappingFailure::getCode)
                 .isEqualTo(WildberriesMappingFailureCode.PRODUCT_NOT_FOUND);
     }
 
     @Test
-    void mapsCardV4DetailStructureWithRegularAndMarketingBasePrices() {
+    void mapsCardV4SizesWithRegularMarketingAndBasicFallbackPrices() {
         WildberriesMappedProduct product = mapper.map(
                 fixture("wildberries/card-detail/regular-card-v4-detail.json"),
                 123456789
@@ -73,14 +56,6 @@ class WildberriesCardMapperTest {
         ProviderPriceFields firstPrice = product.findPriceFields("SIZE:111").orElseThrow();
         assertThat(firstPrice.getProductPrice()).contains(RubleAmount.ofMinorUnits(89900));
         assertThat(firstPrice.getBasicPrice()).contains(RubleAmount.ofMinorUnits(129900));
-    }
-
-    @Test
-    void mapsBasicOnlyPriceWithoutRegularProductPrice() {
-        WildberriesMappedProduct product = mapper.map(
-                fixture("wildberries/card-detail/regular-card-v4-detail.json"),
-                123456789
-        ).getProduct().orElseThrow();
 
         VariantOption secondSize = product.getVariantOptions().get(1);
         assertThat(secondSize.getVariantKey()).isEqualTo("SIZE:222");

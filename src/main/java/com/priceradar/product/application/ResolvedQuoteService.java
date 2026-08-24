@@ -10,11 +10,9 @@ import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.domain.PriceContext;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 
 public final class ResolvedQuoteService {
 
@@ -27,20 +25,15 @@ public final class ResolvedQuoteService {
     private final VariantResolutionService variantResolutionService;
     private final PriceSemanticsService priceSemanticsService;
     private final ResolvedQuotePersistenceService persistenceService;
-    private final ResolvedQuoteStore quoteStore;
-    private final Clock clock;
-
     public ResolvedQuoteService(
             ProductUrlParser productUrlParser,
             MarketplaceProvider marketplaceProvider,
             VariantResolutionService variantResolutionService,
             PriceSemanticsService priceSemanticsService,
-            ResolvedQuotePersistenceService persistenceService,
-            ResolvedQuoteStore quoteStore,
-            Clock clock
+            ResolvedQuotePersistenceService persistenceService
     ) {
         if (productUrlParser == null || marketplaceProvider == null || variantResolutionService == null
-                || priceSemanticsService == null || persistenceService == null || quoteStore == null || clock == null) {
+                || priceSemanticsService == null || persistenceService == null) {
             throw new IllegalArgumentException("resolved quote service dependencies must not be null");
         }
 
@@ -49,8 +42,6 @@ public final class ResolvedQuoteService {
         this.variantResolutionService = variantResolutionService;
         this.priceSemanticsService = priceSemanticsService;
         this.persistenceService = persistenceService;
-        this.quoteStore = quoteStore;
-        this.clock = clock;
     }
 
     public ResolvedQuoteResult resolve(String productUrl, PriceContext priceContext) {
@@ -130,18 +121,6 @@ public final class ResolvedQuoteService {
                 observedAt,
                 observedAt.plus(QUOTE_TTL)
         ));
-    }
-
-    public boolean isFresh(UUID snapshotId) {
-        if (snapshotId == null) {
-            throw new IllegalArgumentException("snapshotId must not be null");
-        }
-
-        Instant now = clock.instant();
-        return quoteStore.findObservationTime(snapshotId)
-                .filter(observedAt -> !observedAt.isAfter(now))
-                .map(observedAt -> !now.isAfter(observedAt.plus(QUOTE_TTL)))
-                .orElse(false);
     }
 
     private boolean matchesRequestedProduct(MarketplaceProductDetails product, long nmId) {

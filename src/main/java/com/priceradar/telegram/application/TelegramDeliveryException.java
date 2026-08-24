@@ -8,6 +8,10 @@ public class TelegramDeliveryException extends RuntimeException {
     private final boolean retryable;
     private final Optional<Duration> retryAfter;
 
+    public TelegramDeliveryException(String message) {
+        this(message, false);
+    }
+
     public TelegramDeliveryException(String message, boolean retryable) {
         this(message, retryable, Optional.empty());
     }

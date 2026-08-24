@@ -17,7 +17,6 @@ import com.priceradar.notification.infrastructure.persistence.NotificationOutbox
 import com.priceradar.product.application.ResolvedQuotePersistenceCommand;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
 import com.priceradar.product.application.PersistedResolvedQuote;
-import com.priceradar.product.application.ResolvedQuoteService;
 import com.priceradar.product.application.ResolvedVariant;
 import com.priceradar.product.infrastructure.persistence.ProductJpaRepository;
 import com.priceradar.scheduler.application.DueWatchTarget;
@@ -95,9 +94,6 @@ class PersistenceSmokeTest {
     private ResolvedQuotePersistenceService quotePersistenceService;
 
     @Autowired
-    private ResolvedQuoteService resolvedQuoteService;
-
-    @Autowired
     private ProductJpaRepository productRepository;
 
     @Autowired
@@ -162,7 +158,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("5");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("6");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -389,10 +385,21 @@ class PersistenceSmokeTest {
         assertThat(firstPeriod.getObservationCount()).isEqualTo(2);
         assertThat(firstPeriod.getMinimumPrice())
                 .contains(RubleAmount.ofMinorUnits(9_000L));
+        assertThat(firstPeriod.getMinimumObservedAt())
+                .contains(subscriptionStartedAt.plusSeconds(1));
         assertThat(firstPeriod.getMaximumPrice())
                 .contains(RubleAmount.ofMinorUnits(11_001L));
         assertThat(firstPeriod.getAverageMinorUnits().orElseThrow())
                 .isEqualByComparingTo("10000.5");
+        assertThat(firstPeriod.getFirstPrice())
+                .contains(RubleAmount.ofMinorUnits(9_000L));
+        assertThat(firstPeriod.getLatestPrice())
+                .contains(RubleAmount.ofMinorUnits(11_001L));
+        assertThat(firstPeriod.getPriceChangeMinorUnits()).contains(2_001L);
+        assertThat(firstPeriod.getPriceChangePercent().orElseThrow())
+                .isEqualByComparingTo("22.23");
+        assertThat(firstPeriod.getLatestPriceDifferenceFromMinimum())
+                .contains(RubleAmount.ofMinorUnits(2_001L));
 
         subscriptionService.end(
                 user.getId(),
@@ -441,12 +448,19 @@ class PersistenceSmokeTest {
         assertThat(newPeriod.getObservationCount()).isOne();
         assertThat(newPeriod.getMinimumPrice())
                 .contains(RubleAmount.ofMinorUnits(8_500L));
+        assertThat(newPeriod.getFirstPrice())
+                .contains(RubleAmount.ofMinorUnits(8_500L));
+        assertThat(newPeriod.getLatestPrice())
+                .contains(RubleAmount.ofMinorUnits(8_500L));
+        assertThat(newPeriod.getPriceChangeMinorUnits()).contains(0L);
+        assertThat(newPeriod.getLatestPriceDifferenceFromMinimum())
+                .contains(RubleAmount.ofMinorUnits(0));
         assertThat(newPeriod.getAverageMinorUnits().orElseThrow())
                 .isEqualByComparingTo("8500");
     }
 
     @Test
-    void persistsResolvedQuoteIdempotentlyAndChecksTtlFromSnapshots() {
+    void persistsResolvedQuoteIdempotently() {
         Instant freshObservation = Instant.now().minus(1, ChronoUnit.MINUTES);
         ResolvedQuotePersistenceCommand freshQuote = quoteCommand(123456L, freshObservation);
 
@@ -455,19 +469,9 @@ class PersistenceSmokeTest {
 
         assertThat(repeated.getWatchTargetId()).isEqualTo(first.getWatchTargetId());
         assertThat(repeated.getSnapshotId()).isEqualTo(first.getSnapshotId());
-        assertThat(resolvedQuoteService.isFresh(first.getSnapshotId())).isTrue();
         assertThat(productRepository.count()).isEqualTo(1);
         assertThat(watchTargetRepository.count()).isEqualTo(1);
         assertThat(snapshotRepository.count()).isEqualTo(1);
-
-        Instant expiredObservation = Instant.now().minus(16, ChronoUnit.MINUTES);
-        ResolvedQuotePersistenceCommand expiredQuote = quoteCommand(654321L, expiredObservation);
-        PersistedResolvedQuote expired = quotePersistenceService.save(expiredQuote);
-
-        assertThat(resolvedQuoteService.isFresh(expired.getSnapshotId())).isFalse();
-        assertThat(productRepository.count()).isEqualTo(2);
-        assertThat(watchTargetRepository.count()).isEqualTo(2);
-        assertThat(snapshotRepository.count()).isEqualTo(2);
     }
 
     private ResolvedQuotePersistenceCommand quoteCommand(long nmId, Instant observedAt) {

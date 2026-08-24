@@ -1,7 +1,5 @@
 package com.priceradar.telegram.application;
 
-import java.util.List;
-
 public final class TelegramMenuMessageFactory {
 
     public OutgoingTelegramMessage welcome(long chatId) {
@@ -9,21 +7,25 @@ public final class TelegramMenuMessageFactory {
                 Добро пожаловать в PriceRadar!
 
                 Бот поможет следить за ценами на Wildberries:
-                • покажет текущую цену товара;
-                • сообщит о снижении;
-                • уведомит, когда цена достигнет выбранного значения;
-                • покажет историю изменения цены.
+                🔎 покажет текущую цену товара;
+                🔔 сообщит о новой минимальной цене;
+                🎯 уведомит, когда цена достигнет выбранного значения;
+                📊 покажет историю изменения цены.
 
                 Чтобы начать, отправьте ссылку на товар или выберите нужный раздел.
                 """;
-        return new OutgoingTelegramMessage(chatId, text, mainKeyboard());
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                TelegramNavigationKeyboard.mainMenu()
+        );
     }
 
     public OutgoingTelegramMessage mainMenu(long chatId) {
         return new OutgoingTelegramMessage(
                 chatId,
                 "Что вы хотите сделать?",
-                mainKeyboard()
+                TelegramNavigationKeyboard.mainMenu()
         );
     }
 
@@ -39,7 +41,11 @@ public final class TelegramMenuMessageFactory {
 
                 Цена может отличаться от итоговой цены в приложении Wildberries.
                 """;
-        return new OutgoingTelegramMessage(chatId, text, homeKeyboard());
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                TelegramNavigationKeyboard.home()
+        );
     }
 
     public OutgoingTelegramMessage addProduct(long chatId) {
@@ -49,24 +55,10 @@ public final class TelegramMenuMessageFactory {
                 Например:
                 https://www.wildberries.ru/catalog/10302970/detail.aspx
                 """;
-        return new OutgoingTelegramMessage(chatId, text, homeKeyboard());
-    }
-
-    private List<List<TelegramInlineButton>> mainKeyboard() {
-        return List.of(
-                List.of(button("Добавить товар", MainMenuCallbackData.Action.ADD_PRODUCT)),
-                List.of(
-                        button("Мои товары", MainMenuCallbackData.Action.TRACKED_ITEMS),
-                        button("Помощь", MainMenuCallbackData.Action.HELP)
-                )
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                TelegramNavigationKeyboard.home()
         );
-    }
-
-    private List<List<TelegramInlineButton>> homeKeyboard() {
-        return List.of(List.of(button("Главное меню", MainMenuCallbackData.Action.HOME)));
-    }
-
-    private TelegramInlineButton button(String text, MainMenuCallbackData.Action action) {
-        return new TelegramInlineButton(text, MainMenuCallbackData.encode(action));
     }
 }

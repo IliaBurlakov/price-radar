@@ -39,9 +39,10 @@ public class TelegramCurrentQuoteHandler {
 
         String text = message.getText();
         if (text.isBlank() || text.startsWith("/")) {
-            telegramGateway.sendMessage(OutgoingTelegramMessage.text(
+            telegramGateway.sendMessage(new OutgoingTelegramMessage(
                     message.getChatId(),
-                    INPUT_HELP_MESSAGE
+                    INPUT_HELP_MESSAGE,
+                    TelegramNavigationKeyboard.mainMenu()
             ));
             return;
         }
@@ -69,10 +70,11 @@ public class TelegramCurrentQuoteHandler {
                     profile
             );
         } catch (InvalidProductUrlException exception) {
-            return OutgoingTelegramMessage.text(
+            return new OutgoingTelegramMessage(
                     message.getChatId(),
                     "Не получилось распознать ссылку. Отправьте ссылку на товар в формате:\n"
-                            + "https://www.wildberries.ru/catalog/123456/detail.aspx"
+                            + "https://www.wildberries.ru/catalog/10302970/detail.aspx",
+                    TelegramNavigationKeyboard.addProductAndHome()
             );
         }
     }

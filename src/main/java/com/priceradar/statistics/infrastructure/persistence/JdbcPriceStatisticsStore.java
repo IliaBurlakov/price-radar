@@ -39,18 +39,40 @@ public class JdbcPriceStatisticsStore implements PriceStatisticsStore {
         }
         return jdbcTemplate.queryForObject(
                 """
+                        WITH observations AS MATERIALIZED (
+                            SELECT id, observed_at, regular_price_minor
+                            FROM price_snapshots
+                            WHERE watch_target_id = ?
+                              AND observed_at >= ?
+                              AND observed_at <= ?
+                              AND status = 'REGULAR_PRICE'
+                              AND price_source = 'PRODUCT'
+                              AND regular_price_minor > 0
+                        )
                         SELECT
                             COUNT(*) AS observation_count,
                             MIN(regular_price_minor) AS minimum_price_minor,
                             MAX(regular_price_minor) AS maximum_price_minor,
-                            AVG(regular_price_minor) AS average_price_minor
-                        FROM price_snapshots
-                        WHERE watch_target_id = ?
-                          AND observed_at >= ?
-                          AND observed_at <= ?
-                          AND status = 'REGULAR_PRICE'
-                          AND price_source = 'PRODUCT'
-                          AND regular_price_minor > 0
+                            AVG(regular_price_minor) AS average_price_minor,
+                            (
+                                SELECT regular_price_minor
+                                FROM observations
+                                ORDER BY observed_at, id
+                                LIMIT 1
+                            ) AS first_price_minor,
+                            (
+                                SELECT regular_price_minor
+                                FROM observations
+                                ORDER BY observed_at DESC, id DESC
+                                LIMIT 1
+                            ) AS latest_price_minor,
+                            (
+                                SELECT observed_at
+                                FROM observations
+                                ORDER BY regular_price_minor, observed_at, id
+                                LIMIT 1
+                            ) AS minimum_observed_at
+                        FROM observations
                         """,
                 this::map,
                 watchTargetId,
@@ -67,11 +89,17 @@ public class JdbcPriceStatisticsStore implements PriceStatisticsStore {
         long minimumPriceMinor = resultSet.getLong("minimum_price_minor");
         long maximumPriceMinor = resultSet.getLong("maximum_price_minor");
         BigDecimal averagePriceMinor = resultSet.getBigDecimal("average_price_minor");
+        long firstPriceMinor = resultSet.getLong("first_price_minor");
+        long latestPriceMinor = resultSet.getLong("latest_price_minor");
+        Instant minimumObservedAt = resultSet.getTimestamp("minimum_observed_at").toInstant();
         return ObservedPriceStatistics.of(
                 observationCount,
                 RubleAmount.ofMinorUnits(minimumPriceMinor),
+                minimumObservedAt,
                 RubleAmount.ofMinorUnits(maximumPriceMinor),
-                averagePriceMinor
+                averagePriceMinor,
+                RubleAmount.ofMinorUnits(firstPriceMinor),
+                RubleAmount.ofMinorUnits(latestPriceMinor)
         );
     }
 }

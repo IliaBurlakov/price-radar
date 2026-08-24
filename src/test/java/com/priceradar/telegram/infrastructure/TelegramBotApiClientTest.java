@@ -1,6 +1,7 @@
 package com.priceradar.telegram.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.priceradar.telegram.application.TelegramDeliveryException;
 import com.priceradar.testsupport.LocalHttpStub;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +32,7 @@ class TelegramBotApiClientTest {
             );
 
             assertThatThrownBy(() -> client.receiveUpdates(0, Duration.ofSeconds(1)))
-                    .isInstanceOfSatisfying(TelegramGatewayException.class, exception -> {
+                    .isInstanceOfSatisfying(TelegramDeliveryException.class, exception -> {
                         assertThat(exception.isRetryable()).isTrue();
                         assertThat(exception.getRetryAfter()).contains(Duration.ofHours(1));
                     });

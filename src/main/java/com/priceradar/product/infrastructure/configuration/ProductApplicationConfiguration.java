@@ -11,8 +11,6 @@ import com.priceradar.product.application.VariantResolutionService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.time.Clock;
-
 @Configuration(proxyBeanMethods = false)
 public class ProductApplicationConfiguration {
 
@@ -45,18 +43,14 @@ public class ProductApplicationConfiguration {
             MarketplaceProvider marketplaceProvider,
             VariantResolutionService variantResolutionService,
             PriceSemanticsService priceSemanticsService,
-            ResolvedQuotePersistenceService persistenceService,
-            ResolvedQuoteStore quoteStore,
-            Clock providerClock
+            ResolvedQuotePersistenceService persistenceService
     ) {
         return new ResolvedQuoteService(
                 productUrlParser,
                 marketplaceProvider,
                 variantResolutionService,
                 priceSemanticsService,
-                persistenceService,
-                quoteStore,
-                providerClock
+                persistenceService
         );
     }
 }

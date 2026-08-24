@@ -111,8 +111,10 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 subscription.getWatchTargetId(),
                 subscription.getNotificationMode(),
                 subscription.getTargetPrice().map(RubleAmount::getMinorUnits).orElse(null),
-                subscription.getBaselinePrice().map(RubleAmount::getMinorUnits).orElse(null),
-                subscription.getBaselineObservedAt().orElse(null),
+                subscription.getNotificationReferencePrice()
+                        .map(RubleAmount::getMinorUnits)
+                        .orElse(null),
+                subscription.getLastProcessedPriceObservedAt().orElse(null),
                 subscription.getThresholdState(),
                 subscription.getThresholdObservedAt().orElse(null),
                 subscription.getStatus(),
@@ -129,8 +131,10 @@ public class JpaSubscriptionStore implements SubscriptionStore {
         }
         int updated = subscriptionRepository.updateNotificationStateIfActive(
                 subscription.getId(),
-                subscription.getBaselinePrice().map(RubleAmount::getMinorUnits).orElse(null),
-                subscription.getBaselineObservedAt().orElse(null),
+                subscription.getNotificationReferencePrice()
+                        .map(RubleAmount::getMinorUnits)
+                        .orElse(null),
+                subscription.getLastProcessedPriceObservedAt().orElse(null),
                 subscription.getThresholdState(),
                 subscription.getThresholdObservedAt().orElse(null),
                 SubscriptionStatus.ACTIVE,
@@ -156,8 +160,8 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 entity.getWatchTargetId(),
                 entity.getNotificationMode(),
                 optionalAmount(entity.getTargetPriceMinor()),
-                optionalAmount(entity.getBaselinePriceMinor()),
-                Optional.ofNullable(entity.getBaselineObservedAt()),
+                optionalAmount(entity.getNotificationReferencePriceMinor()),
+                Optional.ofNullable(entity.getLastProcessedPriceObservedAt()),
                 entity.getThresholdState(),
                 Optional.ofNullable(entity.getThresholdObservedAt()),
                 entity.getStatus(),

@@ -8,6 +8,7 @@ import com.priceradar.telegram.application.IncomingTelegramMessage;
 import com.priceradar.telegram.application.IncomingTelegramCallback;
 import com.priceradar.telegram.application.OutgoingTelegramMessage;
 import com.priceradar.telegram.application.TelegramGateway;
+import com.priceradar.telegram.application.TelegramDeliveryException;
 import com.priceradar.telegram.application.TelegramInlineButton;
 import com.priceradar.telegram.application.TelegramUpdate;
 
@@ -97,7 +98,7 @@ public class TelegramBotApiClient implements TelegramGateway {
                 timeout.plus(requestTimeout)
         );
         if (!result.isArray()) {
-            throw new TelegramGatewayException("Telegram API returned invalid updates data");
+            throw new TelegramDeliveryException("Telegram API returned invalid updates data");
         }
         List<TelegramUpdate> updates = new ArrayList<>();
         for (JsonNode updateNode : result) {
@@ -217,9 +218,9 @@ public class TelegramBotApiClient implements TelegramGateway {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new TelegramGatewayException("Telegram request was interrupted", true);
+            throw new TelegramDeliveryException("Telegram request was interrupted", true);
         } catch (IOException exception) {
-            throw new TelegramGatewayException("Telegram API is temporarily unavailable", true);
+            throw new TelegramDeliveryException("Telegram API is temporarily unavailable", true);
         }
 
         String rawResponse = readBoundedBody(response.body());
@@ -227,7 +228,7 @@ public class TelegramBotApiClient implements TelegramGateway {
             Optional<Duration> retryAfter = response.statusCode() == 429
                     ? extractRetryAfter(rawResponse)
                     : Optional.empty();
-            throw new TelegramGatewayException(
+            throw new TelegramDeliveryException(
                     "Telegram API returned HTTP " + response.statusCode(),
                     response.statusCode() == 429 || response.statusCode() >= 500,
                     retryAfter
@@ -237,7 +238,7 @@ public class TelegramBotApiClient implements TelegramGateway {
         JsonNode responseBody = readJson(rawResponse);
         JsonNode result = responseBody.path("result");
         if (!responseBody.path("ok").asBoolean(false) || result.isMissingNode() || result.isNull()) {
-            throw new TelegramGatewayException("Telegram API returned an unsuccessful response");
+            throw new TelegramDeliveryException("Telegram API returned an unsuccessful response");
         }
         return result;
     }
@@ -246,7 +247,7 @@ public class TelegramBotApiClient implements TelegramGateway {
         try {
             return objectMapper.writeValueAsString(body);
         } catch (IOException exception) {
-            throw new TelegramGatewayException("Could not create Telegram request");
+            throw new TelegramDeliveryException("Could not create Telegram request");
         }
     }
 
@@ -254,7 +255,7 @@ public class TelegramBotApiClient implements TelegramGateway {
         try {
             return objectMapper.readTree(body);
         } catch (IOException exception) {
-            throw new TelegramGatewayException("Telegram API returned malformed JSON");
+            throw new TelegramDeliveryException("Telegram API returned malformed JSON");
         }
     }
 
@@ -262,11 +263,11 @@ public class TelegramBotApiClient implements TelegramGateway {
         try (body) {
             byte[] bytes = body.readNBytes(maxResponseBytes + 1);
             if (bytes.length > maxResponseBytes) {
-                throw new TelegramGatewayException("Telegram API response is too large", true);
+                throw new TelegramDeliveryException("Telegram API response is too large", true);
             }
             return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
         } catch (IOException exception) {
-            throw new TelegramGatewayException("Could not read Telegram API response", true);
+            throw new TelegramDeliveryException("Could not read Telegram API response", true);
         }
     }
 

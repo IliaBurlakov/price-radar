@@ -48,8 +48,8 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE SubscriptionEntity subscription
-            SET subscription.baselinePriceMinor = :baselinePriceMinor,
-                subscription.baselineObservedAt = :baselineObservedAt,
+            SET subscription.notificationReferencePriceMinor = :notificationReferencePriceMinor,
+                subscription.lastProcessedPriceObservedAt = :lastProcessedPriceObservedAt,
                 subscription.thresholdState = :thresholdState,
                 subscription.thresholdObservedAt = :thresholdObservedAt,
                 subscription.version = subscription.version + 1
@@ -59,8 +59,8 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
             """)
     int updateNotificationStateIfActive(
             @Param("subscriptionId") UUID subscriptionId,
-            @Param("baselinePriceMinor") Long baselinePriceMinor,
-            @Param("baselineObservedAt") Instant baselineObservedAt,
+            @Param("notificationReferencePriceMinor") Long notificationReferencePriceMinor,
+            @Param("lastProcessedPriceObservedAt") Instant lastProcessedPriceObservedAt,
             @Param("thresholdState") ThresholdState thresholdState,
             @Param("thresholdObservedAt") Instant thresholdObservedAt,
             @Param("activeStatus") SubscriptionStatus activeStatus,
