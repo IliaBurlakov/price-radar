@@ -17,7 +17,7 @@ WITH active_subscription_history AS (
     FROM subscriptions subscription
     JOIN price_snapshots snapshot
       ON snapshot.watch_target_id = subscription.watch_target_id
-     AND snapshot.observed_at >= subscription.created_at
+     AND snapshot.observed_at >= subscription.created_at - INTERVAL '15 minutes'
      AND snapshot.observed_at <= CURRENT_TIMESTAMP
      AND snapshot.status = 'REGULAR_PRICE'
      AND snapshot.price_source = 'PRODUCT'

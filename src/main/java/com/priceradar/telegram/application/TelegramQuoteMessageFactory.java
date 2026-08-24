@@ -135,7 +135,7 @@ public final class TelegramQuoteMessageFactory {
     ) {
         return List.of(
                 List.of(new TelegramInlineButton(
-                        "Следить за новой минимальной ценой",
+                        "Следить за минимумом",
                         trackingCallbackCodec.encode(
                                 TrackingCallbackData.Action.TRACK_ANY_DECREASE,
                                 quoteSnapshotId,

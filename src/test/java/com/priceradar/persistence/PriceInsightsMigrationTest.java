@@ -57,8 +57,8 @@ class PriceInsightsMigrationTest {
                 1002L,
                 watchTargetId,
                 50_000L,
-                createdAt.plusSeconds(300),
-                createdAt.plusSeconds(360)
+                createdAt.plusSeconds(301),
+                createdAt.plusSeconds(1_201)
         );
 
         Flyway.configure()
@@ -93,7 +93,60 @@ class PriceInsightsMigrationTest {
         assertThat(preservedInitialState.get("notification_reference_price_minor"))
                 .isEqualTo(50_000L);
         assertThat(preservedInitialState.get("last_processed_price_observed_at"))
-                .isEqualTo(Timestamp.from(createdAt.plusSeconds(300)));
+                .isEqualTo(Timestamp.from(createdAt.plusSeconds(301)));
+    }
+
+    @Test
+    void includesInitialQuoteFromTheFifteenMinuteWindowWithoutLosingLatestObservationTime() {
+        String schema = "price_insights_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway flywayAtVersionFive = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .target(MigrationVersion.fromVersion("5"))
+                .load();
+        flywayAtVersionFive.migrate();
+
+        JdbcTemplate jdbc = jdbcTemplate(schema);
+        Instant createdAt = Instant.parse("2026-08-20T10:00:00Z");
+        Instant initialQuoteObservedAt = createdAt.minusSeconds(5 * 60);
+        Instant latestObservedAt = createdAt.plusSeconds(10 * 60);
+        UUID watchTargetId = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        insertProductAndWatchTarget(jdbc, watchTargetId, createdAt);
+        insertRegularSnapshot(jdbc, watchTargetId, initialQuoteObservedAt, 43_400L);
+        insertRegularSnapshot(jdbc, watchTargetId, latestObservedAt, 49_600L);
+        insertSubscription(
+                jdbc,
+                subscriptionId,
+                UUID.randomUUID(),
+                1003L,
+                watchTargetId,
+                49_600L,
+                latestObservedAt,
+                createdAt
+        );
+
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .load()
+                .migrate();
+
+        Map<String, Object> backfilled = jdbc.queryForMap(
+                """
+                        SELECT notification_reference_price_minor,
+                               last_processed_price_observed_at
+                        FROM subscriptions
+                        WHERE id = ?
+                        """,
+                subscriptionId
+        );
+        assertThat(backfilled.get("notification_reference_price_minor"))
+                .isEqualTo(43_400L);
+        assertThat(backfilled.get("last_processed_price_observed_at"))
+                .isEqualTo(Timestamp.from(latestObservedAt));
     }
 
     private JdbcTemplate jdbcTemplate(String schema) {
@@ -120,7 +173,7 @@ class PriceInsightsMigrationTest {
                         """,
                 productId,
                 "https://www.wildberries.ru/catalog/123456/detail.aspx",
-                Timestamp.from(createdAt.minusSeconds(60))
+                Timestamp.from(createdAt.minusSeconds(20 * 60))
         );
         jdbc.update(
                 """
@@ -132,10 +185,10 @@ class PriceInsightsMigrationTest {
                 watchTargetId,
                 productId,
                 Timestamp.from(createdAt),
-                Timestamp.from(createdAt.minusSeconds(60))
+                Timestamp.from(createdAt.minusSeconds(20 * 60))
         );
 
-        insertRegularSnapshot(jdbc, watchTargetId, createdAt.minusSeconds(1), 30_000L);
+        insertRegularSnapshot(jdbc, watchTargetId, createdAt.minusSeconds(16 * 60), 30_000L);
         insertRegularSnapshot(jdbc, watchTargetId, createdAt.plusSeconds(60), 43_400L);
         insertNonRegularSnapshot(
                 jdbc,
@@ -169,6 +222,36 @@ class PriceInsightsMigrationTest {
         );
         insertRegularSnapshot(jdbc, watchTargetId, createdAt.plusSeconds(270), 41_000L);
         insertRegularSnapshot(jdbc, watchTargetId, createdAt.plusSeconds(300), 48_000L);
+    }
+
+    private void insertProductAndWatchTarget(
+            JdbcTemplate jdbc,
+            UUID watchTargetId,
+            Instant createdAt
+    ) {
+        UUID productId = UUID.randomUUID();
+        jdbc.update(
+                """
+                        INSERT INTO products (
+                            id, marketplace, external_product_id, canonical_url, created_at
+                        ) VALUES (?, 'WILDBERRIES', 654321, ?, ?)
+                        """,
+                productId,
+                "https://www.wildberries.ru/catalog/654321/detail.aspx",
+                Timestamp.from(createdAt.minusSeconds(10 * 60))
+        );
+        jdbc.update(
+                """
+                        INSERT INTO watch_targets (
+                            id, product_id, variant_kind, variant_value, dest, spp,
+                            next_check_at, created_at, city_name
+                        ) VALUES (?, ?, 'NO_VARIANT', 'NO_VARIANT', 1259570991, 30, ?, ?, 'Moscow')
+                        """,
+                watchTargetId,
+                productId,
+                Timestamp.from(createdAt),
+                Timestamp.from(createdAt.minusSeconds(10 * 60))
+        );
     }
 
     private void insertSubscription(

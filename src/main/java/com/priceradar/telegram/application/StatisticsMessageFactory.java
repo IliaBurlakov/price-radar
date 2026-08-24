@@ -33,46 +33,47 @@ public final class StatisticsMessageFactory {
             throw new IllegalArgumentException("statistics message fields must not be null or blank");
         }
 
-        StringBuilder text = new StringBuilder("Статистика ")
+        StringBuilder text = new StringBuilder("📊 Статистика ")
                 .append(periodLabel(statistics.getPeriod()))
-                .append("\nПериод: ")
+                .append("\n🗓 ")
                 .append(TelegramDisplayFormatter.date(statistics.getEffectivePeriodStart()))
                 .append(" — ")
                 .append(TelegramDisplayFormatter.date(statistics.getEffectivePeriodEnd()));
 
         if (!statistics.hasData()) {
             text.append("\n\nЗа этот период пока недостаточно данных.");
-            text.append("\nРегион: ")
+            text.append("\n\n🌍 Регион: ")
                     .append(TelegramDisplayFormatter.region(region));
-            text.append("\nИстория начинается с момента добавления товара.");
-            text.append("\n").append(TelegramDisplayFormatter.approximatePriceWarning());
+            text.append("\n\nИстория ведётся с момента добавления товара.");
+            text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
             return withTrackedButton(chatId, text.toString());
         }
 
         RubleAmount firstPrice = statistics.getFirstPrice().orElseThrow();
         RubleAmount latestPrice = statistics.getLatestPrice().orElseThrow();
-        text.append("\n");
-        appendPriceWithWallet(
+        long priceChangeMinorUnits = statistics.getPriceChangeMinorUnits().orElseThrow();
+        text.append("\n\n💰 Последняя известная цена\n");
+        appendPriceLineWithWallet(
                 text,
-                "Последняя известная цена",
                 latestPrice,
                 preferences
         );
-        text.append("\n\nИзменение за период:")
+        text.append("\n\n")
+                .append(trendIcon(priceChangeMinorUnits))
+                .append(" Изменение за период")
                 .append("\n")
                 .append(format(firstPrice))
                 .append(" → ")
                 .append(format(latestPrice))
                 .append("\n")
-                .append(formatSignedChange(statistics.getPriceChangeMinorUnits().orElseThrow()))
+                .append(formatSignedChange(priceChangeMinorUnits))
                 .append(" (")
                 .append(formatSignedPercent(statistics.getPriceChangePercent().orElseThrow()))
                 .append(")");
 
-        text.append("\n");
-        appendPriceWithWallet(
+        text.append("\n\n🏷 Минимум\n");
+        appendPriceLineWithWallet(
                 text,
-                "Минимум",
                 statistics.getMinimumPrice().orElseThrow(),
                 preferences
         );
@@ -86,35 +87,26 @@ public final class StatisticsMessageFactory {
         if (differenceFromMinimum.getMinorUnits() == 0) {
             text.append("\nПоследняя известная цена — минимальная за выбранный период.");
         } else {
-            text.append("\nПоследняя цена на ")
+            text.append("\nСейчас цена на ")
                     .append(format(differenceFromMinimum))
                     .append(" выше минимума.");
         }
 
-        text.append("\n");
-        appendPriceWithWallet(
-                text,
-                "Максимум",
-                statistics.getMaximumPrice().orElseThrow(),
-                preferences
-        );
+        text.append("\n\n📌 За период")
+                .append("\nМаксимум: ")
+                .append(format(statistics.getMaximumPrice().orElseThrow()));
         BigDecimal averageMinorUnits = statistics.getAverageMinorUnits().orElseThrow();
-        appendPriceWithWallet(
-                text,
-                "Средняя",
-                averageAmount(averageMinorUnits),
-                preferences,
-                formatAverage(averageMinorUnits)
-        );
-        text.append("\nОценка WB Кошелька рассчитана со скидкой ")
-                .append(preferences.getWalletDiscountPercent())
-                .append("%.");
+        text.append("\nСредняя: ")
+                .append(formatAverage(averageMinorUnits));
         text.append("\nНаблюдений: ")
                 .append(statistics.getObservationCount());
-        text.append("\nРегион: ")
+        text.append("\n\n🌍 Регион: ")
                 .append(TelegramDisplayFormatter.region(region));
-        text.append("\nИстория начинается с момента добавления товара.");
-        text.append("\n").append(TelegramDisplayFormatter.approximatePriceWarning());
+        text.append("\n\nℹ️ WB Кошелёк: оценка со скидкой ")
+                .append(preferences.getWalletDiscountPercent())
+                .append("%.");
+        text.append("\nИстория ведётся с момента добавления товара.");
+        text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
         return withTrackedButton(chatId, text.toString());
     }
 
@@ -128,9 +120,9 @@ public final class StatisticsMessageFactory {
 
     private String periodLabel(StatisticsPeriod period) {
         return switch (period) {
-            case LAST_7_DAYS -> "за последние 7 дней";
-            case LAST_30_DAYS -> "за последние 30 дней";
-            case LAST_365_DAYS -> "за последние 365 дней";
+            case LAST_7_DAYS -> "за 7 дней";
+            case LAST_30_DAYS -> "за 30 дней";
+            case LAST_365_DAYS -> "за 365 дней";
             case ALL_TIME -> "за всё время текущей подписки";
         };
     }
@@ -156,42 +148,26 @@ public final class StatisticsMessageFactory {
         return sign + displayValue.toPlainString().replace('.', ',') + "%";
     }
 
-    private void appendPriceWithWallet(
-            StringBuilder text,
-            String label,
-            RubleAmount regularPrice,
-            UserPricePreferences preferences
-    ) {
-        appendPriceWithWallet(
-                text,
-                label,
-                regularPrice,
-                preferences,
-                format(regularPrice)
-        );
+    private String trendIcon(long priceChangeMinorUnits) {
+        if (priceChangeMinorUnits < 0) {
+            return "📉";
+        }
+        if (priceChangeMinorUnits > 0) {
+            return "📈";
+        }
+        return "➖";
     }
 
-    private void appendPriceWithWallet(
+    private void appendPriceLineWithWallet(
             StringBuilder text,
-            String label,
             RubleAmount regularPrice,
-            UserPricePreferences preferences,
-            String formattedRegularPrice
+            UserPricePreferences preferences
     ) {
         WalletEstimate estimate = walletEstimateService
                 .estimateFromRegularPrice(regularPrice, preferences)
                 .orElseThrow();
-        text.append("\n")
-                .append(label)
-                .append(": ")
-                .append(formattedRegularPrice)
+        text.append(format(regularPrice))
                 .append(" · с WB Кошельком ")
                 .append(TelegramDisplayFormatter.walletAmount(estimate));
-    }
-
-    private RubleAmount averageAmount(BigDecimal averageMinorUnits) {
-        return RubleAmount.ofMinorUnits(averageMinorUnits
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValueExact());
     }
 }
