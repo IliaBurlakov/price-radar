@@ -1,13 +1,8 @@
 package com.priceradar.telegram.application;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Optional;
 
 public final class TelegramMenuHandler {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(TelegramMenuHandler.class);
 
     private final TelegramMenuMessageFactory messageFactory;
     private final TrackedItemsMessageHandler trackedItemsHandler;
@@ -53,43 +48,29 @@ public final class TelegramMenuHandler {
         if (action.isEmpty()) {
             return false;
         }
-        try {
-            if (!callback.isPrivateChat()) {
-                return true;
-            }
-            switch (action.orElseThrow()) {
-                case HOME -> telegramGateway.sendMessage(
-                        messageFactory.mainMenu(callback.getChatId())
-                );
-                case ADD_PRODUCT -> telegramGateway.sendMessage(
-                        messageFactory.addProduct(callback.getChatId())
-                );
-                case TRACKED_ITEMS -> trackedItemsHandler.showTracked(
-                        callback.getTelegramUserId(),
-                        callback.getChatId()
-                );
-                case HELP -> telegramGateway.sendMessage(
-                        messageFactory.help(callback.getChatId())
-                );
-            }
+        if (!callback.isPrivateChat()) {
             return true;
-        } finally {
-            answerCallbackBestEffort(callback.getCallbackQueryId());
         }
+        switch (action.orElseThrow()) {
+            case HOME -> telegramGateway.sendMessage(
+                    messageFactory.mainMenu(callback.getChatId())
+            );
+            case ADD_PRODUCT -> telegramGateway.sendMessage(
+                    messageFactory.addProduct(callback.getChatId())
+            );
+            case TRACKED_ITEMS -> trackedItemsHandler.showTracked(
+                    callback.getTelegramUserId(),
+                    callback.getChatId()
+            );
+            case HELP -> telegramGateway.sendMessage(
+                    messageFactory.help(callback.getChatId())
+            );
+        }
+        return true;
     }
 
     private boolean isCommand(String text, String command) {
         return text.equals(command) || text.startsWith(command + "@");
     }
 
-    private void answerCallbackBestEffort(String callbackQueryId) {
-        try {
-            telegramGateway.answerCallbackQuery(callbackQueryId);
-        } catch (RuntimeException exception) {
-            LOGGER.warn(
-                    "Could not acknowledge Telegram menu callback, errorType={}",
-                    exception.getClass().getSimpleName()
-            );
-        }
-    }
 }

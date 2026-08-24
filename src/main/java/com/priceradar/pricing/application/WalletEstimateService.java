@@ -19,7 +19,24 @@ public final class WalletEstimateService {
             return Optional.empty();
         }
 
-        long regularPriceMinorUnits = interpretedPrice.getRegularPrice().orElseThrow().getMinorUnits();
+        return estimateFromRegularPrice(
+                interpretedPrice.getRegularPrice().orElseThrow(),
+                preferences
+        );
+    }
+
+    public Optional<WalletEstimate> estimateFromRegularPrice(
+            RubleAmount regularPrice,
+            UserPricePreferences preferences
+    ) {
+        if (regularPrice == null || preferences == null) {
+            throw new IllegalArgumentException("wallet estimate fields must not be null");
+        }
+        if (regularPrice.getMinorUnits() == 0) {
+            return Optional.empty();
+        }
+
+        long regularPriceMinorUnits = regularPrice.getMinorUnits();
         int discountPercent = preferences.getWalletDiscountPercent();
         long estimatedMinorUnits = floorPercent(regularPriceMinorUnits, 100 - discountPercent);
 

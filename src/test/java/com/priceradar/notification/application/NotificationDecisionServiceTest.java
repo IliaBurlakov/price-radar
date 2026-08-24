@@ -23,22 +23,100 @@ class NotificationDecisionServiceTest {
     private final Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 
     @Test
-    void staleObservationCannotMoveDecreaseBaselineBackwards() {
-        Subscription subscription = anyDecreaseSubscription(8_000, createdAt.plusSeconds(120));
+    void priceReturningToKnownMinimumDoesNotNotify() {
+        Subscription subscription = anyDecreaseSubscription(43_400, createdAt);
+
+        NotificationDecisionResult increase = service.evaluate(
+                subscription,
+                observation(49_600, createdAt.plusSeconds(60))
+        );
+        NotificationDecisionResult returnToMinimum = service.evaluate(
+                increase.getSubscription(),
+                observation(43_400, createdAt.plusSeconds(120))
+        );
+
+        assertThat(increase.getNotificationIntent()).isEmpty();
+        assertThat(returnToMinimum.getNotificationIntent()).isEmpty();
+        assertThat(returnToMinimum.getSubscription().getNotificationReferencePrice())
+                .contains(RubleAmount.ofMinorUnits(43_400));
+        assertThat(returnToMinimum.getSubscription().getLastProcessedPriceObservedAt())
+                .contains(createdAt.plusSeconds(120));
+    }
+
+    @Test
+    void priceBelowKnownMinimumNotifiesOnce() {
+        Subscription subscription = anyDecreaseSubscription(43_400, createdAt);
+
+        NotificationDecisionResult increase = service.evaluate(
+                subscription,
+                observation(49_600, createdAt.plusSeconds(60))
+        );
+        NotificationDecisionResult newMinimum = service.evaluate(
+                increase.getSubscription(),
+                observation(41_000, createdAt.plusSeconds(120))
+        );
+
+        assertThat(increase.getNotificationIntent()).isEmpty();
+        assertThat(newMinimum.getNotificationIntent()).get().satisfies(intent -> {
+            assertThat(intent.getPreviousPrice())
+                    .contains(RubleAmount.ofMinorUnits(43_400));
+            assertThat(intent.getCurrentPrice())
+                    .isEqualTo(RubleAmount.ofMinorUnits(41_000));
+        });
+        assertThat(newMinimum.getSubscription().getNotificationReferencePrice())
+                .contains(RubleAmount.ofMinorUnits(41_000));
+    }
+
+    @Test
+    void eachNewSubscriptionMinimumNotifies() {
+        Subscription subscription = anyDecreaseSubscription(43_400, createdAt);
+
+        NotificationDecisionResult firstMinimum = service.evaluate(
+                subscription,
+                observation(41_000, createdAt.plusSeconds(60))
+        );
+        NotificationDecisionResult increase = service.evaluate(
+                firstMinimum.getSubscription(),
+                observation(42_000, createdAt.plusSeconds(120))
+        );
+        NotificationDecisionResult secondMinimum = service.evaluate(
+                increase.getSubscription(),
+                observation(40_500, createdAt.plusSeconds(180))
+        );
+
+        assertThat(firstMinimum.getNotificationIntent()).get().satisfies(intent -> {
+            assertThat(intent.getPreviousPrice())
+                    .contains(RubleAmount.ofMinorUnits(43_400));
+            assertThat(intent.getCurrentPrice())
+                    .isEqualTo(RubleAmount.ofMinorUnits(41_000));
+        });
+        assertThat(increase.getNotificationIntent()).isEmpty();
+        assertThat(secondMinimum.getNotificationIntent()).get().satisfies(intent -> {
+            assertThat(intent.getPreviousPrice())
+                    .contains(RubleAmount.ofMinorUnits(41_000));
+            assertThat(intent.getCurrentPrice())
+                    .isEqualTo(RubleAmount.ofMinorUnits(40_500));
+        });
+    }
+
+    @Test
+    void staleObservationCannotChangeReferenceOrCreateNotification() {
+        Subscription subscription = anyDecreaseSubscription(
+                43_400,
+                createdAt.plusSeconds(120)
+        );
 
         NotificationDecisionResult stale = service.evaluate(
                 subscription,
-                observation(9_000, createdAt.plusSeconds(60))
-        );
-        NotificationDecisionResult current = service.evaluate(
-                stale.getSubscription(),
-                observation(8_500, createdAt.plusSeconds(180))
+                observation(41_000, createdAt.plusSeconds(60))
         );
 
         assertThat(stale.isStateChanged()).isFalse();
-        assertThat(stale.getSubscription().getBaselinePrice()).contains(RubleAmount.ofMinorUnits(8_000));
-        assertThat(current.getNotificationIntent()).isEmpty();
-        assertThat(current.getSubscription().getBaselinePrice()).contains(RubleAmount.ofMinorUnits(8_500));
+        assertThat(stale.getNotificationIntent()).isEmpty();
+        assertThat(stale.getSubscription().getNotificationReferencePrice())
+                .contains(RubleAmount.ofMinorUnits(43_400));
+        assertThat(stale.getSubscription().getLastProcessedPriceObservedAt())
+                .contains(createdAt.plusSeconds(120));
     }
 
     @Test
@@ -91,14 +169,14 @@ class NotificationDecisionServiceTest {
         assertThat(reachedAgain.getNotificationIntent()).isPresent();
     }
 
-    private Subscription anyDecreaseSubscription(long baseline, Instant observedAt) {
+    private Subscription anyDecreaseSubscription(long referencePrice, Instant observedAt) {
         return new Subscription(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 watchTargetId,
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
-                Optional.of(RubleAmount.ofMinorUnits(baseline)),
+                Optional.of(RubleAmount.ofMinorUnits(referencePrice)),
                 Optional.of(observedAt),
                 ThresholdState.NOT_APPLICABLE,
                 Optional.empty(),

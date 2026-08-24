@@ -181,7 +181,7 @@ public class TelegramBotConfiguration {
 
     @Bean
     public StatisticsMessageFactory statisticsMessageFactory() {
-        return new StatisticsMessageFactory();
+        return new StatisticsMessageFactory(new WalletEstimateService());
     }
 
     @Bean
@@ -208,7 +208,8 @@ public class TelegramBotConfiguration {
             TelegramTrackingHandler trackingHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
             ShowLastKnownCallbackHandler showLastKnownHandler,
-            StatisticsCallbackHandler statisticsHandler
+            StatisticsCallbackHandler statisticsHandler,
+            TelegramGateway telegramGateway
     ) {
         return new TelegramUpdateDispatcher(
                 currentQuoteHandler,
@@ -216,7 +217,8 @@ public class TelegramBotConfiguration {
                 trackingHandler,
                 trackedItemsHandler,
                 showLastKnownHandler,
-                statisticsHandler
+                statisticsHandler,
+                telegramGateway
         );
     }
 

@@ -1,21 +1,16 @@
 package com.priceradar.telegram.application;
 
-import com.priceradar.pricing.application.InterpretedPrice;
 import com.priceradar.pricing.application.RublePriceFormatter;
 import com.priceradar.pricing.application.WalletEstimate;
 import com.priceradar.pricing.application.WalletEstimateService;
-import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
 import com.priceradar.tracking.domain.NotificationMode;
 import com.priceradar.user.domain.UserPricePreferences;
 
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
 public final class TrackedItemsMessageFactory {
@@ -24,12 +19,6 @@ public final class TrackedItemsMessageFactory {
 
     private static final int MAX_BUTTON_TITLE_LENGTH = 48;
     private static final int MAX_DETAIL_LENGTH = 60;
-    private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цена может отличаться в приложении Wildberries.";
-    private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter
-            .ofPattern("dd.MM.yyyy HH:mm 'МСК'", Locale.ROOT)
-            .withZone(ZoneId.of("Europe/Moscow"));
-
     private final WalletEstimateService walletEstimateService;
 
     public TrackedItemsMessageFactory(WalletEstimateService walletEstimateService) {
@@ -74,7 +63,10 @@ public final class TrackedItemsMessageFactory {
             TrackedSubscriptionItem item = items.get(index);
             keyboard.add(List.of(new TelegramInlineButton(
                     itemButtonText(item, index + 1),
-                    TrackedItemsCallbackData.item(item.getSubscriptionId())
+                    SubscriptionCallbackData.encode(
+                            SubscriptionCallbackData.Action.OPEN_ITEM,
+                            item.getSubscriptionId()
+                    )
             )));
         }
         appendPagination(keyboard, pageNumber, pageCount);
@@ -119,30 +111,45 @@ public final class TrackedItemsMessageFactory {
         text.append("\nРежим: ").append(mode(item));
         appendLatestPrice(text, item, preferences);
         item.getLatestObservedAt().ifPresent(observedAt -> text.append("\nПроверено: ")
-                .append(OBSERVED_AT_FORMAT.format(observedAt)));
+                .append(TelegramDisplayFormatter.observedAt(observedAt)));
         text.append("\nРегион: ").append(TelegramDisplayFormatter.region(region));
         text.append("\nОткрыть товар: ").append(item.getCanonicalUrl());
-        text.append("\n\n").append(APPROXIMATE_PRICE_WARNING);
+        text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         List<List<TelegramInlineButton>> keyboard = List.of(
                 List.of(
                         new TelegramInlineButton(
                                 "💰 Последняя цена",
-                                ShowLastKnownCallbackData.encode(item.getSubscriptionId())
+                                SubscriptionCallbackData.encode(
+                                        SubscriptionCallbackData.Action.SHOW_LAST_KNOWN,
+                                        item.getSubscriptionId()
+                                )
                         ),
                         new TelegramInlineButton(
                                 "📊 Статистика",
-                                StatisticsMenuCallbackData.encode(item.getSubscriptionId())
+                                SubscriptionCallbackData.encode(
+                                        SubscriptionCallbackData.Action.SHOW_STATISTICS,
+                                        item.getSubscriptionId()
+                                )
                         )
                 ),
                 List.of(new TelegramInlineButton(
                         "❌ Удалить товар",
-                        RemoveTrackingCallbackData.encode(item.getSubscriptionId())
+                        SubscriptionCallbackData.encode(
+                                SubscriptionCallbackData.Action.REMOVE,
+                                item.getSubscriptionId()
+                        )
                 )),
-                List.of(new TelegramInlineButton(
-                        "← К списку",
-                        TrackedItemsCallbackData.page(listPage)
-                ))
+                List.of(
+                        new TelegramInlineButton(
+                                "← К списку",
+                                TrackedItemsPageCallbackData.encode(listPage)
+                        ),
+                        TelegramNavigationKeyboard.button(
+                                "Главное меню",
+                                MainMenuCallbackData.Action.HOME
+                        )
+                )
         );
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
     }
@@ -153,13 +160,13 @@ public final class TrackedItemsMessageFactory {
                 "У вас пока нет отслеживаемых товаров.\n\n"
                         + "Отправьте ссылку Wildberries, чтобы добавить первый товар.",
                 List.of(List.of(
-                        new TelegramInlineButton(
+                        TelegramNavigationKeyboard.button(
                                 "Добавить товар",
-                                MainMenuCallbackData.encode(MainMenuCallbackData.Action.ADD_PRODUCT)
+                                MainMenuCallbackData.Action.ADD_PRODUCT
                         ),
-                        new TelegramInlineButton(
+                        TelegramNavigationKeyboard.button(
                                 "Главное меню",
-                                MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
+                                MainMenuCallbackData.Action.HOME
                         )
                 ))
         );
@@ -177,13 +184,13 @@ public final class TrackedItemsMessageFactory {
         if (pageNumber > 0) {
             row.add(new TelegramInlineButton(
                     "← Назад",
-                    TrackedItemsCallbackData.page(pageNumber - 1)
+                    TrackedItemsPageCallbackData.encode(pageNumber - 1)
             ));
         }
         if (pageNumber + 1 < pageCount) {
             row.add(new TelegramInlineButton(
                     "Дальше →",
-                    TrackedItemsCallbackData.page(pageNumber + 1)
+                    TrackedItemsPageCallbackData.encode(pageNumber + 1)
             ));
         }
         keyboard.add(List.copyOf(row));
@@ -204,11 +211,8 @@ public final class TrackedItemsMessageFactory {
             RubleAmount regularPrice = item.getLatestRegularPrice().orElseThrow();
             text.append("\nЦена без WB Кошелька: ").append(format(regularPrice));
             estimateWalletPrice(regularPrice, preferences)
-                    .ifPresent(estimate -> text.append("\nС WB Кошельком: ≈ ")
-                            .append(format(estimate.getAmount()))
-                            .append(" (скидка ")
-                            .append(estimate.getWalletDiscountPercent())
-                            .append("%)"));
+                    .ifPresent(estimate -> text.append("\nС WB Кошельком: ")
+                            .append(TelegramDisplayFormatter.walletEstimate(estimate)));
             return;
         }
         if (status == SnapshotStatus.BASIC_FALLBACK) {
@@ -226,13 +230,7 @@ public final class TrackedItemsMessageFactory {
             RubleAmount regularPrice,
             UserPricePreferences preferences
     ) {
-        InterpretedPrice interpretedPrice = new InterpretedPrice(
-                Optional.of(regularPrice),
-                Optional.empty(),
-                Optional.of(PriceSource.PRODUCT),
-                SnapshotStatus.REGULAR_PRICE
-        );
-        return walletEstimateService.estimate(interpretedPrice, preferences);
+        return walletEstimateService.estimateFromRegularPrice(regularPrice, preferences);
     }
 
     private String itemButtonText(TrackedSubscriptionItem item, int displayNumber) {
@@ -242,7 +240,7 @@ public final class TrackedItemsMessageFactory {
 
     private String mode(TrackedSubscriptionItem item) {
         if (item.getNotificationMode() == NotificationMode.ANY_DECREASE) {
-            return "сообщать о снижении";
+            return "сообщать о новой минимальной цене";
         }
         return "сообщить при цене " + format(item.getTargetPrice().orElseThrow());
     }

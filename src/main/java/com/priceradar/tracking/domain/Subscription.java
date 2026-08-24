@@ -13,8 +13,8 @@ public final class Subscription {
     private final UUID watchTargetId;
     private final NotificationMode notificationMode;
     private final Optional<RubleAmount> targetPrice;
-    private final Optional<RubleAmount> baselinePrice;
-    private final Optional<Instant> baselineObservedAt;
+    private final Optional<RubleAmount> notificationReferencePrice;
+    private final Optional<Instant> lastProcessedPriceObservedAt;
     private final ThresholdState thresholdState;
     private final Optional<Instant> thresholdObservedAt;
     private final SubscriptionStatus status;
@@ -28,8 +28,8 @@ public final class Subscription {
             UUID watchTargetId,
             NotificationMode notificationMode,
             Optional<RubleAmount> targetPrice,
-            Optional<RubleAmount> baselinePrice,
-            Optional<Instant> baselineObservedAt,
+            Optional<RubleAmount> notificationReferencePrice,
+            Optional<Instant> lastProcessedPriceObservedAt,
             ThresholdState thresholdState,
             Optional<Instant> thresholdObservedAt,
             SubscriptionStatus status,
@@ -38,7 +38,8 @@ public final class Subscription {
             long version
     ) {
         if (id == null || userId == null || watchTargetId == null || notificationMode == null
-                || targetPrice == null || baselinePrice == null || baselineObservedAt == null
+                || targetPrice == null || notificationReferencePrice == null
+                || lastProcessedPriceObservedAt == null
                 || thresholdState == null || thresholdObservedAt == null || status == null
                 || createdAt == null || endedAt == null) {
             throw new IllegalArgumentException("subscription fields must not be null");
@@ -49,8 +50,8 @@ public final class Subscription {
         validatePriceState(
                 notificationMode,
                 targetPrice,
-                baselinePrice,
-                baselineObservedAt,
+                notificationReferencePrice,
+                lastProcessedPriceObservedAt,
                 thresholdState,
                 thresholdObservedAt
         );
@@ -60,8 +61,8 @@ public final class Subscription {
         this.watchTargetId = watchTargetId;
         this.notificationMode = notificationMode;
         this.targetPrice = targetPrice;
-        this.baselinePrice = baselinePrice;
-        this.baselineObservedAt = baselineObservedAt;
+        this.notificationReferencePrice = notificationReferencePrice;
+        this.lastProcessedPriceObservedAt = lastProcessedPriceObservedAt;
         this.thresholdState = thresholdState;
         this.thresholdObservedAt = thresholdObservedAt;
         this.status = status;
@@ -83,8 +84,8 @@ public final class Subscription {
                 watchTargetId,
                 notificationMode,
                 targetPrice,
-                baselinePrice,
-                baselineObservedAt,
+                notificationReferencePrice,
+                lastProcessedPriceObservedAt,
                 thresholdState,
                 thresholdObservedAt,
                 SubscriptionStatus.ENDED,
@@ -94,15 +95,22 @@ public final class Subscription {
         );
     }
 
-    public Subscription withBaseline(RubleAmount baselinePrice, Instant observedAt) {
+    public Subscription withProcessedRegularPrice(
+            RubleAmount referencePrice,
+            Instant observedAt
+    ) {
         if (notificationMode != NotificationMode.ANY_DECREASE) {
-            throw new IllegalStateException("only ANY_DECREASE subscription has a baseline");
+            throw new IllegalStateException(
+                    "only ANY_DECREASE subscription has a notification reference"
+            );
         }
-        if (baselinePrice == null || baselinePrice.getMinorUnits() == 0) {
-            throw new IllegalArgumentException("baselinePrice must be positive");
+        if (referencePrice == null || referencePrice.getMinorUnits() == 0) {
+            throw new IllegalArgumentException("notification reference price must be positive");
         }
         if (observedAt == null || observedAt.isBefore(createdAt)) {
-            throw new IllegalArgumentException("baseline observation must belong to subscription period");
+            throw new IllegalArgumentException(
+                    "processed price observation must belong to subscription period"
+            );
         }
         return new Subscription(
                 id,
@@ -110,7 +118,7 @@ public final class Subscription {
                 watchTargetId,
                 notificationMode,
                 targetPrice,
-                Optional.of(baselinePrice),
+                Optional.of(referencePrice),
                 Optional.of(observedAt),
                 thresholdState,
                 thresholdObservedAt,
@@ -137,8 +145,8 @@ public final class Subscription {
                 watchTargetId,
                 notificationMode,
                 targetPrice,
-                baselinePrice,
-                baselineObservedAt,
+                notificationReferencePrice,
+                lastProcessedPriceObservedAt,
                 newState,
                 Optional.of(observedAt),
                 status,
@@ -168,12 +176,12 @@ public final class Subscription {
         return targetPrice;
     }
 
-    public Optional<RubleAmount> getBaselinePrice() {
-        return baselinePrice;
+    public Optional<RubleAmount> getNotificationReferencePrice() {
+        return notificationReferencePrice;
     }
 
-    public Optional<Instant> getBaselineObservedAt() {
-        return baselineObservedAt;
+    public Optional<Instant> getLastProcessedPriceObservedAt() {
+        return lastProcessedPriceObservedAt;
     }
 
     public ThresholdState getThresholdState() {
@@ -203,16 +211,18 @@ public final class Subscription {
     private void validatePriceState(
             NotificationMode mode,
             Optional<RubleAmount> targetPrice,
-            Optional<RubleAmount> baselinePrice,
-            Optional<Instant> baselineObservedAt,
+            Optional<RubleAmount> notificationReferencePrice,
+            Optional<Instant> lastProcessedPriceObservedAt,
             ThresholdState thresholdState,
             Optional<Instant> thresholdObservedAt
     ) {
-        if (baselinePrice.isPresent() != baselineObservedAt.isPresent()) {
-            throw new IllegalArgumentException("baseline price and observation time must be set together");
+        if (notificationReferencePrice.isPresent() != lastProcessedPriceObservedAt.isPresent()) {
+            throw new IllegalArgumentException(
+                    "notification reference and processed observation time must be set together"
+            );
         }
-        if (baselinePrice.filter(price -> price.getMinorUnits() == 0).isPresent()) {
-            throw new IllegalArgumentException("baseline price must be positive");
+        if (notificationReferencePrice.filter(price -> price.getMinorUnits() == 0).isPresent()) {
+            throw new IllegalArgumentException("notification reference price must be positive");
         }
 
         if (mode == NotificationMode.ANY_DECREASE) {
@@ -226,7 +236,8 @@ public final class Subscription {
         if (targetPrice.filter(price -> price.getMinorUnits() > 0).isEmpty()) {
             throw new IllegalArgumentException("TARGET_PRICE requires positive target price");
         }
-        if (baselinePrice.isPresent() || thresholdState == ThresholdState.NOT_APPLICABLE) {
+        if (notificationReferencePrice.isPresent()
+                || thresholdState == ThresholdState.NOT_APPLICABLE) {
             throw new IllegalArgumentException("TARGET_PRICE has invalid notification state");
         }
         if (thresholdState == ThresholdState.UNKNOWN && thresholdObservedAt.isPresent()) {

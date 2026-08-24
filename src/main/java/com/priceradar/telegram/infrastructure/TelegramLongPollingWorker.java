@@ -1,6 +1,7 @@
 package com.priceradar.telegram.infrastructure;
 
 import com.priceradar.telegram.application.TelegramGateway;
+import com.priceradar.telegram.application.TelegramDeliveryException;
 import com.priceradar.telegram.application.TelegramPollingStateStore;
 import com.priceradar.telegram.application.TelegramUpdate;
 import com.priceradar.telegram.application.TelegramUpdateDispatcher;
@@ -73,7 +74,7 @@ public class TelegramLongPollingWorker {
                     break;
                 }
             }
-        } catch (TelegramGatewayException exception) {
+        } catch (TelegramDeliveryException exception) {
             exception.getRetryAfter().ifPresent(delay ->
                     nextPollNotBefore = clock.instant().plus(delay));
             LOGGER.warn("Telegram polling failed: {}", exception.getMessage());
@@ -93,7 +94,7 @@ public class TelegramLongPollingWorker {
     private boolean process(TelegramUpdate update) {
         try {
             updateDispatcher.dispatch(update);
-        } catch (TelegramGatewayException exception) {
+        } catch (TelegramDeliveryException exception) {
             if (exception.isRetryable()) {
                 exception.getRetryAfter().ifPresent(delay ->
                         nextPollNotBefore = clock.instant().plus(delay));

@@ -34,11 +34,11 @@ public class SubscriptionEntity {
     @Column(name = "target_price_minor")
     private Long targetPriceMinor;
 
-    @Column(name = "baseline_price_minor")
-    private Long baselinePriceMinor;
+    @Column(name = "notification_reference_price_minor")
+    private Long notificationReferencePriceMinor;
 
-    @Column(name = "baseline_observed_at")
-    private Instant baselineObservedAt;
+    @Column(name = "last_processed_price_observed_at")
+    private Instant lastProcessedPriceObservedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "threshold_state", nullable = false, length = 32)
@@ -70,8 +70,8 @@ public class SubscriptionEntity {
             UUID watchTargetId,
             NotificationMode notificationMode,
             Long targetPriceMinor,
-            Long baselinePriceMinor,
-            Instant baselineObservedAt,
+            Long notificationReferencePriceMinor,
+            Instant lastProcessedPriceObservedAt,
             ThresholdState thresholdState,
             Instant thresholdObservedAt,
             SubscriptionStatus status,
@@ -83,8 +83,8 @@ public class SubscriptionEntity {
         this.watchTargetId = watchTargetId;
         this.notificationMode = notificationMode;
         this.targetPriceMinor = targetPriceMinor;
-        this.baselinePriceMinor = baselinePriceMinor;
-        this.baselineObservedAt = baselineObservedAt;
+        this.notificationReferencePriceMinor = notificationReferencePriceMinor;
+        this.lastProcessedPriceObservedAt = lastProcessedPriceObservedAt;
         this.thresholdState = thresholdState;
         this.thresholdObservedAt = thresholdObservedAt;
         this.status = status;
@@ -123,12 +123,12 @@ public class SubscriptionEntity {
         return targetPriceMinor;
     }
 
-    public Long getBaselinePriceMinor() {
-        return baselinePriceMinor;
+    public Long getNotificationReferencePriceMinor() {
+        return notificationReferencePriceMinor;
     }
 
-    public Instant getBaselineObservedAt() {
-        return baselineObservedAt;
+    public Instant getLastProcessedPriceObservedAt() {
+        return lastProcessedPriceObservedAt;
     }
 
     public ThresholdState getThresholdState() {

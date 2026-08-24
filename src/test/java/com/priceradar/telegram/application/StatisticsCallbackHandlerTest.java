@@ -1,5 +1,6 @@
 package com.priceradar.telegram.application;
 
+import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.statistics.application.ObservedPriceStatistics;
@@ -58,16 +59,16 @@ class StatisticsCallbackHandlerTest {
         handler = new StatisticsCallbackHandler(
                 userProfileService,
                 statisticsService,
-                new StatisticsMessageFactory(),
+                new StatisticsMessageFactory(new WalletEstimateService()),
                 telegramGateway,
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
-        when(userProfileService.getOrCreate(TELEGRAM_USER_ID, CHAT_ID))
-                .thenReturn(profile);
     }
 
     @Test
     void rendersSubscriptionStatisticsWithRegionAndApproximatePriceWarning() {
+        when(userProfileService.getOrCreate(TELEGRAM_USER_ID, CHAT_ID))
+                .thenReturn(profile);
         UUID subscriptionId = UUID.randomUUID();
         SubscriptionStatistics statistics = new SubscriptionStatistics(
                 subscriptionId,
@@ -75,10 +76,13 @@ class StatisticsCallbackHandlerTest {
                 NOW.minusSeconds(86_400),
                 NOW,
                 ObservedPriceStatistics.of(
-                        2,
-                        RubleAmount.ofMinorUnits(9_000L),
-                        RubleAmount.ofMinorUnits(11_001L),
-                        new BigDecimal("10000.5")
+                        35,
+                        RubleAmount.ofMinorUnits(22_800L),
+                        Instant.parse("2026-07-18T08:40:00Z"),
+                        RubleAmount.ofMinorUnits(49_600L),
+                        new BigDecimal("43900"),
+                        RubleAmount.ofMinorUnits(49_600L),
+                        RubleAmount.ofMinorUnits(43_400L)
                 )
         );
         when(statisticsService.calculate(
@@ -100,18 +104,40 @@ class StatisticsCallbackHandlerTest {
                 ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(telegramGateway).sendMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getText())
-                .contains("за последние 30 дней")
-                .contains("Минимальная цена: 90 ₽")
-                .contains("Максимальная цена: 110 ₽")
-                .contains("Средняя цена: 100 ₽")
-                .contains("Проверок с доступной ценой: 2")
-                .contains("Регион: Москва")
-                .contains("Цена может отличаться");
-        verify(telegramGateway).answerCallbackQuery("statistics-callback");
+                .isEqualTo("""
+                        📊 Статистика за 30 дней
+                        🗓 17.07.2026 — 18.07.2026
+
+                        💰 Последняя известная цена
+                        434 ₽ · с WB Кошельком ≈ 421 ₽
+
+                        📉 Изменение за период
+                        496 ₽ → 434 ₽
+                        −62 ₽ (−12,5%)
+
+                        🏷 Минимум
+                        228 ₽ · с WB Кошельком ≈ 221 ₽
+                        Зафиксирован: 18.07.2026 11:40 МСК
+                        Сейчас цена на 206 ₽ выше минимума.
+
+                        📌 За период
+                        Максимум: 496 ₽
+                        Средняя: 439 ₽
+                        Наблюдений: 35
+
+                        🌍 Регион: Москва
+
+                        ℹ️ WB Кошелёк: оценка со скидкой 3%.
+                        История ведётся с момента добавления товара.
+
+                        ⚠️ Цена может отличаться в приложении Wildberries.""");
+        assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
     }
 
     @Test
     void reportsNoDataWithoutFabricatedPriceValues() {
+        when(userProfileService.getOrCreate(TELEGRAM_USER_ID, CHAT_ID))
+                .thenReturn(profile);
         UUID subscriptionId = UUID.randomUUID();
         SubscriptionStatistics statistics = new SubscriptionStatistics(
                 subscriptionId,
@@ -136,14 +162,84 @@ class StatisticsCallbackHandlerTest {
                 ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(telegramGateway).sendMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getText())
-                .contains("за всё время текущей подписки")
-                .contains("пока недостаточно данных")
-                .contains("Регион: Москва")
-                .contains("Цена может отличаться")
-                .doesNotContain("Минимальная цена")
-                .doesNotContain("Максимальная цена")
-                .doesNotContain("Средняя цена")
-                .doesNotContain("Проверок с доступной ценой");
+                .isEqualTo("""
+                        📊 Статистика за всё время текущей подписки
+                        🗓 18.07.2026 — 18.07.2026
+
+                        За этот период пока недостаточно данных.
+
+                        🌍 Регион: Москва
+
+                        История ведётся с момента добавления товара.
+
+                        ⚠️ Цена может отличаться в приложении Wildberries.""");
+        assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
+    }
+
+    @Test
+    void reportsWhenLatestKnownPriceIsThePeriodMinimum() {
+        SubscriptionStatistics statistics = new SubscriptionStatistics(
+                UUID.randomUUID(),
+                StatisticsPeriod.LAST_7_DAYS,
+                NOW.minusSeconds(86_400),
+                NOW,
+                ObservedPriceStatistics.of(
+                        2,
+                        RubleAmount.ofMinorUnits(41_000L),
+                        NOW.minusSeconds(60),
+                        RubleAmount.ofMinorUnits(43_400L),
+                        new BigDecimal("42200"),
+                        RubleAmount.ofMinorUnits(41_000L),
+                        RubleAmount.ofMinorUnits(41_000L)
+                )
+        );
+
+        OutgoingTelegramMessage message = new StatisticsMessageFactory(
+                new WalletEstimateService()
+        ).create(
+                CHAT_ID,
+                statistics,
+                "Moscow",
+                UserPricePreferences.defaults()
+        );
+
+        assertThat(message.getText())
+                .contains("➖ Изменение за период")
+                .contains("Последняя известная цена — минимальная за выбранный период.")
+                .doesNotContain("выше минимума");
+    }
+
+    @Test
+    void usesGrowthIconWhenLatestKnownPriceIncreased() {
+        SubscriptionStatistics statistics = new SubscriptionStatistics(
+                UUID.randomUUID(),
+                StatisticsPeriod.LAST_7_DAYS,
+                NOW.minusSeconds(86_400),
+                NOW,
+                ObservedPriceStatistics.of(
+                        2,
+                        RubleAmount.ofMinorUnits(41_000L),
+                        NOW.minusSeconds(120),
+                        RubleAmount.ofMinorUnits(49_600L),
+                        new BigDecimal("45300"),
+                        RubleAmount.ofMinorUnits(41_000L),
+                        RubleAmount.ofMinorUnits(49_600L)
+                )
+        );
+
+        OutgoingTelegramMessage message = new StatisticsMessageFactory(
+                new WalletEstimateService()
+        ).create(
+                CHAT_ID,
+                statistics,
+                "Moscow",
+                UserPricePreferences.defaults()
+        );
+
+        assertThat(message.getText())
+                .contains("📈 Изменение за период")
+                .doesNotContain("📉 Изменение за период")
+                .doesNotContain("➖ Изменение за период");
     }
 
     private IncomingTelegramCallback callback(String data) {

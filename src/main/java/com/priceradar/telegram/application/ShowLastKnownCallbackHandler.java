@@ -4,14 +4,10 @@ import com.priceradar.tracking.application.LatestSnapshotQueryService;
 import com.priceradar.tracking.application.LatestSnapshotView;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Optional;
+import java.util.UUID;
 
 public class ShowLastKnownCallbackHandler {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(ShowLastKnownCallbackHandler.class);
 
     private final UserProfileService userProfileService;
     private final LatestSnapshotQueryService queryService;
@@ -35,50 +31,38 @@ public class ShowLastKnownCallbackHandler {
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
-        Optional<ShowLastKnownCallbackData> callbackData = ShowLastKnownCallbackData.parse(
+        Optional<UUID> subscriptionId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.SHOW_LAST_KNOWN,
                 callback.getData()
         );
-        if (callbackData.isEmpty()) {
+        if (subscriptionId.isEmpty()) {
             return false;
         }
 
-        try {
-            if (!callback.isPrivateChat()) {
-                return true;
-            }
-            UserProfile profile = userProfileService.getOrCreate(
-                    callback.getTelegramUserId(),
-                    callback.getChatId()
-            );
-            Optional<LatestSnapshotView> snapshot = queryService.findLatest(
-                    profile.getId(),
-                    callbackData.get().getSubscriptionId()
-            );
-            OutgoingTelegramMessage message = snapshot
-                    .map(value -> messageFactory.create(callback.getChatId(), value, profile))
-                    .orElseGet(() -> notFoundMessage(callback.getChatId()));
-            telegramGateway.sendMessage(message);
+        if (!callback.isPrivateChat()) {
             return true;
-        } finally {
-            answerCallbackBestEffort(callback.getCallbackQueryId());
         }
+        UserProfile profile = userProfileService.getOrCreate(
+                callback.getTelegramUserId(),
+                callback.getChatId()
+        );
+        Optional<LatestSnapshotView> snapshot = queryService.findLatest(
+                profile.getId(),
+                subscriptionId.orElseThrow()
+        );
+        OutgoingTelegramMessage message = snapshot
+                .map(value -> messageFactory.create(callback.getChatId(), value, profile))
+                .orElseGet(() -> notFoundMessage(callback.getChatId()));
+        telegramGateway.sendMessage(message);
+        return true;
     }
 
     private OutgoingTelegramMessage notFoundMessage(long chatId) {
-        return OutgoingTelegramMessage.text(
+        return new OutgoingTelegramMessage(
                 chatId,
-                "Этот товар больше не отслеживается. Откройте раздел «Мои товары»."
+                "Этот товар больше не отслеживается. Откройте раздел «Мои товары».",
+                TelegramNavigationKeyboard.trackedItemsAndHome()
         );
     }
 
-    private void answerCallbackBestEffort(String callbackQueryId) {
-        try {
-            telegramGateway.answerCallbackQuery(callbackQueryId);
-        } catch (RuntimeException exception) {
-            LOGGER.warn(
-                    "Could not acknowledge Telegram callback, errorType={}",
-                    exception.getClass().getSimpleName()
-            );
-        }
-    }
 }

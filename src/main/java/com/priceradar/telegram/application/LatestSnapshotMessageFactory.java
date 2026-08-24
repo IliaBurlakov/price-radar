@@ -9,18 +9,9 @@ import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.tracking.application.LatestSnapshotView;
 import com.priceradar.user.application.UserProfile;
 
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Locale;
 
 public final class LatestSnapshotMessageFactory {
-
-    private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цена может отличаться в приложении Wildberries.";
-    private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter
-            .ofPattern("dd.MM.yyyy HH:mm 'МСК'", Locale.ROOT)
-            .withZone(ZoneId.of("Europe/Moscow"));
 
     private final WalletEstimateService walletEstimateService;
 
@@ -57,11 +48,13 @@ public final class LatestSnapshotMessageFactory {
 
         InterpretedPrice price = snapshot.getInterpretedPrice().orElseThrow();
         text.append("\n\nПроверено: ")
-                .append(OBSERVED_AT_FORMAT.format(snapshot.getObservedAt().orElseThrow()));
+                .append(TelegramDisplayFormatter.observedAt(
+                        snapshot.getObservedAt().orElseThrow()
+                ));
         appendPrice(text, price, profile);
         appendRegionAndLink(text, snapshot);
         text.append("\n\nПоказана последняя сохранённая цена.");
-        text.append("\n").append(APPROXIMATE_PRICE_WARNING);
+        text.append("\n").append(TelegramDisplayFormatter.approximatePriceWarning());
         return withTrackedButton(chatId, text.toString());
     }
 
@@ -72,7 +65,7 @@ public final class LatestSnapshotMessageFactory {
     ) {
         SnapshotStatus status = price.getStatus();
         if (status == SnapshotStatus.REGULAR_PRICE) {
-            text.append("\nЦена: ")
+            text.append("\nЦена без WB Кошелька: ")
                     .append(format(price.getRegularPrice().orElseThrow()));
             walletEstimateService.estimate(price, profile.getPricePreferences())
                     .ifPresent(estimate -> appendWalletEstimate(text, estimate));
@@ -98,11 +91,8 @@ public final class LatestSnapshotMessageFactory {
             StringBuilder text,
             WalletEstimate estimate
     ) {
-        text.append("\nС WB Кошельком: ≈ ")
-                .append(format(estimate.getAmount()))
-                .append(" (скидка ")
-                .append(estimate.getWalletDiscountPercent())
-                .append("%)");
+        text.append("\nС WB Кошельком: ")
+                .append(TelegramDisplayFormatter.walletEstimate(estimate));
     }
 
     private void appendRegionAndLink(StringBuilder text, LatestSnapshotView snapshot) {
@@ -117,10 +107,7 @@ public final class LatestSnapshotMessageFactory {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
-                List.of(List.of(new TelegramInlineButton(
-                        "Мои товары",
-                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
-                )))
+                TelegramNavigationKeyboard.trackedItemsAndHome()
         );
     }
 

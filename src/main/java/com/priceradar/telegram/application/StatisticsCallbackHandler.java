@@ -4,9 +4,6 @@ import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -14,8 +11,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class StatisticsCallbackHandler {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(StatisticsCallbackHandler.class);
 
     private final UserProfileService userProfileService;
     private final SubscriptionStatisticsService statisticsService;
@@ -42,7 +37,8 @@ public class StatisticsCallbackHandler {
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
-        Optional<UUID> menuSubscriptionId = StatisticsMenuCallbackData.parse(
+        Optional<UUID> menuSubscriptionId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.SHOW_STATISTICS,
                 callback.getData()
         );
         Optional<StatisticsCallbackData> callbackData = StatisticsCallbackData.parse(
@@ -52,38 +48,35 @@ public class StatisticsCallbackHandler {
             return false;
         }
 
-        try {
-            if (!callback.isPrivateChat()) {
-                return true;
-            }
-            UserProfile profile = userProfileService.getOrCreate(
-                    callback.getTelegramUserId(),
-                    callback.getChatId()
-            );
-            Instant now = clock.instant();
-            if (menuSubscriptionId.isPresent()) {
-                showPeriodMenu(callback, profile, menuSubscriptionId.orElseThrow(), now);
-                return true;
-            }
-            StatisticsCallbackData data = callbackData.get();
-            Optional<SubscriptionStatistics> statistics = statisticsService.calculate(
-                    profile.getId(),
-                    data.getSubscriptionId(),
-                    data.getPeriod(),
-                    now
-            );
-            OutgoingTelegramMessage message = statistics
-                    .map(value -> messageFactory.create(
+        if (!callback.isPrivateChat()) {
+            return true;
+        }
+        UserProfile profile = userProfileService.getOrCreate(
+                callback.getTelegramUserId(),
+                callback.getChatId()
+        );
+        Instant now = clock.instant();
+        if (menuSubscriptionId.isPresent()) {
+            showPeriodMenu(callback, profile, menuSubscriptionId.orElseThrow(), now);
+            return true;
+        }
+        StatisticsCallbackData data = callbackData.get();
+        Optional<SubscriptionStatistics> statistics = statisticsService.calculate(
+                profile.getId(),
+                data.getSubscriptionId(),
+                data.getPeriod(),
+                now
+        );
+        OutgoingTelegramMessage message = statistics
+                .map(value -> messageFactory.create(
                             callback.getChatId(),
                             value,
-                            profile.getPriceContext().getCityName()
+                            profile.getPriceContext().getCityName(),
+                            profile.getPricePreferences()
                     ))
-                    .orElseGet(() -> notFoundMessage(callback.getChatId()));
-            telegramGateway.sendMessage(message);
-            return true;
-        } finally {
-            answerCallbackBestEffort(callback.getCallbackQueryId());
-        }
+                .orElseGet(() -> notFoundMessage(callback.getChatId()));
+        telegramGateway.sendMessage(message);
+        return true;
     }
 
     private void showPeriodMenu(
@@ -115,10 +108,7 @@ public class StatisticsCallbackHandler {
                         periodButton("Всё время", subscriptionId,
                                 com.priceradar.statistics.domain.StatisticsPeriod.ALL_TIME)
                 ),
-                List.of(new TelegramInlineButton(
-                        "Мои товары",
-                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
-                ))
+                TelegramNavigationKeyboard.trackedItemsAndHome().getFirst()
         );
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(),
@@ -139,20 +129,11 @@ public class StatisticsCallbackHandler {
     }
 
     private OutgoingTelegramMessage notFoundMessage(long chatId) {
-        return OutgoingTelegramMessage.text(
+        return new OutgoingTelegramMessage(
                 chatId,
-                "Этот товар больше не отслеживается. Откройте раздел «Мои товары»."
+                "Этот товар больше не отслеживается. Откройте раздел «Мои товары».",
+                TelegramNavigationKeyboard.trackedItemsAndHome()
         );
     }
 
-    private void answerCallbackBestEffort(String callbackQueryId) {
-        try {
-            telegramGateway.answerCallbackQuery(callbackQueryId);
-        } catch (RuntimeException exception) {
-            LOGGER.warn(
-                    "Could not acknowledge Telegram callback, errorType={}",
-                    exception.getClass().getSimpleName()
-            );
-        }
-    }
 }

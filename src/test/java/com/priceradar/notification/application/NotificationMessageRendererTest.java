@@ -18,39 +18,37 @@ class NotificationMessageRendererTest {
             new NotificationMessageRenderer(new WalletEstimateService());
 
     @Test
-    void rendersPriceDecreaseWithRequiredUserFacts() {
-        PendingNotificationDelivery notification = notification(
+    void rendersPriceDecreaseAndReachedTargetMessages() {
+        PendingNotificationDelivery priceDecrease = notification(
                 NotificationType.PRICE_DECREASE,
                 Optional.empty(),
                 Optional.of(RubleAmount.ofMinorUnits(12_000L))
         );
-
-        OutgoingTelegramMessage message = renderer.render(notification);
-
-        assertThat(message.getChatId()).isEqualTo(7001L);
-        assertThat(message.getText())
-                .contains("Цена снизилась")
-                .contains("Кофемолка")
-                .contains("Предыдущая цена: 120 ₽")
-                .contains("Новая цена: 100 ₽")
-                .contains("С WB Кошельком: ≈ 97 ₽")
-                .contains("Регион: Москва")
-                .contains("https://www.wildberries.ru/catalog/123456/detail.aspx")
-                .contains("Цена может отличаться");
-    }
-
-    @Test
-    void rendersReachedTargetWithTargetPrice() {
-        PendingNotificationDelivery notification = notification(
+        PendingNotificationDelivery reachedTarget = notification(
                 NotificationType.TARGET_REACHED,
                 Optional.of(RubleAmount.ofMinorUnits(11_000L)),
                 Optional.empty()
         );
 
-        assertThat(renderer.render(notification).getText())
+        OutgoingTelegramMessage message = renderer.render(priceDecrease);
+
+        assertThat(message.getChatId()).isEqualTo(7001L);
+        assertThat(message.getText())
+                .contains("Новая минимальная цена")
+                .contains("Кофемолка")
+                .contains("Предыдущая цена без WB Кошелька: 120 ₽")
+                .contains("Предыдущая цена с WB Кошельком: ≈ 116 ₽")
+                .contains("Новая цена без WB Кошелька: 100 ₽")
+                .contains("Новая цена с WB Кошельком: ≈ 97 ₽")
+                .contains("Регион: Москва")
+                .contains("https://www.wildberries.ru/catalog/123456/detail.aspx")
+                .contains("Цена может отличаться");
+        assertThat(message.getInlineKeyboard()).isNotEmpty();
+        assertThat(renderer.render(reachedTarget).getText())
                 .contains("Целевая цена достигнута")
                 .contains("Целевая цена: 110 ₽")
-                .contains("Новая цена: 100 ₽")
+                .contains("Новая цена без WB Кошелька: 100 ₽")
+                .contains("Новая цена с WB Кошельком: ≈ 97 ₽")
                 .contains("Проверено: 18.07.2026 09:00 МСК");
     }
 

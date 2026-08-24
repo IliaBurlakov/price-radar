@@ -3,7 +3,8 @@
 PriceRadar — Telegram-бот и backend-сервис для отслеживания цен товаров на
 маркетплейсах. Текущий MVP работает только с Wildberries: пользователь отправляет
 ссылку на товар, получает приблизительную текущую цену, включает отслеживание и
-в дальнейшем получает уведомления о снижении цены или достижении заданного порога.
+в дальнейшем получает уведомления о новой минимальной цене за период отслеживания
+или достижении заданного порога.
 
 Проект не связан с Wildberries и не является официальным сервисом Wildberries.
 Интеграция использует неофициальный внутренний endpoint, который может измениться
@@ -42,7 +43,7 @@ PriceRadar — Telegram-бот и backend-сервис для отслежива
 - Сохранять `Product`, `WatchTarget` и начальный `PriceSnapshot`.
 - Показывать название, бренд, наличие, обычную цену, оценку цены с WB Кошельком,
   регион и предупреждение о приблизительности цены.
-- Создавать подписку на любое снижение обычной цены.
+- Создавать подписку на новую минимальную обычную цену за период отслеживания.
 - Создавать подписку на достижение целевой цены.
 - Ограничивать пользователя 50 активными подписками.
 - Не создавать повторную активную подписку на тот же `WatchTarget`.
@@ -159,9 +160,9 @@ Quote действует 15 минут. При создании подписки
 Истёкшая кнопка просит отправить URL заново. Она не вызывает provider и не
 обходит rate limit.
 
-Для режима `ANY_DECREASE` valid regular price из quote становится baseline этой
-подписки. Для `TARGET_PRICE` начальное состояние порога также определяется по
-конкретному свежему quote.
+Для режима `ANY_DECREASE` valid regular price из quote становится начальной
+notification reference price этой подписки. Для `TARGET_PRICE` начальное состояние
+порога также определяется по конкретному свежему quote.
 
 ### 3. Проверка цены по расписанию
 
@@ -343,9 +344,9 @@ discount 3%. UI изменения региона и скидки в текущ�
 контекстом могут использовать один `WatchTarget` и shared price history.
 
 `Subscription` принадлежит одному пользователю и одному `WatchTarget`. Она
-содержит notification mode, baseline/threshold state, `createdAt` и optional
-`endedAt`. Завершённая подписка не оживляется: повторное добавление создаёт новую
-строку и новый статистический период.
+содержит notification mode, notification reference/threshold state, `createdAt`
+и optional `endedAt`. Завершённая подписка не оживляется: повторное добавление
+создаёт новую строку и новый статистический период.
 
 ### `telegram`
 
@@ -393,8 +394,10 @@ update пропускается с записью ошибки в лог, ина
 - decision/state machine;
 - outbox delivery.
 
-Для `ANY_DECREASE` baseline принадлежит подписке и обновляется только
-последовательными valid regular observations после её создания.
+Для `ANY_DECREASE` notification reference price принадлежит подписке и означает
+минимальную valid regular price текущего периода отслеживания. Рост цены не повышает
+reference. Отдельный timestamp последнего обработанного valid observation защищает
+state machine от replay и out-of-order snapshots.
 
 Для `TARGET_PRICE` уведомление отправляется при переходе к цене меньше или равной
 порогу. Новое уведомление возможно только после того, как цена сначала стала
@@ -408,8 +411,9 @@ Outbox использует claim timeout. Это позволяет друго�
 ### `statistics`
 
 `SubscriptionStatisticsService` проверяет ownership активной подписки и определяет
-границы периода. `JdbcPriceStatisticsStore` одним SQL-запросом считает count,
-minimum, maximum и average.
+границы периода. `JdbcPriceStatisticsStore` одним SQL-запросом получает first/latest,
+minimum с timestamp, maximum, average и count. Из first/latest рассчитываются
+абсолютное и процентное изменение, а из latest/minimum — расстояние до минимума.
 
 JDBC выбран здесь вместо загрузки snapshots через JPA: агрегаты эффективнее и
 понятнее считать непосредственно в PostgreSQL.
@@ -498,9 +502,9 @@ ORDER BY s.created_at DESC;
 - Недоступный вариант получает `UNAVAILABLE`.
 - Доступный вариант без распознаваемой цены получает `NO_PRICE`.
 
-Только `REGULAR_PRICE` с source `PRODUCT` участвует в baseline, уведомлениях и
-статистике. `BASIC_FALLBACK`, `UNAVAILABLE` и `NO_PRICE` сохраняются как полезные
-business observations, но не искажают аналитику.
+Только `REGULAR_PRICE` с source `PRODUCT` участвует в notification reference,
+уведомлениях и статистике. `BASIC_FALLBACK`, `UNAVAILABLE` и `NO_PRICE` сохраняются
+как полезные business observations, но не искажают аналитику.
 
 ### WB Кошелёк
 

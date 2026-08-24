@@ -136,15 +136,11 @@ class WildberriesMarketplaceProviderTest {
     }
 
     @Test
-    void activatesCooldownForMalformedResponse() {
+    void activatesCooldownForInvalidProviderResponses() {
         assertInvalidResponseActivatesCooldown(
                 "{not-json",
                 MarketplaceProviderFailureCode.MALFORMED_RESPONSE
         );
-    }
-
-    @Test
-    void activatesCooldownForSchemaViolation() {
         String duplicateSizeIds = """
                 {
                   "data": {

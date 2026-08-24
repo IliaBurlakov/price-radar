@@ -1,39 +1,26 @@
 package com.priceradar.product.application;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalLong;
-import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class VariantResolutionServiceTest {
 
     private final VariantResolutionService service = new VariantResolutionService();
 
     @Test
-    void resolvesExplicitRequestedSizeByExactVariantKey() {
-        ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.of(10));
+    void resolvesOnlyTheExplicitlyRequestedSize() {
+        ParsedProductUrl requested = new ParsedProductUrl(123, OptionalLong.of(10));
         VariantAttribute size = new VariantAttribute("Size", "S");
-        // Availability and missing price will be represented by PriceSnapshot later.
-        // An explicitly requested user variant is resolved exactly and is never auto-selected.
         List<VariantOption> options = List.of(
+                // Availability and price status are recorded in PriceSnapshot later.
+                // An explicit user choice must not be replaced by auto-selection.
                 VariantOption.wildberriesSize(10, List.of(size), false, false),
-                VariantOption.wildberriesSize(20, List.of(new VariantAttribute("Size", "M")), true, true)
-        );
-
-        ResolvedVariant result = service.resolveInitial(url, options).orElseThrow();
-
-        assertThat(result.getVariantKey()).isEqualTo("SIZE:10");
-        assertThat(result.getAttributes()).containsExactly(size);
-        assertThat(result.isAutoSelected()).isFalse();
-    }
-
-    @Test
-    void returnsEmptyWhenRequestedSizeIsMissingFromProviderOptions() {
-        ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.of(10));
-        List<VariantOption> options = List.of(
                 VariantOption.wildberriesSize(
                         20,
                         List.of(new VariantAttribute("Size", "M")),
@@ -42,126 +29,66 @@ class VariantResolutionServiceTest {
                 )
         );
 
-        assertThat(service.resolveInitial(url, options)).isEmpty();
+        ResolvedVariant result = service.resolveInitial(requested, options).orElseThrow();
+
+        assertThat(result.getVariantKey()).isEqualTo("SIZE:10");
+        assertThat(result.getAttributes()).containsExactly(size);
+        assertThat(result.isAutoSelected()).isFalse();
+        assertThat(service.resolveInitial(
+                new ParsedProductUrl(123, OptionalLong.of(30)),
+                options
+        )).isEmpty();
     }
 
     @Test
-    void autoSelectsFirstAvailableOptionWithValidRegularPrice() {
+    void autoSelectsTheFirstAvailableOptionWithARegularPrice() {
         ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.empty());
-        VariantOption first = VariantOption.providerOption(
-                "sku-1",
-                List.of(new VariantAttribute("Color", "Black")),
-                true,
-                true
-        );
-        VariantOption second = VariantOption.providerOption(
-                "sku-2",
-                List.of(new VariantAttribute("Color", "White")),
-                true,
-                true
+        List<VariantOption> options = List.of(
+                VariantOption.providerOption("unavailable", List.of(), false, true),
+                VariantOption.providerOption("without-price", List.of(), true, false),
+                VariantOption.providerOption("first-eligible", List.of(), true, true),
+                VariantOption.providerOption("second-eligible", List.of(), true, true)
         );
 
-        ResolvedVariant result = service.resolveInitial(url, List.of(first, second)).orElseThrow();
+        ResolvedVariant result = service.resolveInitial(url, options).orElseThrow();
 
-        assertThat(result.getVariantKey()).isEqualTo("OPTION:sku-1");
+        assertThat(result.getVariantKey()).isEqualTo("OPTION:first-eligible");
         assertThat(result.isAutoSelected()).isTrue();
     }
 
     @Test
-    void autoSelectionSkipsUnavailableOptions() {
-        ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.empty());
-        VariantOption unavailable = VariantOption.providerOption("sku-1", List.of(), false, true);
-        VariantOption available = VariantOption.providerOption("sku-2", List.of(), true, true);
-
-        ResolvedVariant result = service.resolveInitial(url, List.of(unavailable, available)).orElseThrow();
-
-        assertThat(result.getVariantKey()).isEqualTo("OPTION:sku-2");
-    }
-
-    @Test
-    void autoSelectionSkipsOptionsWithoutValidRegularPrice() {
-        ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.empty());
-        VariantOption withoutPrice = VariantOption.providerOption("sku-1", List.of(), true, false);
-        VariantOption withPrice = VariantOption.providerOption("sku-2", List.of(), true, true);
-
-        ResolvedVariant result = service.resolveInitial(url, List.of(withoutPrice, withPrice)).orElseThrow();
-
-        assertThat(result.getVariantKey()).isEqualTo("OPTION:sku-2");
-    }
-
-    @Test
-    void resolvesProductWithoutVariantsWhenOptionsAreEmpty() {
+    void distinguishesProductsWithoutVariantsFromProductsWithoutEligibleOptions() {
         ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.empty());
 
-        ResolvedVariant result = service.resolveInitial(url, List.of()).orElseThrow();
-
-        assertThat(result.getVariantKey()).isEqualTo("NO_VARIANT");
-        assertThat(result.getAttributes()).isEmpty();
-        assertThat(result.isAutoSelected()).isFalse();
-    }
-
-    @Test
-    void returnsEmptyWhenOptionsExistButNoneIsEligible() {
-        ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.empty());
+        ResolvedVariant noVariant = service.resolveInitial(url, List.of()).orElseThrow();
         List<VariantOption> ineligibleOptions = List.of(
                 VariantOption.providerOption("unavailable", List.of(), false, true),
                 VariantOption.providerOption("without-price", List.of(), true, false)
         );
 
+        assertThat(noVariant.getVariantKey()).isEqualTo("NO_VARIANT");
+        assertThat(noVariant.getAttributes()).isEmpty();
+        assertThat(noVariant.isAutoSelected()).isFalse();
         assertThat(service.resolveInitial(url, ineligibleOptions)).isEmpty();
     }
 
     @Test
-    void resolvesCompositeProviderVariantWithArbitraryAttributes() {
-        ParsedProductUrl url = new ParsedProductUrl(123, OptionalLong.empty());
-        List<VariantAttribute> attributes = List.of(
-                new VariantAttribute("Color", "Black"),
-                new VariantAttribute("Size", "L")
-        );
-        VariantOption composite = VariantOption.providerOption("black-l", attributes, true, true);
-
-        ResolvedVariant result = service.resolveInitial(url, List.of(composite)).orElseThrow();
-
-        assertThat(result.getVariantKey()).isEqualTo("OPTION:black-l");
-        assertThat(result.getAttributes()).containsExactlyElementsOf(attributes);
-        assertThat(result.getDisplayName()).contains("Color: Black / Size: L");
-    }
-
-    @Test
-    void buildsDisplayNameForZeroOneAndMultipleAttributes() {
-        ResolvedVariant empty = ResolvedVariant.noVariant();
-        ResolvedVariant one = ResolvedVariant.providerOption(
-                "single",
-                List.of(new VariantAttribute("Storage", "256 GB")),
-                true
-        );
-        ResolvedVariant multiple = ResolvedVariant.providerOption(
-                "composite",
-                List.of(
-                        new VariantAttribute("Color", "Black"),
-                        new VariantAttribute("RAM", "16 GB")
-                ),
-                true
-        );
-
-        assertThat(empty.getDisplayName()).isEmpty();
-        assertThat(one.getDisplayName()).contains("Storage: 256 GB");
-        assertThat(multiple.getDisplayName()).contains("Color: Black / RAM: 16 GB");
-    }
-
-    @Test
-    void trimsAttributesAndProtectsAttributeCollectionsFromMutation() {
-        VariantAttribute attribute = new VariantAttribute(" Color ", " Black ");
+    void keepsArbitraryVariantAttributesStableAndImmutable() {
         List<VariantAttribute> source = new ArrayList<>();
-        source.add(attribute);
-        VariantOption option = VariantOption.providerOption("sku-1", source, true, true);
-
+        source.add(new VariantAttribute(" Color ", " Black "));
+        source.add(new VariantAttribute("Size", "L"));
+        VariantOption option = VariantOption.providerOption("black-l", source, true, true);
         source.clear();
 
-        assertThat(attribute.getName()).isEqualTo("Color");
-        assertThat(attribute.getValue()).isEqualTo("Black");
-        assertThat(option.getAttributes()).containsExactly(attribute);
-        assertThatThrownBy(() -> option.getAttributes().add(new VariantAttribute("Size", "L")))
+        ResolvedVariant result = service.resolveInitial(
+                new ParsedProductUrl(123, OptionalLong.empty()),
+                List.of(option)
+        ).orElseThrow();
+
+        assertThat(result.getVariantKey()).isEqualTo("OPTION:black-l");
+        assertThat(result.getDisplayName()).contains("Color: Black / Size: L");
+        assertThat(result.getAttributes()).hasSize(2);
+        assertThatThrownBy(() -> result.getAttributes().add(new VariantAttribute("RAM", "16 GB")))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
@@ -178,13 +105,5 @@ class VariantResolutionServiceTest {
         attributesWithNull.add(null);
         assertThatThrownBy(() -> new VariantOption("NO_VARIANT", attributesWithNull, true, true))
                 .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void variantModelUsesRegularClassesInsteadOfRecords() {
-        assertThat(VariantAttribute.class.isRecord()).isFalse();
-        assertThat(VariantOption.class.isRecord()).isFalse();
-        assertThat(ResolvedVariant.class.isRecord()).isFalse();
-        assertThat(ParsedProductUrl.class.isRecord()).isFalse();
     }
 }

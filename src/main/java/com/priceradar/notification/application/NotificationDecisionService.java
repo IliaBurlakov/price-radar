@@ -33,18 +33,21 @@ public final class NotificationDecisionService {
             NotificationObservation observation,
             RubleAmount currentPrice
     ) {
-        if (subscription.getBaselineObservedAt()
+        if (subscription.getLastProcessedPriceObservedAt()
                 .filter(previous -> !observation.getObservedAt().isAfter(previous))
                 .isPresent()) {
             return NotificationDecisionResult.unchanged(subscription);
         }
-        Optional<RubleAmount> previousPrice = subscription.getBaselinePrice();
-        Subscription updated = subscription.withBaseline(
-                currentPrice,
+        Optional<RubleAmount> referencePrice = subscription.getNotificationReferencePrice();
+        RubleAmount updatedReference = referencePrice
+                .filter(reference -> currentPrice.getMinorUnits() >= reference.getMinorUnits())
+                .orElse(currentPrice);
+        Subscription updated = subscription.withProcessedRegularPrice(
+                updatedReference,
                 observation.getObservedAt()
         );
-        if (previousPrice.isEmpty()
-                || currentPrice.getMinorUnits() >= previousPrice.orElseThrow().getMinorUnits()) {
+        if (referencePrice.isEmpty()
+                || currentPrice.getMinorUnits() >= referencePrice.orElseThrow().getMinorUnits()) {
             return NotificationDecisionResult.changed(updated);
         }
 
@@ -52,7 +55,7 @@ public final class NotificationDecisionService {
                 subscription.getId(),
                 observation.getSnapshotId(),
                 NotificationType.PRICE_DECREASE,
-                previousPrice,
+                referencePrice,
                 currentPrice,
                 observation.getObservedAt()
         );

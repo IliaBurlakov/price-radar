@@ -122,6 +122,66 @@ class SubscriptionServiceTest {
         verify(subscriptionStore, never()).findActive(userId, watchTargetId);
     }
 
+    @Test
+    void preventsDuplicateActiveSubscriptionsAndEnforcesTheUserLimit() {
+        Instant now = Instant.parse("2026-01-01T00:10:00Z");
+        UUID existingUserId = UUID.randomUUID();
+        UUID existingSnapshotId = UUID.randomUUID();
+        SubscriptionQuoteObservation existingObservation = new SubscriptionQuoteObservation(
+                existingSnapshotId,
+                UUID.randomUUID(),
+                now.minusSeconds(30),
+                Optional.of(RubleAmount.ofMinorUnits(8_000))
+        );
+        when(userStore.existsAndLockById(existingUserId)).thenReturn(true);
+        when(subscriptionStore.findQuoteObservation(existingSnapshotId))
+                .thenReturn(Optional.of(existingObservation));
+        when(subscriptionStore.findActive(
+                existingUserId,
+                existingObservation.getWatchTargetId()
+        )).thenReturn(Optional.of(mock(Subscription.class)));
+
+        SubscriptionCreationResult duplicate = service.createFromQuote(
+                existingUserId,
+                existingSnapshotId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                now
+        );
+
+        UUID limitedUserId = UUID.randomUUID();
+        UUID limitedSnapshotId = UUID.randomUUID();
+        SubscriptionQuoteObservation limitedObservation = new SubscriptionQuoteObservation(
+                limitedSnapshotId,
+                UUID.randomUUID(),
+                now.minusSeconds(30),
+                Optional.of(RubleAmount.ofMinorUnits(8_000))
+        );
+        when(userStore.existsAndLockById(limitedUserId)).thenReturn(true);
+        when(subscriptionStore.findQuoteObservation(limitedSnapshotId))
+                .thenReturn(Optional.of(limitedObservation));
+        when(subscriptionStore.findActive(
+                limitedUserId,
+                limitedObservation.getWatchTargetId()
+        )).thenReturn(Optional.empty());
+        when(subscriptionStore.countActive(limitedUserId))
+                .thenReturn((long) SubscriptionService.ACTIVE_SUBSCRIPTION_LIMIT);
+
+        SubscriptionCreationResult limited = service.createFromQuote(
+                limitedUserId,
+                limitedSnapshotId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                now
+        );
+
+        assertThat(duplicate.getStatus())
+                .isEqualTo(SubscriptionCreationResult.Status.ALREADY_ACTIVE);
+        assertThat(limited.getStatus())
+                .isEqualTo(SubscriptionCreationResult.Status.LIMIT_REACHED);
+        verify(subscriptionStore, never()).create(any());
+    }
+
     private void ready(
             UUID userId,
             UUID quoteSnapshotId,

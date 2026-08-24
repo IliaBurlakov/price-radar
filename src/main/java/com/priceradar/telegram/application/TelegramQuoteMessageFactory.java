@@ -11,13 +11,11 @@ import com.priceradar.product.application.ResolvedQuote;
 import com.priceradar.product.application.ResolvedQuoteResult;
 import com.priceradar.user.application.UserProfile;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 public final class TelegramQuoteMessageFactory {
-
-    private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цена может отличаться в приложении Wildberries.";
 
     private final WalletEstimateService walletEstimateService;
     private final TrackingCallbackCodec trackingCallbackCodec;
@@ -53,12 +51,12 @@ public final class TelegramQuoteMessageFactory {
                 ));
         appendAutoSelectedVariant(text, quote);
         text.append("\nОткрыть товар: ").append(quote.getCanonicalUrl());
-        text.append("\n\n").append(APPROXIMATE_PRICE_WARNING);
+        text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         return new OutgoingTelegramMessage(
                 chatId,
                 text.toString(),
-                trackingKeyboard(
+                quoteKeyboard(
                         quote.getQuoteSnapshotId(),
                         userProfile.getTelegramUserId()
                 )
@@ -73,7 +71,11 @@ public final class TelegramQuoteMessageFactory {
         String text = result.getProviderFailure()
                 .map(failure -> providerFailureText(failure.getCode()))
                 .orElseGet(() -> quoteFailureText(result.getFailureCode().orElseThrow()));
-        return OutgoingTelegramMessage.text(chatId, text);
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                TelegramNavigationKeyboard.addProductAndHome()
+        );
     }
 
     private void appendAvailability(StringBuilder text, InterpretedPrice price) {
@@ -90,7 +92,7 @@ public final class TelegramQuoteMessageFactory {
     ) {
         if (price.getStatus() == SnapshotStatus.REGULAR_PRICE) {
             RubleAmount regularPrice = price.getRegularPrice().orElseThrow();
-            text.append("\nЦена: ").append(format(regularPrice));
+            text.append("\nЦена без WB Кошелька: ").append(format(regularPrice));
             walletEstimateService.estimate(price, userProfile.getPricePreferences())
                     .ifPresent(estimate -> appendWalletEstimate(text, estimate));
             return;
@@ -112,11 +114,8 @@ public final class TelegramQuoteMessageFactory {
     }
 
     private void appendWalletEstimate(StringBuilder text, WalletEstimate estimate) {
-        text.append("\nС WB Кошельком: ≈ ")
-                .append(format(estimate.getAmount()))
-                .append(" (скидка ")
-                .append(estimate.getWalletDiscountPercent())
-                .append("%)");
+        text.append("\nС WB Кошельком: ")
+                .append(TelegramDisplayFormatter.walletEstimate(estimate));
     }
 
     private void appendAutoSelectedVariant(StringBuilder text, ResolvedQuote quote) {
@@ -136,7 +135,7 @@ public final class TelegramQuoteMessageFactory {
     ) {
         return List.of(
                 List.of(new TelegramInlineButton(
-                        "Следить за снижением",
+                        "Следить за минимумом",
                         trackingCallbackCodec.encode(
                                 TrackingCallbackData.Action.TRACK_ANY_DECREASE,
                                 quoteSnapshotId,
@@ -152,6 +151,18 @@ public final class TelegramQuoteMessageFactory {
                         )
                 ))
         );
+    }
+
+    private List<List<TelegramInlineButton>> quoteKeyboard(
+            UUID quoteSnapshotId,
+            long telegramUserId
+    ) {
+        List<List<TelegramInlineButton>> keyboard = new ArrayList<>(trackingKeyboard(
+                quoteSnapshotId,
+                telegramUserId
+        ));
+        keyboard.add(TelegramNavigationKeyboard.trackedItemsAndHome().getFirst());
+        return List.copyOf(keyboard);
     }
 
     private String providerFailureText(MarketplaceProviderFailureCode code) {

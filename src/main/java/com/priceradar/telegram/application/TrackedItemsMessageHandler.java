@@ -5,9 +5,6 @@ import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
@@ -15,8 +12,6 @@ import java.util.OptionalInt;
 import java.util.UUID;
 
 public class TrackedItemsMessageHandler {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(TrackedItemsMessageHandler.class);
 
     private final UserProfileService userProfileService;
     private final SubscriptionService subscriptionService;
@@ -63,43 +58,43 @@ public class TrackedItemsMessageHandler {
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
-        Optional<RemoveTrackingCallbackData> removeData = RemoveTrackingCallbackData.parse(
+        Optional<UUID> removeId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.REMOVE,
                 callback.getData()
         );
-        Optional<UUID> itemId = TrackedItemsCallbackData.parseItem(callback.getData());
-        OptionalInt requestedPage = TrackedItemsCallbackData.parsePage(callback.getData());
-        if (removeData.isEmpty() && itemId.isEmpty() && requestedPage.isEmpty()) {
+        Optional<UUID> itemId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.OPEN_ITEM,
+                callback.getData()
+        );
+        OptionalInt requestedPage = TrackedItemsPageCallbackData.parse(callback.getData());
+        if (removeId.isEmpty() && itemId.isEmpty() && requestedPage.isEmpty()) {
             return false;
         }
 
-        try {
-            if (!callback.isPrivateChat()) {
-                return true;
-            }
-            UserProfile profile = userProfileService.getOrCreate(
-                    callback.getTelegramUserId(),
-                    callback.getChatId()
-            );
-            if (requestedPage.isPresent() || itemId.isPresent()) {
-                List<TrackedSubscriptionItem> items =
-                        subscriptionService.findActive(profile.getId());
-                if (requestedPage.isPresent()) {
-                    showPage(callback.getChatId(), items, requestedPage.getAsInt());
-                    return true;
-                }
-                showItemDetails(callback.getChatId(), profile, items, itemId.orElseThrow());
-                return true;
-            }
-            SubscriptionEndResult result = subscriptionService.end(
-                    profile.getId(),
-                    removeData.orElseThrow().getSubscriptionId(),
-                    clock.instant()
-            );
-            telegramGateway.sendMessage(removalMessage(callback.getChatId(), result));
+        if (!callback.isPrivateChat()) {
             return true;
-        } finally {
-            answerCallbackBestEffort(callback.getCallbackQueryId());
         }
+        UserProfile profile = userProfileService.getOrCreate(
+                callback.getTelegramUserId(),
+                callback.getChatId()
+        );
+        if (requestedPage.isPresent() || itemId.isPresent()) {
+            List<TrackedSubscriptionItem> items =
+                    subscriptionService.findActive(profile.getId());
+            if (requestedPage.isPresent()) {
+                showPage(callback.getChatId(), items, requestedPage.getAsInt());
+                return true;
+            }
+            showItemDetails(callback.getChatId(), profile, items, itemId.orElseThrow());
+            return true;
+        }
+        SubscriptionEndResult result = subscriptionService.end(
+                profile.getId(),
+                removeId.orElseThrow(),
+                clock.instant()
+        );
+        telegramGateway.sendMessage(removalMessage(callback.getChatId(), result));
+        return true;
     }
 
     private void showPage(
@@ -138,10 +133,7 @@ public class TrackedItemsMessageHandler {
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 chatId,
                 "Этот товар больше не отслеживается.",
-                List.of(List.of(new TelegramInlineButton(
-                        "Мои товары",
-                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
-                )))
+                TelegramNavigationKeyboard.trackedItemsAndHome()
         ));
     }
 
@@ -165,10 +157,7 @@ public class TrackedItemsMessageHandler {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
-                List.of(List.of(new TelegramInlineButton(
-                        "Мои товары",
-                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
-                )))
+                TelegramNavigationKeyboard.trackedItemsAndHome()
         );
     }
 
@@ -176,14 +165,4 @@ public class TrackedItemsMessageHandler {
         return text.equals("/tracked") || text.startsWith("/tracked@");
     }
 
-    private void answerCallbackBestEffort(String callbackQueryId) {
-        try {
-            telegramGateway.answerCallbackQuery(callbackQueryId);
-        } catch (RuntimeException exception) {
-            LOGGER.warn(
-                    "Could not acknowledge Telegram callback, errorType={}",
-                    exception.getClass().getSimpleName()
-            );
-        }
-    }
 }

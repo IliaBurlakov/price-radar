@@ -1,5 +1,6 @@
 package com.priceradar.telegram.infrastructure;
 
+import com.priceradar.telegram.application.TelegramDeliveryException;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.TelegramPollingStateStore;
 import com.priceradar.telegram.application.TelegramUpdate;
@@ -58,7 +59,7 @@ class TelegramLongPollingWorkerTest {
         TelegramUpdate update = new TelegramUpdate(20L, Optional.empty());
         when(gateway.receiveUpdates(0L, Duration.ofSeconds(1)))
                 .thenReturn(List.of(update));
-        doThrow(new TelegramGatewayException("temporary outage", true))
+        doThrow(new TelegramDeliveryException("temporary outage", true))
                 .when(dispatcher).dispatch(update);
         TelegramLongPollingWorker worker = new TelegramLongPollingWorker(
                 gateway,
