@@ -61,6 +61,8 @@ priceradar:
   provider:
     wildberries:
       endpoint: https://card.wb.ru/cards/v4/detail
+      shared-basket-endpoint: https://wbx-api-gateway.wildberries.ru/share-basket/api/v1/basket/
+      shared-basket-cards-endpoint: https://card.wb.ru/cards/v4/list
       min-request-delay: PT3S
       request-timeout: PT10S
       cache-ttl: PT5M

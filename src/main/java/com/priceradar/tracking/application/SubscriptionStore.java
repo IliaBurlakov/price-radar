@@ -20,6 +20,8 @@ public interface SubscriptionStore {
 
     List<TrackedSubscriptionItem> findActiveByUserId(UUID userId);
 
+    List<Subscription> findActiveSubscriptions(UUID userId);
+
     Optional<LatestSnapshotView> findLatestSnapshotActiveOwned(
             UUID userId,
             UUID subscriptionId

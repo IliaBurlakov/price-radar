@@ -9,6 +9,10 @@ import com.priceradar.telegram.application.ShowLastKnownCallbackHandler;
 import com.priceradar.telegram.application.StatisticsCallbackHandler;
 import com.priceradar.telegram.application.StatisticsMessageFactory;
 import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
+import com.priceradar.telegram.application.TelegramSharedBasketHandler;
+import com.priceradar.telegram.application.SharedBasketCallbackCodec;
+import com.priceradar.sharedbasket.application.SharedBasketImportService;
+import com.priceradar.sharedbasket.application.SharedBasketUrlParser;
 import com.priceradar.telegram.application.TelegramMenuHandler;
 import com.priceradar.telegram.application.TelegramMenuMessageFactory;
 import com.priceradar.telegram.application.TelegramGateway;
@@ -66,6 +70,27 @@ public class TelegramBotConfiguration {
             @Value("${TELEGRAM_CALLBACK_SECRET}") String callbackSecret
     ) {
         return new TrackingCallbackCodec(callbackSecret);
+    }
+
+    @Bean
+    public SharedBasketCallbackCodec sharedBasketCallbackCodec(
+            @Value("${TELEGRAM_CALLBACK_SECRET}") String callbackSecret
+    ) {
+        return new SharedBasketCallbackCodec(callbackSecret);
+    }
+
+    @Bean
+    public TelegramSharedBasketHandler telegramSharedBasketHandler(
+            SharedBasketUrlParser urlParser,
+            SharedBasketImportService importService,
+            SharedBasketCallbackCodec callbackCodec,
+            UserProfileService userProfileService,
+            TelegramGateway telegramGateway,
+            Clock providerClock
+    ) {
+        return new TelegramSharedBasketHandler(
+                urlParser, importService, callbackCodec, userProfileService, telegramGateway, providerClock
+        );
     }
 
     @Bean
@@ -206,6 +231,7 @@ public class TelegramBotConfiguration {
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramMenuHandler menuHandler,
             TelegramTrackingHandler trackingHandler,
+            TelegramSharedBasketHandler sharedBasketHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
@@ -215,6 +241,7 @@ public class TelegramBotConfiguration {
                 currentQuoteHandler,
                 menuHandler,
                 trackingHandler,
+                sharedBasketHandler,
                 trackedItemsHandler,
                 showLastKnownHandler,
                 statisticsHandler,

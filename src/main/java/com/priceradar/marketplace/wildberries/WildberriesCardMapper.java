@@ -56,6 +56,54 @@ public final class WildberriesCardMapper {
         return mapProduct(productNode.get(), expectedNmId);
     }
 
+    public WildberriesBatchMappingResult mapBatch(String rawJson, List<Long> expectedNmIds) {
+        if (expectedNmIds == null || expectedNmIds.isEmpty()
+                || expectedNmIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("expectedNmIds must contain positive ids");
+        }
+        if (rawJson == null || rawJson.trim().isEmpty()) {
+            return WildberriesBatchMappingResult.failure(new WildberriesMappingFailure(
+                    WildberriesMappingFailureCode.EMPTY_RESPONSE,
+                    "Wildberries response is empty"
+            ));
+        }
+
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(rawJson);
+        } catch (JsonProcessingException exception) {
+            return WildberriesBatchMappingResult.failure(new WildberriesMappingFailure(
+                    WildberriesMappingFailureCode.MALFORMED_JSON,
+                    "Wildberries response is not valid JSON"
+            ));
+        }
+
+        Optional<JsonNode> productsNode = firstExistingArray(
+                root.path("data").path("products"),
+                root.path("products")
+        );
+        if (productsNode.isEmpty()) {
+            return WildberriesBatchMappingResult.failure(new WildberriesMappingFailure(
+                    WildberriesMappingFailureCode.SCHEMA_VIOLATION,
+                    "Wildberries batch response does not contain products"
+            ));
+        }
+
+        Map<Long, JsonNode> nodesById = new LinkedHashMap<>();
+        for (JsonNode productNode : productsNode.orElseThrow()) {
+            positiveLong(productNode, "id", "nmId").ifPresent(id -> nodesById.putIfAbsent(id, productNode));
+        }
+
+        Map<Long, WildberriesMappingResult> results = new LinkedHashMap<>();
+        for (Long nmId : expectedNmIds) {
+            JsonNode productNode = nodesById.get(nmId);
+            results.put(nmId, productNode == null
+                    ? failure(WildberriesMappingFailureCode.PRODUCT_NOT_FOUND, "Product was not found in response")
+                    : mapProduct(productNode, nmId));
+        }
+        return WildberriesBatchMappingResult.success(results);
+    }
+
     private WildberriesMappingResult mapProduct(JsonNode productNode, long expectedNmId) {
         Optional<Long> nmId = positiveLong(productNode, "id", "nmId");
         if (nmId.isEmpty()) {

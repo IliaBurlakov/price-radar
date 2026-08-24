@@ -37,6 +37,9 @@ PriceRadar — Telegram-бот и backend-сервис для отслежива
 ## Что уже умеет MVP
 
 - Принимать canonical Wildberries URL в личном чате Telegram.
+- Импортировать товары из переданной пользователем shared basket Wildberries.
+- Добавлять только новые товары либо синхронизировать весь активный список после
+  отдельного подтверждения удалений.
 - Извлекать `nmId` и необязательный параметр `size`.
 - Получать карточку товара через Wildberries provider.
 - Выбирать и фиксировать конкретный вариант товара.
@@ -304,6 +307,8 @@ Application layer получает `MarketplaceProductDetails` или typed
 - `WildberriesCardMapper` парсит структуру `cards/v4/detail`.
 - `WildberriesMappedProduct` и mapping failure types остаются внутри adapter.
 - `WildberriesProviderProperties` содержит safety configuration.
+- `WildberriesSharedBasketProvider` читает shared basket и batch-resolves товары,
+  строго сопоставляя `chrtId` с `size.optionId`.
 
 Cache хранит ответ по `(nmId, dest, spp)` пять минут и ограничен 10 000
 элементами. Он нужен, чтобы повторные одинаковые действия рядом по времени не
@@ -361,6 +366,28 @@ discount 3%. UI изменения региона и скидки в текущ�
 - `TrackingCallbackCodec` подписывает callback HMAC-SHA256.
 - `PendingTargetPriceStore` сохраняет короткий двухшаговый сценарий ввода
   целевой цены.
+- `TelegramSharedBasketHandler` показывает preview импорта и требует повторное
+  подтверждение перед завершением отсутствующих в корзине подписок.
+
+### `sharedbasket`
+
+Изолированный сценарий импорта shared basket. Пользователь явно отправляет новую
+ссылку; фонового перечитывания старого `shareId` нет. Сервис удаляет точные
+дубликаты с сохранением исходного порядка, разрешает только вариант с
+`size.optionId == chrtId` и сохраняет результат в короткоживущую persisted session
+на 15 минут. Callback содержит только session id, action и HMAC-подпись.
+
+Доступны два действия:
+
+- «Добавить новые» сохраняет существующие подписки без изменений и создаёт новые
+  в режиме новой минимальной цены;
+- «Синхронизировать» приводит активный набор к первым 50 корректным товарам
+  корзины. Подписки вне набора завершаются только после второго подтверждения,
+  исторические snapshots физически не удаляются.
+
+Импорт не получает доступ к аккаунту Wildberries: cookies, Authorization и
+пользовательские credentials не используются и не сохраняются. Shared basket API
+не документирован и может измениться.
 
 Long polling выбран для простого локального и VPS-запуска: ему не нужны домен,
 HTTPS certificate или публичный webhook endpoint.
@@ -457,6 +484,8 @@ subscriptions 1 ---------------------------- N notification_outbox
 | `provider_states` | Persisted cooldown и время обращения provider |
 | `telegram_polling_state` | Persisted Telegram update offset и poison-update state |
 | `telegram_pending_target_prices` | Короткоживущий шаг ожидания целевой цены |
+| `pending_shared_basket_imports` | Короткоживущая persisted session preview импорта |
+| `pending_shared_basket_import_items` | Упорядоченные серверно разрешённые targets session |
 
 Отдельной таблицы `pending_quotes` нет. Quote identity — UUID конкретного
 `price_snapshots`, а TTL проверяется по его `observed_at`.

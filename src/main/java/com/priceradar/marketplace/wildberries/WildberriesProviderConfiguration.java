@@ -1,5 +1,6 @@
 package com.priceradar.marketplace.wildberries;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.priceradar.marketplace.application.ProviderAccessCoordinator;
 import com.priceradar.marketplace.application.ProviderCooldownStore;
 import com.priceradar.marketplace.domain.Marketplace;
@@ -74,6 +75,32 @@ public class WildberriesProviderConfiguration {
                 properties.getCacheTtl(),
                 properties.getCacheMaxEntries(),
                 properties.getMaxRetryAfter(),
+                properties.getMaxResponseBytes(),
+                providerClock
+        );
+    }
+
+    @Bean
+    public WildberriesSharedBasketProvider wildberriesSharedBasketProvider(
+            HttpClient wildberriesHttpClient,
+            ObjectMapper objectMapper,
+            WildberriesCardMapper cardMapper,
+            ProviderAccessCoordinator accessCoordinator,
+            WildberriesProviderProperties properties,
+            Clock providerClock
+    ) {
+        return new WildberriesSharedBasketProvider(
+                wildberriesHttpClient,
+                properties.getSharedBasketEndpoint(),
+                properties.getSharedBasketCardsEndpoint(),
+                new WildberriesSharedBasketMapper(objectMapper),
+                cardMapper,
+                accessCoordinator,
+                properties.getRequestTimeout(),
+                properties.getBaseBackoff(),
+                properties.getMaxBackoff(),
+                properties.getMaxRetryAfter(),
+                properties.getMaxAttempts(),
                 properties.getMaxResponseBytes(),
                 providerClock
         );

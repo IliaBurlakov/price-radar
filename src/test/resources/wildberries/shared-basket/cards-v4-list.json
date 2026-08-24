@@ -1,0 +1,21 @@
+{
+  "products": [
+    {
+      "id": 35989562,
+      "name": "Футболка",
+      "brand": "Example",
+      "sizes": [
+        {"optionId": 11111111, "origName": "L", "stocks": [{"qty": 4}], "price": {"product": 120000, "basic": 150000}},
+        {"optionId": 75115776, "origName": "XXL", "stocks": [{"qty": 2}], "price": {"product": 130000, "basic": 150000}}
+      ]
+    },
+    {
+      "id": 584886456,
+      "name": "Книга",
+      "brand": "Издательство",
+      "sizes": [
+        {"optionId": 799537776, "origName": "0", "stocks": [{"qty": 10}], "price": {"product": 90000}}
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ class TelegramUpdateDispatcherTest {
         TelegramCurrentQuoteHandler currentQuoteHandler = mock(TelegramCurrentQuoteHandler.class);
         TelegramMenuHandler menuHandler = mock(TelegramMenuHandler.class);
         TelegramTrackingHandler trackingHandler = mock(TelegramTrackingHandler.class);
+        TelegramSharedBasketHandler sharedBasketHandler = mock(TelegramSharedBasketHandler.class);
         TrackedItemsMessageHandler trackedItemsHandler = mock(TrackedItemsMessageHandler.class);
         ShowLastKnownCallbackHandler showLastKnownHandler = mock(ShowLastKnownCallbackHandler.class);
         StatisticsCallbackHandler statisticsHandler = mock(StatisticsCallbackHandler.class);
@@ -23,6 +24,7 @@ class TelegramUpdateDispatcherTest {
                 currentQuoteHandler,
                 menuHandler,
                 trackingHandler,
+                sharedBasketHandler,
                 trackedItemsHandler,
                 showLastKnownHandler,
                 statisticsHandler,

@@ -26,6 +26,9 @@ import com.priceradar.scheduler.application.WatchTargetCheckTransaction;
 import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.statistics.domain.StatisticsPeriod;
+import com.priceradar.sharedbasket.application.PendingSharedBasketImport;
+import com.priceradar.sharedbasket.application.PendingSharedBasketImportStore;
+import com.priceradar.sharedbasket.application.PendingSharedBasketItem;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotEntity;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotJpaRepository;
 import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaRepository;
@@ -121,6 +124,9 @@ class PersistenceSmokeTest {
     private PendingTargetPriceStore pendingTargetPriceStore;
 
     @Autowired
+    private PendingSharedBasketImportStore pendingSharedBasketImportStore;
+
+    @Autowired
     private DueWatchTargetReader dueWatchTargetReader;
 
     @Autowired
@@ -158,9 +164,37 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("7");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("8");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
+    }
+
+    @Test
+    void persistsPendingSharedBasketImportAcrossStoreCalls() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        PersistedResolvedQuote quote = quotePersistenceService.save(
+                quoteCommand(787878L, now.minusSeconds(5))
+        );
+        UserProfile user = userProfileService.getOrCreate(21001L, 21001L);
+        PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
+                UUID.randomUUID(), user.getId(), 1, 0,
+                List.of(new PendingSharedBasketItem(
+                        0, quote.getWatchTargetId(), quote.getSnapshotId(), Optional.of("Test product")
+                )),
+                now, now.plus(15, ChronoUnit.MINUTES)
+        );
+
+        pendingSharedBasketImportStore.save(pendingImport, now);
+
+        assertThat(pendingSharedBasketImportStore.findOwned(pendingImport.getId(), user.getId()))
+                .get()
+                .satisfies(restored -> {
+                    assertThat(restored.getExpiresAt()).isEqualTo(pendingImport.getExpiresAt());
+                    assertThat(restored.getItems()).singleElement().satisfies(item -> {
+                        assertThat(item.getWatchTargetId()).isEqualTo(quote.getWatchTargetId());
+                        assertThat(item.getSnapshotId()).isEqualTo(quote.getSnapshotId());
+                    });
+                });
     }
 
     @Test

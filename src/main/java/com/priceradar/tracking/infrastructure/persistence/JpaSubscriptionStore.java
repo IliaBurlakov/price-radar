@@ -83,6 +83,16 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
+    public List<Subscription> findActiveSubscriptions(UUID userId) {
+        return subscriptionRepository.findByUserIdAndStatusOrderByCreatedAtAscIdAsc(
+                        userId,
+                        SubscriptionStatus.ACTIVE
+                ).stream()
+                .map(this::toSubscription)
+                .toList();
+    }
+
+    @Override
     public Optional<LatestSnapshotView> findLatestSnapshotActiveOwned(
             UUID userId,
             UUID subscriptionId

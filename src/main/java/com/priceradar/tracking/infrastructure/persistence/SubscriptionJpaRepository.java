@@ -45,6 +45,11 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
 
     long countByUserIdAndStatus(UUID userId, SubscriptionStatus status);
 
+    List<SubscriptionEntity> findByUserIdAndStatusOrderByCreatedAtAscIdAsc(
+            UUID userId,
+            SubscriptionStatus status
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE SubscriptionEntity subscription
