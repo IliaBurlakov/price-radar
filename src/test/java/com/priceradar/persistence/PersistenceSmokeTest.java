@@ -158,7 +158,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("6");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("7");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }

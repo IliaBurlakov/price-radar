@@ -131,6 +131,28 @@ class PriceInsightsMigrationTest {
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .schemas(schema)
                 .defaultSchema(schema)
+                .target(MigrationVersion.fromVersion("6"))
+                .load()
+                .migrate();
+
+        Map<String, Object> stateAfterVersionSix = jdbc.queryForMap(
+                """
+                        SELECT notification_reference_price_minor,
+                               last_processed_price_observed_at
+                        FROM subscriptions
+                        WHERE id = ?
+                        """,
+                subscriptionId
+        );
+        assertThat(stateAfterVersionSix.get("notification_reference_price_minor"))
+                .isEqualTo(49_600L);
+        assertThat(stateAfterVersionSix.get("last_processed_price_observed_at"))
+                .isEqualTo(Timestamp.from(latestObservedAt));
+
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
                 .load()
                 .migrate();
 
