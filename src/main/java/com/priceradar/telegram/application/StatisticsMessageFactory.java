@@ -10,7 +10,7 @@ import com.priceradar.user.domain.UserPricePreferences;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
+import java.util.UUID;
 
 public final class StatisticsMessageFactory {
 
@@ -46,7 +46,7 @@ public final class StatisticsMessageFactory {
                     .append(TelegramDisplayFormatter.region(region));
             text.append("\n\nИстория ведётся с момента добавления товара.");
             text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
-            return withTrackedButton(chatId, text.toString());
+            return withItemNavigation(chatId, text.toString(), statistics.getSubscriptionId());
         }
 
         RubleAmount firstPrice = statistics.getFirstPrice().orElseThrow();
@@ -107,14 +107,18 @@ public final class StatisticsMessageFactory {
                 .append("%.");
         text.append("\nИстория ведётся с момента добавления товара.");
         text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
-        return withTrackedButton(chatId, text.toString());
+        return withItemNavigation(chatId, text.toString(), statistics.getSubscriptionId());
     }
 
-    private OutgoingTelegramMessage withTrackedButton(long chatId, String text) {
+    private OutgoingTelegramMessage withItemNavigation(
+            long chatId,
+            String text,
+            UUID subscriptionId
+    ) {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
-                TelegramNavigationKeyboard.trackedItemsAndHome()
+                TelegramNavigationKeyboard.itemSubscreen(subscriptionId)
         );
     }
 

@@ -142,7 +142,7 @@ public final class TrackedItemsMessageFactory {
                 )),
                 List.of(
                         new TelegramInlineButton(
-                                "← К списку",
+                                "← Назад",
                                 TrackedItemsPageCallbackData.encode(listPage)
                         ),
                         TelegramNavigationKeyboard.button(
@@ -152,6 +152,38 @@ public final class TrackedItemsMessageFactory {
                 )
         );
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
+    }
+
+    public OutgoingTelegramMessage createRemovalConfirmation(
+            long chatId,
+            TrackedSubscriptionItem item
+    ) {
+        if (item == null) {
+            throw new IllegalArgumentException("tracked item must not be null");
+        }
+        String title = item.getTitle().orElse("Товар Wildberries #" + item.getNmId());
+        return new OutgoingTelegramMessage(
+                chatId,
+                "⚠️ Прекратить отслеживание?\n\n" + truncate(title, MAX_DETAIL_LENGTH)
+                        + "\n\nИстория текущего периода отслеживания будет завершена.",
+                List.of(
+                        List.of(new TelegramInlineButton(
+                                "Да, удалить",
+                                SubscriptionCallbackData.encode(
+                                        SubscriptionCallbackData.Action.CONFIRM_REMOVE,
+                                        item.getSubscriptionId()
+                                )
+                        )),
+                        List.of(new TelegramInlineButton(
+                                "← Назад",
+                                SubscriptionCallbackData.encode(
+                                        SubscriptionCallbackData.Action.OPEN_ITEM,
+                                        item.getSubscriptionId()
+                                )
+                        )),
+                        TelegramNavigationKeyboard.trackedItemsAndHome().getFirst()
+                )
+        );
     }
 
     private OutgoingTelegramMessage emptyList(long chatId) {

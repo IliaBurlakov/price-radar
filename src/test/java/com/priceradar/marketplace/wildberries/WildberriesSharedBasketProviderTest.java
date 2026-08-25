@@ -51,7 +51,11 @@ class WildberriesSharedBasketProviderTest {
 
             assertThat(resolution.isSuccess()).isTrue();
             assertThat(resolution.getResolvedItems()).hasSize(2);
-            assertThat(resolution.getSkippedItems()).isEqualTo(1);
+            assertThat(resolution.getUnavailableItems()).isEmpty();
+            assertThat(resolution.getUnresolvedItems())
+                    .singleElement()
+                    .extracting(item -> item.getReason())
+                    .isEqualTo(com.priceradar.sharedbasket.application.UnresolvedSharedBasketItem.Reason.VARIANT_NOT_FOUND);
             assertThat(resolution.getResolvedItems().getFirst().getVariant().getVariantKey())
                     .isEqualTo("SIZE:75115776");
             assertThat(resolution.getResolvedItems().getFirst().getVariant().getDisplayName())
@@ -69,6 +73,46 @@ class WildberriesSharedBasketProviderTest {
                             .getMinorUnits())
                     .containsExactly(123000L, 891400L);
             assertThat(stub.requestCount()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    void distinguishesUnavailableExactVariantFromMissingProductAndVariant() {
+        try (LocalHttpStub stub = LocalHttpStub.start()) {
+            stub.stub("/cards/v4/list", 200, """
+                    {"products":[{
+                      "id":100,
+                      "name":"Футболка",
+                      "sizes":[{
+                        "optionId":1001,
+                        "name":"XXL",
+                        "available":false,
+                        "price":{"product":120000,"basic":150000}
+                      }]
+                    }]}
+                    """);
+            WildberriesSharedBasketProvider provider = provider(stub, 1);
+
+            var resolution = provider.resolveExact(List.of(
+                    new SharedBasketItem(100, 1001, 1),
+                    new SharedBasketItem(999, 9001, 1),
+                    new SharedBasketItem(100, 1999, 1)
+            ), new PriceContext("Moscow", 1259570991L, 30));
+
+            assertThat(resolution.isSuccess()).isTrue();
+            assertThat(resolution.getResolvedItems()).isEmpty();
+            assertThat(resolution.getUnavailableItems())
+                    .singleElement()
+                    .satisfies(item -> {
+                        assertThat(item.getBasketItem().getChrtId()).isEqualTo(1001);
+                        assertThat(item.getDisplayName()).isEqualTo("Футболка — XXL");
+                    });
+            assertThat(resolution.getUnresolvedItems())
+                    .extracting(item -> item.getReason())
+                    .containsExactly(
+                            com.priceradar.sharedbasket.application.UnresolvedSharedBasketItem.Reason.PRODUCT_NOT_RETURNED,
+                            com.priceradar.sharedbasket.application.UnresolvedSharedBasketItem.Reason.VARIANT_NOT_FOUND
+                    );
         }
     }
 
@@ -151,7 +195,7 @@ class WildberriesSharedBasketProviderTest {
                 stub.baseUri().resolve("/share-basket/api/v1/basket/"),
                 stub.baseUri().resolve("/cards/v4/list"),
                 new WildberriesSharedBasketMapper(new ObjectMapper()),
-                new WildberriesCardMapper(), coordinator,
+                new WildberriesCardMapper(), new PriceSemanticsService(), coordinator,
                 Duration.ofSeconds(2), Duration.ofMillis(1), Duration.ofMillis(2),
                 Duration.ofHours(1), maxAttempts, 2 * 1024 * 1024, clock
         );

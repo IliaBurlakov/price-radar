@@ -29,6 +29,7 @@ import com.priceradar.statistics.domain.StatisticsPeriod;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImport;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImportStore;
 import com.priceradar.sharedbasket.application.PendingSharedBasketItem;
+import com.priceradar.sharedbasket.application.PendingUnavailableSharedBasketItem;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotEntity;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotJpaRepository;
 import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaRepository;
@@ -164,7 +165,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("9");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("10");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -181,7 +182,8 @@ class PersistenceSmokeTest {
         UserProfile user = userProfileService.getOrCreate(21001L, 21001L);
         UserProfile anotherUser = userProfileService.getOrCreate(21002L, 21002L);
         PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
-                UUID.randomUUID(), user.getId(), 2, 0,
+                UUID.randomUUID(), user.getId(), 3, 2, 0,
+                List.of(new PendingUnavailableSharedBasketItem(0, "Unavailable — XXL")),
                 List.of(
                         new PendingSharedBasketItem(
                                 1, secondQuote.getWatchTargetId(), secondQuote.getSnapshotId(), Optional.of("Second")
@@ -199,6 +201,11 @@ class PersistenceSmokeTest {
                 .get()
                 .satisfies(restored -> {
                     assertThat(restored.getExpiresAt()).isEqualTo(pendingImport.getExpiresAt());
+                    assertThat(restored.getAvailableItems()).isEqualTo(2);
+                    assertThat(restored.getUnresolvedItems()).isZero();
+                    assertThat(restored.getUnavailableItems())
+                            .extracting(PendingUnavailableSharedBasketItem::getDisplayName)
+                            .containsExactly("Unavailable — XXL");
                     assertThat(restored.getItems())
                             .extracting(PendingSharedBasketItem::getPosition)
                             .containsExactly(0, 1);
@@ -210,7 +217,7 @@ class PersistenceSmokeTest {
                 .isEmpty();
 
         PendingSharedBasketImport replacement = new PendingSharedBasketImport(
-                UUID.randomUUID(), user.getId(), 1, 0,
+                UUID.randomUUID(), user.getId(), 1, 1, 0, List.of(),
                 List.of(new PendingSharedBasketItem(
                         0, secondQuote.getWatchTargetId(), secondQuote.getSnapshotId(), Optional.of("Replacement")
                 )),
@@ -221,6 +228,11 @@ class PersistenceSmokeTest {
         assertThat(pendingSharedBasketImportStore.findOwned(pendingImport.getId(), user.getId())).isEmpty();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM pending_shared_basket_import_items WHERE import_id = ?",
+                Long.class,
+                pendingImport.getId()
+        )).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM pending_shared_basket_unavailable_items WHERE import_id = ?",
                 Long.class,
                 pendingImport.getId()
         )).isZero();

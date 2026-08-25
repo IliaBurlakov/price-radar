@@ -40,5 +40,13 @@ class TrackingCallbackCodecTest {
 
         assertThat(callback.getBytes(StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(64);
         assertThat(codec.decode(tampered, 1001L)).isEmpty();
+
+        String cancelCallback = codec.encode(
+                TrackingCallbackData.Action.CANCEL_TARGET,
+                UUID.randomUUID(),
+                1001L
+        );
+        assertThat(cancelCallback.getBytes(StandardCharsets.UTF_8))
+                .hasSizeLessThanOrEqualTo(64);
     }
 }

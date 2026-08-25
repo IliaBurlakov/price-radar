@@ -7,8 +7,10 @@ public final class SharedBasketPreview {
 
     private final UUID importId;
     private final int foundItems;
+    private final int availableItems;
     private final int readyItems;
-    private final int skippedItems;
+    private final int unresolvedItems;
+    private final List<String> unavailableTitles;
     private final int alreadyTracked;
     private final int newItems;
     private final int absentTracked;
@@ -21,15 +23,18 @@ public final class SharedBasketPreview {
     private final String destructivePlanFingerprint;
 
     public SharedBasketPreview(
-            UUID importId, int foundItems, int readyItems, int skippedItems,
+            UUID importId, int foundItems, int availableItems, int readyItems,
+            int unresolvedItems, List<String> unavailableTitles,
             int alreadyTracked, int newItems, int absentTracked, int excludedByLimit, int freeSlots,
             int addableItems, int syncTargetItems, List<String> absentTitles,
             List<String> excludedByLimitTitles, String destructivePlanFingerprint
     ) {
         this.importId = importId;
         this.foundItems = foundItems;
+        this.availableItems = availableItems;
         this.readyItems = readyItems;
-        this.skippedItems = skippedItems;
+        this.unresolvedItems = unresolvedItems;
+        this.unavailableTitles = List.copyOf(unavailableTitles);
         this.alreadyTracked = alreadyTracked;
         this.newItems = newItems;
         this.absentTracked = absentTracked;
@@ -44,8 +49,11 @@ public final class SharedBasketPreview {
 
     public UUID getImportId() { return importId; }
     public int getFoundItems() { return foundItems; }
+    public int getAvailableItems() { return availableItems; }
     public int getReadyItems() { return readyItems; }
-    public int getSkippedItems() { return skippedItems; }
+    public int getUnavailableItems() { return unavailableTitles.size(); }
+    public int getUnresolvedItems() { return unresolvedItems; }
+    public List<String> getUnavailableTitles() { return unavailableTitles; }
     public int getAlreadyTracked() { return alreadyTracked; }
     public int getNewItems() { return newItems; }
     public int getAbsentTracked() { return absentTracked; }
@@ -56,7 +64,9 @@ public final class SharedBasketPreview {
     public int getAddSkippedByLimit() { return Math.max(0, newItems - addableItems); }
     public int getSyncTargetItems() { return syncTargetItems; }
     public int getSyncSkippedByLimit() { return Math.max(0, readyItems - syncTargetItems); }
-    public boolean isSynchronizationAvailable() { return skippedItems == 0; }
+    public boolean isSynchronizationAvailable() {
+        return unavailableTitles.isEmpty() && unresolvedItems == 0;
+    }
     public List<String> getAbsentTitles() { return absentTitles; }
     public List<String> getExcludedByLimitTitles() { return excludedByLimitTitles; }
     public String getDestructivePlanFingerprint() { return destructivePlanFingerprint; }

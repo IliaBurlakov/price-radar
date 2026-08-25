@@ -132,6 +132,50 @@ class StatisticsCallbackHandlerTest {
 
                         ⚠️ Цена может отличаться в приложении Wildberries.""");
         assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
+        assertThat(messageCaptor.getValue().getInlineKeyboard().stream()
+                .flatMap(java.util.Collection::stream)
+                .filter(button -> button.getText().equals("← Назад"))
+                .map(TelegramInlineButton::getCallbackData)
+                .map(data -> SubscriptionCallbackData.parse(
+                        SubscriptionCallbackData.Action.OPEN_ITEM, data
+                ))
+                .toList())
+                .containsExactly(Optional.of(subscriptionId));
+    }
+
+    @Test
+    void periodMenuBackReturnsToTheSameTrackedItem() {
+        when(userProfileService.getOrCreate(TELEGRAM_USER_ID, CHAT_ID))
+                .thenReturn(profile);
+        UUID subscriptionId = UUID.randomUUID();
+        SubscriptionStatistics statistics = new SubscriptionStatistics(
+                subscriptionId,
+                StatisticsPeriod.ALL_TIME,
+                NOW.minusSeconds(60),
+                NOW,
+                ObservedPriceStatistics.empty()
+        );
+        when(statisticsService.calculate(
+                profile.getId(), subscriptionId, StatisticsPeriod.ALL_TIME, NOW
+        )).thenReturn(Optional.of(statistics));
+
+        handler.handleCallback(callback(SubscriptionCallbackData.encode(
+                SubscriptionCallbackData.Action.SHOW_STATISTICS,
+                subscriptionId
+        )));
+
+        ArgumentCaptor<OutgoingTelegramMessage> messageCaptor =
+                ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(telegramGateway).sendMessage(messageCaptor.capture());
+        TelegramInlineButton back = messageCaptor.getValue().getInlineKeyboard().stream()
+                .flatMap(java.util.Collection::stream)
+                .filter(button -> button.getText().equals("← Назад"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.OPEN_ITEM,
+                back.getCallbackData()
+        )).contains(subscriptionId);
     }
 
     @Test

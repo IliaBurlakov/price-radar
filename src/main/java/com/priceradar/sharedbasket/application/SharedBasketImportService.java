@@ -88,17 +88,32 @@ public class SharedBasketImportService {
                 user.getPriceContext()
         );
         if (!resolution.isSuccess()) return providerFailure(resolution.getFailure().orElseThrow());
+        int classifiedItems = resolution.getResolvedItems().size()
+                + resolution.getUnavailableItems().size()
+                + resolution.getUnresolvedItems().size();
+        if (classifiedItems != uniqueItems.size()) {
+            return SharedBasketPreviewResult.failed(
+                    SharedBasketPreviewResult.Status.TEMPORARILY_UNAVAILABLE
+            );
+        }
 
         List<PendingSharedBasketItem> pendingItems = persistResolvedItems(
                 resolution.getResolvedItems(),
                 user
         );
-        int skipped = uniqueItems.size() - pendingItems.size();
+        List<PendingUnavailableSharedBasketItem> unavailableItems = new ArrayList<>();
+        for (int index = 0; index < resolution.getUnavailableItems().size(); index++) {
+            unavailableItems.add(new PendingUnavailableSharedBasketItem(
+                    index, resolution.getUnavailableItems().get(index).getDisplayName()
+            ));
+        }
         PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
                 UUID.randomUUID(),
                 user.getId(),
                 uniqueItems.size(),
-                skipped,
+                resolution.getResolvedItems().size(),
+                resolution.getUnresolvedItems().size(),
+                unavailableItems,
                 pendingItems,
                 now,
                 now.plus(IMPORT_TTL)
@@ -138,7 +153,9 @@ public class SharedBasketImportService {
             pendingStore.remove(importId, userId);
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.EXPIRED);
         }
-        if (mode == ApplyMode.SYNCHRONIZE && pending.orElseThrow().getSkippedItems() > 0) {
+        if (mode == ApplyMode.SYNCHRONIZE
+                && (!pending.orElseThrow().getUnavailableItems().isEmpty()
+                || pending.orElseThrow().getUnresolvedItems() > 0)) {
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.SYNCHRONIZATION_UNAVAILABLE);
         }
         if (!userProfileStore.existsAndLockById(userId)) {
@@ -260,7 +277,10 @@ public class SharedBasketImportService {
                 .filter(subscription -> !syncTargets.contains(subscription.getWatchTargetId()))
                 .toList();
         return new SharedBasketPreview(
-                pending.getId(), pending.getFoundItems(), pending.getItems().size(), pending.getSkippedItems(),
+                pending.getId(), pending.getFoundItems(), pending.getAvailableItems(), pending.getItems().size(),
+                pending.getUnresolvedItems(), pending.getUnavailableItems().stream()
+                        .map(PendingUnavailableSharedBasketItem::getDisplayName)
+                        .toList(),
                 overlap, newItems, absentTitles.size(), excludedByLimitTitles.size(), freeSlots,
                 Math.min(newItems, freeSlots), Math.min(pending.getItems().size(), ACTIVE_LIMIT),
                 absentTitles, excludedByLimitTitles, destructivePlanFingerprint(destructivePlan)

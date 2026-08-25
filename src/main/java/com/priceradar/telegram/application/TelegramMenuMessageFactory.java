@@ -102,7 +102,7 @@ public final class TelegramMenuMessageFactory {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
-                TelegramNavigationKeyboard.basketImportNavigation()
+                TelegramNavigationKeyboard.home()
         );
     }
 }

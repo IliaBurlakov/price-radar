@@ -14,6 +14,40 @@ import static org.mockito.Mockito.when;
 class TelegramUpdateDispatcherTest {
 
     @Test
+    void backAndMainMenuNeverDuplicateTheSameDestination() {
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        assertThat(messages.addProduct(7001L).getInlineKeyboard())
+                .flatExtracting(row -> row)
+                .extracting(TelegramInlineButton::getText)
+                .containsExactly("Главное меню");
+        assertThat(messages.importBasket(7001L).getInlineKeyboard())
+                .flatExtracting(row -> row)
+                .extracting(TelegramInlineButton::getText)
+                .containsExactly("Главное меню");
+        assertThat(messages.help(7001L).getInlineKeyboard())
+                .flatExtracting(row -> row)
+                .extracting(TelegramInlineButton::getText)
+                .containsExactly("Главное меню");
+
+        List<TelegramInlineButton> itemNavigation = TelegramNavigationKeyboard
+                .itemSubscreen(java.util.UUID.randomUUID())
+                .stream()
+                .flatMap(List::stream)
+                .toList();
+        String backDestination = itemNavigation.stream()
+                .filter(button -> button.getText().equals("← Назад"))
+                .findFirst()
+                .orElseThrow()
+                .getCallbackData();
+        String homeDestination = itemNavigation.stream()
+                .filter(button -> button.getText().equals("Главное меню"))
+                .findFirst()
+                .orElseThrow()
+                .getCallbackData();
+        assertThat(backDestination).isNotEqualTo(homeDestination);
+    }
+
+    @Test
     void globalCommandsReuseExistingMenuAndTrackedItemsFlows() {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TrackedItemsMessageHandler trackedItems = mock(TrackedItemsMessageHandler.class);
@@ -104,7 +138,7 @@ class TelegramUpdateDispatcherTest {
         assertThat(explanation.getValue().getInlineKeyboard().stream()
                 .flatMap(List::stream)
                 .map(TelegramInlineButton::getText)
-                .toList()).containsExactly("Назад", "Главное меню");
+                .toList()).containsExactly("Главное меню");
 
         TelegramSharedBasketHandler sharedBasketHandler = mock(TelegramSharedBasketHandler.class);
         IncomingTelegramMessage sharedLink = new IncomingTelegramMessage(

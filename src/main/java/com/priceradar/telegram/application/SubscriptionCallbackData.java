@@ -10,7 +10,8 @@ public final class SubscriptionCallbackData {
         OPEN_ITEM("TRACKED_ITEM:"),
         SHOW_LAST_KNOWN("SHOW_LAST_KNOWN:"),
         SHOW_STATISTICS("SHOW_STATS_MENU:"),
-        REMOVE("REMOVE_TRACKING:");
+        REMOVE("REMOVE_TRACKING:"),
+        CONFIRM_REMOVE("CONFIRM_REMOVE:");
 
         private final String prefix;
 

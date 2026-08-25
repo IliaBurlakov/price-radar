@@ -1,8 +1,13 @@
 package com.priceradar.sharedbasket.application;
 
+import com.priceradar.marketplace.application.MarketplaceProductDetails;
+import com.priceradar.marketplace.domain.Marketplace;
+import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.PriceContext;
+import com.priceradar.product.application.PersistedResolvedQuote;
+import com.priceradar.product.application.ResolvedVariant;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
 import com.priceradar.tracking.application.SubscriptionQuoteObservation;
 import com.priceradar.tracking.application.SubscriptionStore;
@@ -81,7 +86,8 @@ class SharedBasketImportServiceTest {
         }
         for (int index = 15; index < 30; index++) items.add(item(index, UUID.randomUUID()));
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, 30, 0, items, NOW.minusSeconds(30), NOW.plusSeconds(600)
+                UUID.randomUUID(), userId, 30, 30, 0, List.of(), items,
+                NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
         when(userStore.existsAndLockById(userId)).thenReturn(true);
@@ -110,7 +116,8 @@ class SharedBasketImportServiceTest {
     void expiredImportCannotAcquireLockOrChangeSubscriptions() {
         UUID userId = UUID.randomUUID();
         PendingSharedBasketImport expired = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, 0, 0, List.of(), NOW.minusSeconds(900), NOW
+                UUID.randomUUID(), userId, 0, 0, 0, List.of(), List.of(),
+                NOW.minusSeconds(900), NOW
         );
         when(pendingStore.findOwned(expired.getId(), userId)).thenReturn(Optional.of(expired));
 
@@ -125,11 +132,11 @@ class SharedBasketImportServiceTest {
     }
 
     @Test
-    void skippedBasketItemMakesSynchronizationUnavailableAndCannotEndItsSubscription() {
+    void unresolvedBasketItemMakesSynchronizationUnavailableAndCannotEndItsSubscription() {
         UUID userId = UUID.randomUUID();
         Subscription active = subscriptions(userId, 1).getFirst();
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, 1, 1, List.of(),
+                UUID.randomUUID(), userId, 1, 0, 1, List.of(), List.of(),
                 NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
@@ -144,6 +151,34 @@ class SharedBasketImportServiceTest {
         verify(userStore, never()).existsAndLockById(any());
         verify(subscriptionStore, never()).end(active);
         verify(subscriptionStore, never()).create(any());
+    }
+
+    @Test
+    void unavailableBasketItemCannotBeAddedAndBlocksForgedSynchronization() {
+        UUID userId = UUID.randomUUID();
+        PendingSharedBasketImport pending = new PendingSharedBasketImport(
+                UUID.randomUUID(), userId, 1, 0, 0,
+                List.of(new PendingUnavailableSharedBasketItem(0, "Unavailable product")),
+                List.of(), NOW.minusSeconds(30), NOW.plusSeconds(600)
+        );
+        when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
+        when(userStore.existsAndLockById(userId)).thenReturn(true);
+        when(subscriptionStore.findActiveSubscriptions(userId)).thenReturn(List.of());
+
+        SharedBasketApplyResult addResult = service.apply(
+                pending.getId(), userId, SharedBasketImportService.ApplyMode.ADD_NEW, NOW
+        );
+        SharedBasketApplyResult syncResult = service.apply(
+                pending.getId(), userId, SharedBasketImportService.ApplyMode.SYNCHRONIZE,
+                Optional.of("AbCdEf12345"), NOW
+        );
+
+        assertThat(addResult.getStatus()).isEqualTo(SharedBasketApplyResult.Status.APPLIED);
+        assertThat(addResult.getAdded()).isZero();
+        assertThat(syncResult.getStatus())
+                .isEqualTo(SharedBasketApplyResult.Status.SYNCHRONIZATION_UNAVAILABLE);
+        verify(subscriptionStore, never()).create(any());
+        verify(subscriptionStore, never()).end(any());
     }
 
     @Test
@@ -187,7 +222,12 @@ class SharedBasketImportServiceTest {
         when(provider.fetch("abc123def4")).thenReturn(SharedBasketProviderResult.success(
                 new SharedBasket(List.of(first, duplicateWithQuantity, anotherVariant))
         ));
-        when(resolver.resolveExact(any(), any())).thenReturn(SharedBasketProductResolution.success(List.of(), 2));
+        when(resolver.resolveExact(any(), any())).thenReturn(SharedBasketProductResolution.success(
+                List.of(), List.of(), List.of(
+                        new UnresolvedSharedBasketItem(first, UnresolvedSharedBasketItem.Reason.PRODUCT_NOT_RETURNED),
+                        new UnresolvedSharedBasketItem(anotherVariant, UnresolvedSharedBasketItem.Reason.VARIANT_NOT_FOUND)
+                )
+        ));
         when(subscriptions.findActiveSubscriptions(userId)).thenReturn(List.of());
         when(subscriptions.findActiveByUserId(userId)).thenReturn(List.of());
         UserProfile user = new UserProfile(
@@ -206,6 +246,51 @@ class SharedBasketImportServiceTest {
     }
 
     @Test
+    void prepareKeepsAvailableCountIndependentFromDeduplicatedWatchTargets() {
+        UUID userId = UUID.randomUUID();
+        SharedBasketProvider provider = mock(SharedBasketProvider.class);
+        SharedBasketProductResolver resolver = mock(SharedBasketProductResolver.class);
+        ResolvedQuotePersistenceService quotes = mock(ResolvedQuotePersistenceService.class);
+        PendingSharedBasketImportStore sessions = mock(PendingSharedBasketImportStore.class);
+        SubscriptionStore subscriptions = mock(SubscriptionStore.class);
+        SharedBasketImportService importService = new SharedBasketImportService(
+                new SharedBasketUrlParser(), provider, resolver, new PriceSemanticsService(),
+                quotes, sessions, mock(UserProfileStore.class), subscriptions
+        );
+        SharedBasketItem first = new SharedBasketItem(100, 1001, 1);
+        SharedBasketItem second = new SharedBasketItem(100, 1002, 1);
+        ResolvedSharedBasketItem firstResolved = resolved(first);
+        ResolvedSharedBasketItem secondResolved = resolved(second);
+        when(provider.fetch("abc123def4")).thenReturn(SharedBasketProviderResult.success(
+                new SharedBasket(List.of(first, second))
+        ));
+        when(resolver.resolveExact(any(), any())).thenReturn(SharedBasketProductResolution.success(
+                List.of(firstResolved, secondResolved), List.of(), List.of()
+        ));
+        UUID sharedTargetId = UUID.randomUUID();
+        when(quotes.save(any())).thenReturn(
+                new PersistedResolvedQuote(sharedTargetId, UUID.randomUUID()),
+                new PersistedResolvedQuote(sharedTargetId, UUID.randomUUID())
+        );
+        when(subscriptions.findActiveSubscriptions(userId)).thenReturn(List.of());
+        when(subscriptions.findActiveByUserId(userId)).thenReturn(List.of());
+        UserProfile user = new UserProfile(
+                userId, 7001L, 7001L, new PriceContext("Moscow", 1259570991L, 30),
+                UserPricePreferences.defaults()
+        );
+
+        importService.prepare("https://www.wildberries.ru/basket?shareId=abc123def4", user, NOW);
+
+        ArgumentCaptor<PendingSharedBasketImport> pending = ArgumentCaptor.forClass(PendingSharedBasketImport.class);
+        verify(sessions).save(pending.capture(), org.mockito.ArgumentMatchers.eq(NOW));
+        assertThat(pending.getValue().getFoundItems()).isEqualTo(2);
+        assertThat(pending.getValue().getAvailableItems()).isEqualTo(2);
+        assertThat(pending.getValue().getItems()).hasSize(1);
+        assertThat(pending.getValue().getUnresolvedItems()).isZero();
+        assertThat(pending.getValue().getUnavailableItems()).isEmpty();
+    }
+
+    @Test
     void previewDistinguishesTrackedItemsExcludedBySyncLimitFromAbsentItems() {
         UUID userId = UUID.randomUUID();
         List<PendingSharedBasketItem> items = new ArrayList<>();
@@ -216,7 +301,8 @@ class SharedBasketImportServiceTest {
                 Optional.empty(), SubscriptionStatus.ACTIVE, NOW.minusSeconds(300), Optional.empty(), 0
         );
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, 73, 0, items, NOW.minusSeconds(30), NOW.plusSeconds(600)
+                UUID.randomUUID(), userId, 73, 73, 0, List.of(), items,
+                NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
         when(subscriptionStore.findActiveSubscriptions(userId)).thenReturn(List.of(trackedBeyondLimit));
@@ -242,7 +328,8 @@ class SharedBasketImportServiceTest {
                 Optional.empty(), SubscriptionStatus.ACTIVE, NOW.minusSeconds(300), Optional.empty(), 0
         );
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, 73, 0, items, NOW.minusSeconds(30), NOW.plusSeconds(600)
+                UUID.randomUUID(), userId, 73, 73, 0, List.of(), items,
+                NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
         when(userStore.existsAndLockById(userId)).thenReturn(true);
@@ -271,7 +358,8 @@ class SharedBasketImportServiceTest {
         List<PendingSharedBasketItem> items = new ArrayList<>();
         for (int index = 0; index < count; index++) items.add(item(index, UUID.randomUUID()));
         return new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, count, 0, items, NOW.minusSeconds(30), NOW.plusSeconds(600)
+                UUID.randomUUID(), userId, count, count, 0, List.of(), items,
+                NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
     }
 
@@ -285,6 +373,26 @@ class SharedBasketImportServiceTest {
 
     private PendingSharedBasketItem item(int position, UUID targetId) {
         return new PendingSharedBasketItem(position, targetId, UUID.randomUUID(), Optional.of("Product " + position));
+    }
+
+    private ResolvedSharedBasketItem resolved(SharedBasketItem basketItem) {
+        MarketplaceProductDetails product = new MarketplaceProductDetails(
+                Marketplace.WILDBERRIES,
+                String.valueOf(basketItem.getNmId()),
+                Optional.of("Product " + basketItem.getChrtId()),
+                Optional.empty(),
+                List.of(),
+                java.util.Map.of()
+        );
+        return new ResolvedSharedBasketItem(
+                basketItem,
+                product,
+                ResolvedVariant.wildberriesSize(basketItem.getChrtId(), List.of(), false),
+                new ProviderPriceFields(
+                        true, Optional.of(RubleAmount.ofMinorUnits(10000)), Optional.empty()
+                ),
+                NOW.minusSeconds(30)
+        );
     }
 
     private SubscriptionQuoteObservation observation(PendingSharedBasketItem item) {

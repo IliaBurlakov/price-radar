@@ -15,19 +15,22 @@ public class PendingSharedBasketImportEntity {
     @Id private UUID id;
     @Column(name = "user_id", nullable = false) private UUID userId;
     @Column(name = "found_items", nullable = false) private int foundItems;
-    @Column(name = "skipped_items", nullable = false) private int skippedItems;
+    @Column(name = "available_items", nullable = false) private int availableItems;
+    @Column(name = "unresolved_items", nullable = false) private int unresolvedItems;
     @Column(name = "created_at", nullable = false) private Instant createdAt;
     @Column(name = "expires_at", nullable = false) private Instant expiresAt;
 
     protected PendingSharedBasketImportEntity() {}
 
     public PendingSharedBasketImportEntity(
-            UUID id, UUID userId, int foundItems, int skippedItems, Instant createdAt, Instant expiresAt
+            UUID id, UUID userId, int foundItems, int availableItems, int unresolvedItems,
+            Instant createdAt, Instant expiresAt
     ) {
         this.id = id;
         this.userId = userId;
         this.foundItems = foundItems;
-        this.skippedItems = skippedItems;
+        this.availableItems = availableItems;
+        this.unresolvedItems = unresolvedItems;
         this.createdAt = createdAt;
         this.expiresAt = expiresAt;
     }
@@ -35,7 +38,8 @@ public class PendingSharedBasketImportEntity {
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public int getFoundItems() { return foundItems; }
-    public int getSkippedItems() { return skippedItems; }
+    public int getAvailableItems() { return availableItems; }
+    public int getUnresolvedItems() { return unresolvedItems; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getExpiresAt() { return expiresAt; }
 }

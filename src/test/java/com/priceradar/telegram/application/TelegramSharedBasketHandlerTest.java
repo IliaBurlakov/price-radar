@@ -40,7 +40,7 @@ class TelegramSharedBasketHandlerTest {
                 new PriceContext("Moscow", 1259570991L, 30), UserPricePreferences.defaults()
         );
         SharedBasketPreview preview = new SharedBasketPreview(
-                importId, 60, 60, 0, 15, 45, 8, 2, 27, 27, 50,
+                importId, 60, 60, 60, 0, List.of(), 15, 45, 8, 2, 27, 27, 50,
                 List.of("One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"),
                 List.of("Limited one", "Limited two"), "AbCdEf12345"
         );
@@ -68,11 +68,31 @@ class TelegramSharedBasketHandlerTest {
                 "При прекращении подписки текущий период отслеживания завершится.",
                 "При повторном добавлении начнётся новый период отслеживания и статистики."
         ).doesNotContain("из-за лимита: 0", "во всей корзине");
+        TelegramInlineButton back = message.getValue().getInlineKeyboard().stream()
+                .flatMap(List::stream)
+                .filter(button -> button.getText().equals("← Назад"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(codec.decode(back.getCallbackData(), telegramUserId))
+                .get()
+                .extracting(SharedBasketCallbackCodec.Decoded::getAction)
+                .isEqualTo(SharedBasketCallbackCodec.Action.BACK);
         verify(service, never()).apply(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any()
         );
+
+        org.mockito.Mockito.clearInvocations(gateway);
+        handler.handleCallback(new IncomingTelegramCallback(
+                "back", telegramUserId, telegramUserId, "private", back.getCallbackData()
+        ));
+
+        var previewMessage = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(gateway).sendMessage(previewMessage.capture());
+        assertThat(previewMessage.getValue().getText())
+                .startsWith("🛒 Корзина Wildberries")
+                .contains("Найдено товаров: 60");
     }
 
     @Test
@@ -97,7 +117,7 @@ class TelegramSharedBasketHandlerTest {
 
         handler.handleCallback(new IncomingTelegramCallback(
                 "callback", telegramUserId, telegramUserId, "private",
-                codec.encode(SharedBasketCallbackCodec.Action.ADD, importId, telegramUserId)
+                codec.encode(SharedBasketCallbackCodec.Action.BACK, importId, telegramUserId)
         ));
 
         var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
@@ -116,10 +136,10 @@ class TelegramSharedBasketHandlerTest {
 
 
     @Test
-    void skippedItemsHideSynchronizationAndSignedSyncCallbackCannotApplyIt() {
+    void unresolvedItemsHideSynchronizationAndSignedSyncCallbackCannotApplyIt() {
         TestContext context = context();
         SharedBasketPreview preview = new SharedBasketPreview(
-                context.importId, 3, 2, 1, 0, 2, 0, 0, 48, 2, 2,
+                context.importId, 3, 2, 2, 1, List.of(), 0, 2, 0, 0, 48, 2, 2,
                 List.of(), List.of(), "AbCdEf12345"
         );
         when(context.service.findPreview(context.importId, context.userId, context.now))
@@ -133,10 +153,9 @@ class TelegramSharedBasketHandlerTest {
         var previewMessage = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(context.gateway).sendMessage(previewMessage.capture());
         assertThat(previewMessage.getValue().getText()).contains(
-                "1 товар не удалось распознать.",
-                "Он не будет добавлен.",
-                "Безопасная синхронизация сейчас недоступна.",
-                "Попробуйте отправить корзину ещё раз позже."
+                "Ещё 1 товар не удалось обработать.",
+                "Попробуйте повторить импорт позже.",
+                "Синхронизация сейчас недоступна."
         );
         assertThat(previewMessage.getValue().getInlineKeyboard().stream()
                 .flatMap(List::stream)
@@ -152,7 +171,7 @@ class TelegramSharedBasketHandlerTest {
 
         var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(context.gateway).sendMessage(message.capture());
-        assertThat(message.getValue().getText()).contains("Безопасная синхронизация недоступна");
+        assertThat(message.getValue().getText()).contains("Синхронизация сейчас недоступна");
         verify(context.service, never()).apply(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
@@ -164,11 +183,11 @@ class TelegramSharedBasketHandlerTest {
     void changedPlanShowsAReplacementConfirmationInsteadOfApplyingNewDestructiveChanges() {
         TestContext context = context();
         SharedBasketPreview original = new SharedBasketPreview(
-                context.importId, 1, 1, 0, 0, 1, 1, 0, 49, 1, 1,
+                context.importId, 1, 1, 1, 0, List.of(), 0, 1, 1, 0, 49, 1, 1,
                 List.of("Old removal"), List.of(), "AbCdEf12345"
         );
         SharedBasketPreview refreshed = new SharedBasketPreview(
-                context.importId, 1, 1, 0, 0, 1, 2, 0, 48, 1, 1,
+                context.importId, 1, 1, 1, 0, List.of(), 0, 1, 2, 0, 48, 1, 1,
                 List.of("Old removal", "New removal"), List.of(), "ZyXwVu98765"
         );
         when(context.service.findPreview(context.importId, context.userId, context.now))
@@ -193,7 +212,7 @@ class TelegramSharedBasketHandlerTest {
     @Test
     void previewRendersOnlyRelevantCountsAndWarnings() {
         SharedBasketPreview happyPath = new SharedBasketPreview(
-                UUID.randomUUID(), 3, 3, 0, 0, 3, 0, 0, 50, 3, 3,
+                UUID.randomUUID(), 3, 3, 3, 0, List.of(), 0, 3, 0, 0, 50, 3, 3,
                 List.of(), List.of(), "AbCdEf12345"
         );
         String happyText = renderPreview(happyPath).getText();
@@ -203,13 +222,15 @@ class TelegramSharedBasketHandlerTest {
                 .doesNotContain(
                         "Готово к импорту",
                         "Уже отслеживаются: 0",
-                        "не удалось распознать",
+                        "не удалось обработать",
+                        "Сейчас недоступ",
                         "Лимит отслеживания",
                         "При синхронизации бот перестанет"
                 );
 
         SharedBasketPreview warnings = new SharedBasketPreview(
-                UUID.randomUUID(), 73, 71, 2, 15, 56, 6, 2, 35, 35, 50,
+                UUID.randomUUID(), 73, 70, 70, 1, List.of("Product A", "Product B"),
+                15, 55, 6, 2, 35, 35, 50,
                 List.of("Outside"), List.of("Limited"), "ZyXwVu98765"
         );
         String warningText = renderPreview(warnings).getText();
@@ -218,10 +239,60 @@ class TelegramSharedBasketHandlerTest {
                 "Уже отслеживаются: 15",
                 "При синхронизации бот перестанет отслеживать",
                 "6 товаров, которых нет в этой корзине",
-                "2 товара не удалось распознать",
+                "Сейчас недоступны 2 товара:",
+                "• Product A",
+                "• Product B",
+                "Они не будут добавлены.",
+                "Ещё 1 товар не удалось обработать.",
                 "Лимит отслеживания — 50 товаров",
-                "21 товар из этой корзины не войдёт в список"
+                "20 товаров из этой корзины не войдут в список"
         ).doesNotContain("Готово к импорту", ": 0");
+    }
+
+    @Test
+    void unavailableBlockUsesSingularFormAndLimitsLongProductLists() {
+        SharedBasketPreview twoUnavailable = new SharedBasketPreview(
+                UUID.randomUUID(), 28, 26, 26, 0, List.of("Product A", "Product B"),
+                0, 26, 0, 0, 50, 26, 26,
+                List.of(), List.of(), "QrStUv12345"
+        );
+        assertThat(renderPreview(twoUnavailable).getText()).contains(
+                "Найдено товаров: 28",
+                "Новых: 26",
+                "⚠️ Сейчас недоступны 2 товара:\n\n• Product A\n• Product B",
+                "Они не будут добавлены."
+        );
+
+        SharedBasketPreview singular = new SharedBasketPreview(
+                UUID.randomUUID(), 1, 0, 0, 0, List.of("Футболка — XXL"),
+                0, 0, 0, 0, 50, 0, 0,
+                List.of(), List.of(), "AbCdEf12345"
+        );
+        OutgoingTelegramMessage singularMessage = renderPreview(singular);
+        assertThat(singularMessage.getText()).contains(
+                "⚠️ Сейчас недоступен 1 товар:",
+                "• Футболка — XXL",
+                "Он не будет добавлен."
+        );
+        assertThat(singularMessage.getInlineKeyboard().stream()
+                .flatMap(List::stream)
+                .map(TelegramInlineButton::getText)
+                .toList())
+                .containsExactly("Добавить новые", "Отмена");
+
+        SharedBasketPreview longList = new SharedBasketPreview(
+                UUID.randomUUID(), 8, 0, 0, 0,
+                List.of("A", "B", "C", "D", "E", "F", "G", "H"),
+                0, 0, 0, 0, 50, 0, 0,
+                List.of(), List.of(), "ZyXwVu98765"
+        );
+        assertThat(renderPreview(longList).getText())
+                .contains(
+                        "⚠️ Сейчас недоступны 8 товаров:",
+                        "• A", "• B", "• C", "• D", "• E", "• и ещё 3",
+                        "Они не будут добавлены."
+                )
+                .doesNotContain("• F", "• G", "• H");
     }
 
     private OutgoingTelegramMessage renderPreview(SharedBasketPreview preview) {
@@ -229,7 +300,8 @@ class TelegramSharedBasketHandlerTest {
         when(context.service.findPreview(context.importId, context.userId, context.now))
                 .thenReturn(Optional.of(new SharedBasketPreview(
                         context.importId,
-                        preview.getFoundItems(), preview.getReadyItems(), preview.getSkippedItems(),
+                        preview.getFoundItems(), preview.getAvailableItems(), preview.getReadyItems(),
+                        preview.getUnresolvedItems(), preview.getUnavailableTitles(),
                         preview.getAlreadyTracked(), preview.getNewItems(), preview.getAbsentTracked(),
                         preview.getExcludedByLimit(), preview.getFreeSlots(), preview.getAddableItems(),
                         preview.getSyncTargetItems(), preview.getAbsentTitles(),
