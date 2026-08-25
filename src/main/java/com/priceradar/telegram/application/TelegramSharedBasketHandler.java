@@ -16,6 +16,7 @@ import java.util.Optional;
 public class TelegramSharedBasketHandler {
 
     private static final int UNAVAILABLE_DISPLAY_LIMIT = 5;
+    private static final String PROCESSING_MESSAGE = "⏳ Ваш запрос обрабатывается...";
 
     private final SharedBasketUrlParser urlParser;
     private final SharedBasketImportService importService;
@@ -42,6 +43,9 @@ public class TelegramSharedBasketHandler {
 
     public boolean handleMessage(IncomingTelegramMessage message) {
         if (!message.isPrivateChat() || !urlParser.supports(message.getText())) return false;
+        telegramGateway.sendMessage(OutgoingTelegramMessage.text(
+                message.getChatId(), PROCESSING_MESSAGE
+        ));
         UserProfile user = userProfileService.getOrCreate(message.getTelegramUserId(), message.getChatId());
         SharedBasketPreviewResult result = importService.prepare(message.getText(), user, clock.instant());
         telegramGateway.sendMessage(preparationMessage(message.getChatId(), message.getTelegramUserId(), result));

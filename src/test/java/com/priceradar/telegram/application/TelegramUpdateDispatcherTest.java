@@ -82,7 +82,7 @@ class TelegramUpdateDispatcherTest {
     }
 
     @Test
-    void unknownCommandGetsHelpButRegularTextContinuesThroughDispatcher() {
+    void unknownCommandGetsHintAndUnsupportedTextShowsTheFullHelpMessage() {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
@@ -104,10 +104,19 @@ class TelegramUpdateDispatcherTest {
         IncomingTelegramMessage productUrl = message(
                 "https://www.wildberries.ru/catalog/10302970/detail.aspx"
         );
+        when(currentQuoteHandler.handle(productUrl)).thenReturn(true);
 
         dispatcher.dispatch(new TelegramUpdate(3L, Optional.of(productUrl)));
 
         verify(currentQuoteHandler).handle(productUrl);
+
+        IncomingTelegramMessage unsupportedText = message("Какой-то случайный текст");
+        assertSentMessage(
+                gateway,
+                () -> dispatcher.dispatch(new TelegramUpdate(4L, Optional.of(unsupportedText))),
+                messages.help(7001L)
+        );
+        verify(currentQuoteHandler).handle(unsupportedText);
     }
 
     @Test
