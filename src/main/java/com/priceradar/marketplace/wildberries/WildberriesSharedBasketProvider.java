@@ -47,6 +47,7 @@ public final class WildberriesSharedBasketProvider
     private static final int BATCH_SIZE = 50;
     private static final Duration RATE_LIMIT_COOLDOWN = Duration.ofMinutes(15);
     private static final Duration SERVER_ERROR_COOLDOWN = Duration.ofMinutes(5);
+    private static final Duration INVALID_RESPONSE_COOLDOWN = Duration.ofMinutes(15);
 
     private final HttpClient httpClient;
     private final URI basketEndpoint;
@@ -102,7 +103,12 @@ public final class WildberriesSharedBasketProvider
         }
         HttpOutcome outcome = get(URI.create(basketEndpoint.toString() + shareId));
         if (!outcome.isSuccess()) return SharedBasketProviderResult.failure(outcome.getFailure().orElseThrow());
-        return basketMapper.map(outcome.getBody().orElseThrow());
+        SharedBasketProviderResult result = basketMapper.map(outcome.getBody().orElseThrow());
+        if (!result.isSuccess() && isInvalidResponse(result.getFailure().orElseThrow().getCode())) {
+            Optional<SharedBasketFailure> cooldownFailure = activateInvalidResponseCooldown();
+            if (cooldownFailure.isPresent()) return SharedBasketProviderResult.failure(cooldownFailure.orElseThrow());
+        }
+        return result;
     }
 
     @Override
@@ -126,11 +132,29 @@ public final class WildberriesSharedBasketProvider
             WildberriesBatchMappingResult mapping = cardMapper.mapBatch(outcome.getBody().orElseThrow(), nmIds);
             if (!mapping.isSuccess()) {
                 WildberriesMappingFailure failure = mapping.getFailure().orElseThrow();
+                Optional<SharedBasketFailure> cooldownFailure = activateInvalidResponseCooldown();
+                if (cooldownFailure.isPresent()) {
+                    return SharedBasketProductResolution.failure(cooldownFailure.orElseThrow());
+                }
                 return SharedBasketProductResolution.failure(new SharedBasketFailure(
-                        failure.getCode() == WildberriesMappingFailureCode.MALFORMED_JSON
-                                ? SharedBasketFailureCode.MALFORMED_RESPONSE
-                                : SharedBasketFailureCode.SCHEMA_VIOLATION,
+                        sharedFailureCode(failure.getCode()),
                         failure.getMessage()
+                ));
+            }
+            Optional<WildberriesMappingFailure> invalidProduct = mapping.getProducts().values().stream()
+                    .filter(result -> !result.isSuccess())
+                    .map(result -> result.getFailure().orElseThrow())
+                    .filter(failure -> failure.getCode() == WildberriesMappingFailureCode.MALFORMED_JSON
+                            || failure.getCode() == WildberriesMappingFailureCode.SCHEMA_VIOLATION)
+                    .findFirst();
+            if (invalidProduct.isPresent()) {
+                Optional<SharedBasketFailure> cooldownFailure = activateInvalidResponseCooldown();
+                if (cooldownFailure.isPresent()) {
+                    return SharedBasketProductResolution.failure(cooldownFailure.orElseThrow());
+                }
+                return SharedBasketProductResolution.failure(new SharedBasketFailure(
+                        SharedBasketFailureCode.SCHEMA_VIOLATION,
+                        invalidProduct.orElseThrow().getMessage()
                 ));
             }
             Instant observedAt = clock.instant();
@@ -297,6 +321,34 @@ public final class WildberriesSharedBasketProvider
 
     private HttpOutcome failure(SharedBasketFailureCode code, String message) {
         return HttpOutcome.failure(new SharedBasketFailure(code, message));
+    }
+
+    private boolean isInvalidResponse(SharedBasketFailureCode code) {
+        return code == SharedBasketFailureCode.MALFORMED_RESPONSE
+                || code == SharedBasketFailureCode.SCHEMA_VIOLATION;
+    }
+
+    private SharedBasketFailureCode sharedFailureCode(WildberriesMappingFailureCode code) {
+        return switch (code) {
+            case EMPTY_RESPONSE, MALFORMED_JSON -> SharedBasketFailureCode.MALFORMED_RESPONSE;
+            case SCHEMA_VIOLATION -> SharedBasketFailureCode.SCHEMA_VIOLATION;
+            case PRODUCT_NOT_FOUND -> SharedBasketFailureCode.NOT_FOUND;
+        };
+    }
+
+    private Optional<SharedBasketFailure> activateInvalidResponseCooldown() {
+        try {
+            if (!accessCoordinator.activateCooldown(clock.instant().plus(INVALID_RESPONSE_COOLDOWN))) {
+                LOGGER.warn("Could not persist Wildberries cooldown after invalid shared basket response");
+            }
+            return Optional.empty();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return Optional.of(new SharedBasketFailure(
+                    SharedBasketFailureCode.INTERRUPTED,
+                    "Wildberries response processing was interrupted"
+            ));
+        }
     }
 
     private static URI validateEndpoint(URI endpoint, String productionHost, boolean requireTrailingSlash) {

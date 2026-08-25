@@ -118,30 +118,46 @@ public final class ProviderAccessCoordinator {
 
     public boolean completeWithCooldown(Instant cooldownUntil) {
         try {
-            if (cooldownUntil == null)
-                throw new IllegalArgumentException("cooldownUntil must not be null!");
-
-            Instant now = clock.instant();
-            Instant minimumNextRequestAt = now.plus(minDelay);
-            Instant nextRequestAt = cooldownUntil.isAfter(minimumNextRequestAt)
-                    ? cooldownUntil
-                    : minimumNextRequestAt;
-
-            synchronized (timingLock) {
-                nextAllowedAt = nextRequestAt;
-            }
-
-            if (cooldownUntil.isAfter(now)) {
-                try {
-                    cooldownStore.saveCooldownUntil(marketplace, cooldownUntil, now);
-                } catch (RuntimeException exception) {
-                    return false;
-                }
-            }
-            return true;
+            return storeCooldown(cooldownUntil);
         } finally {
             singleRequest.release();
         }
+    }
+
+    /**
+     * Activates a cooldown after response processing has already released the request permit.
+     */
+    public boolean activateCooldown(Instant cooldownUntil) throws InterruptedException {
+        singleRequest.acquire();
+        try {
+            return storeCooldown(cooldownUntil);
+        } finally {
+            singleRequest.release();
+        }
+    }
+
+    private boolean storeCooldown(Instant cooldownUntil) {
+        if (cooldownUntil == null)
+            throw new IllegalArgumentException("cooldownUntil must not be null!");
+
+        Instant now = clock.instant();
+        Instant minimumNextRequestAt = now.plus(minDelay);
+        Instant nextRequestAt = cooldownUntil.isAfter(minimumNextRequestAt)
+                ? cooldownUntil
+                : minimumNextRequestAt;
+
+        synchronized (timingLock) {
+            nextAllowedAt = nextRequestAt;
+        }
+
+        if (cooldownUntil.isAfter(now)) {
+            try {
+                cooldownStore.saveCooldownUntil(marketplace, cooldownUntil, now);
+            } catch (RuntimeException exception) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public Duration getMinDelay() {

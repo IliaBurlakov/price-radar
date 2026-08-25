@@ -201,7 +201,7 @@ public class TelegramTrackingHandler {
                         : "уведомлять о новой минимальной цене";
                 yield withTrackedButton(
                         chatId,
-                        "Отслеживание включено.\nРежим: " + mode
+                        "Отслеживание включено.\n\nРежим: " + mode
                                 + "\nРегион: " + region
                 );
             }

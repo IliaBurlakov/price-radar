@@ -9,7 +9,7 @@ import com.priceradar.user.application.UserProfileService;
 public class TelegramCurrentQuoteHandler {
 
     private static final String INPUT_HELP_MESSAGE =
-            "Отправьте ссылку на товар Wildberries или откройте /menu.";
+            "Отправьте ссылку на товар Wildberries или откройте /help.";
 
     private final UserProfileService userProfileService;
     private final ResolvedQuoteService resolvedQuoteService;

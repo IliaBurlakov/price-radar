@@ -26,19 +26,36 @@ public final class TelegramMenuHandler {
             return false;
         }
         String text = message.getText();
-        if (isCommand(text, "/start")) {
-            telegramGateway.sendMessage(messageFactory.welcome(message.getChatId()));
+        Optional<TelegramBotCommand> command = TelegramBotCommand.fromMessageText(text);
+        if (command.isPresent()) {
+            handleCommand(command.orElseThrow(), message);
             return true;
         }
-        if (isCommand(text, "/help")) {
-            telegramGateway.sendMessage(messageFactory.help(message.getChatId()));
-            return true;
-        }
-        if (isCommand(text, "/menu")) {
+        if (isLegacyMenuCommand(text)) {
             telegramGateway.sendMessage(messageFactory.mainMenu(message.getChatId()));
             return true;
         }
+        if (TelegramBotCommand.isCommandText(text)) {
+            telegramGateway.sendMessage(messageFactory.unknownCommand(message.getChatId()));
+            return true;
+        }
         return false;
+    }
+
+    private void handleCommand(
+            TelegramBotCommand command,
+            IncomingTelegramMessage message
+    ) {
+        switch (command) {
+            case START -> telegramGateway.sendMessage(messageFactory.welcome(message.getChatId()));
+            case TRACKED -> trackedItemsHandler.showTracked(
+                    message.getTelegramUserId(),
+                    message.getChatId()
+            );
+            case ADD -> telegramGateway.sendMessage(messageFactory.addProduct(message.getChatId()));
+            case IMPORT -> telegramGateway.sendMessage(messageFactory.importBasket(message.getChatId()));
+            case HELP -> telegramGateway.sendMessage(messageFactory.help(message.getChatId()));
+        }
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
@@ -58,6 +75,9 @@ public final class TelegramMenuHandler {
             case ADD_PRODUCT -> telegramGateway.sendMessage(
                     messageFactory.addProduct(callback.getChatId())
             );
+            case IMPORT_BASKET -> telegramGateway.sendMessage(
+                    messageFactory.importBasket(callback.getChatId())
+            );
             case TRACKED_ITEMS -> trackedItemsHandler.showTracked(
                     callback.getTelegramUserId(),
                     callback.getChatId()
@@ -69,8 +89,8 @@ public final class TelegramMenuHandler {
         return true;
     }
 
-    private boolean isCommand(String text, String command) {
-        return text.equals(command) || text.startsWith(command + "@");
+    private boolean isLegacyMenuCommand(String text) {
+        return text.equals("/menu") || text.startsWith("/menu@");
     }
 
 }

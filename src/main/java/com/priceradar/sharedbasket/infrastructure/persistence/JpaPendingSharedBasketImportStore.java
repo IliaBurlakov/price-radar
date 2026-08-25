@@ -28,6 +28,7 @@ public class JpaPendingSharedBasketImportStore implements PendingSharedBasketImp
     @Transactional
     public PendingSharedBasketImport save(PendingSharedBasketImport pendingImport, Instant now) {
         importRepository.deleteExpired(now);
+        importRepository.deleteByUserId(pendingImport.getUserId());
         importRepository.save(new PendingSharedBasketImportEntity(
                 pendingImport.getId(), pendingImport.getUserId(), pendingImport.getFoundItems(),
                 pendingImport.getSkippedItems(), pendingImport.getCreatedAt(), pendingImport.getExpiresAt()

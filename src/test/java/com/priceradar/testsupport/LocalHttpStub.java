@@ -8,15 +8,18 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class LocalHttpStub implements AutoCloseable {
 
     private final HttpServer server;
     private final AtomicInteger requestCount;
+    private final AtomicReference<String> lastRequestBody;
 
     private LocalHttpStub(HttpServer server) {
         this.server = server;
         this.requestCount = new AtomicInteger();
+        this.lastRequestBody = new AtomicReference<>();
     }
 
     public static LocalHttpStub start() {
@@ -46,12 +49,20 @@ public final class LocalHttpStub implements AutoCloseable {
         byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
         server.createContext(path, exchange -> {
             requestCount.incrementAndGet();
+            lastRequestBody.set(new String(
+                    exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8
+            ));
             respond(exchange, statusCode, body, responseHeaders);
         });
     }
 
     public int requestCount() {
         return requestCount.get();
+    }
+
+    public String lastRequestBody() {
+        return lastRequestBody.get();
     }
 
     @Override

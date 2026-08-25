@@ -19,4 +19,8 @@ public interface PendingSharedBasketImportJpaRepository
     int deleteExpired(@Param("now") Instant now);
 
     long deleteByIdAndUserId(UUID id, UUID userId);
+
+    @Modifying
+    @Query("DELETE FROM PendingSharedBasketImportEntity pending WHERE pending.userId = :userId")
+    int deleteByUserId(@Param("userId") UUID userId);
 }

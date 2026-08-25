@@ -43,14 +43,15 @@ public final class TelegramQuoteMessageFactory {
         StringBuilder text = new StringBuilder();
         text.append(quote.getTitle().orElse("Товар Wildberries #" + quote.getNmId()));
         quote.getBrand().ifPresent(brand -> text.append("\nБренд: ").append(brand));
+        appendAutoSelectedVariant(text, quote);
+        text.append("\n\n");
         appendAvailability(text, quote.getInterpretedPrice());
         appendPrice(text, quote.getInterpretedPrice(), userProfile);
-        text.append("\nРегион: ")
+        text.append("\n\nРегион: ")
                 .append(TelegramDisplayFormatter.region(
                         quote.getPriceContext().getCityName()
                 ));
-        appendAutoSelectedVariant(text, quote);
-        text.append("\nОткрыть товар: ").append(quote.getCanonicalUrl());
+        text.append("\nОткрыть товар:\n").append(quote.getCanonicalUrl());
         text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         return new OutgoingTelegramMessage(
@@ -82,7 +83,7 @@ public final class TelegramQuoteMessageFactory {
         String availability = price.getStatus() == SnapshotStatus.UNAVAILABLE
                 ? "нет в наличии"
                 : "в наличии";
-        text.append("\nНаличие: ").append(availability);
+        text.append("Наличие: ").append(availability);
     }
 
     private void appendPrice(

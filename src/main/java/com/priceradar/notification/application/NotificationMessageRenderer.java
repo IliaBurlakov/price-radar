@@ -65,11 +65,11 @@ public final class NotificationMessageRenderer {
                 "Новая цена",
                 true
         );
-        text.append("\nРегион: ")
+        text.append("\n\nРегион: ")
                 .append(TelegramDisplayFormatter.region(notification.getCityName()));
         text.append("\nПроверено: ")
                 .append(TelegramDisplayFormatter.observedAt(notification.getObservedAt()));
-        text.append("\nОткрыть товар: ").append(notification.getCanonicalUrl());
+        text.append("\nОткрыть товар:\n").append(notification.getCanonicalUrl());
         text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         return new OutgoingTelegramMessage(

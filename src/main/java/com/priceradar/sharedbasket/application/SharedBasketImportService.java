@@ -18,7 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -112,13 +116,30 @@ public class SharedBasketImportService {
 
     @Transactional
     public SharedBasketApplyResult apply(UUID importId, UUID userId, ApplyMode mode, Instant now) {
+        return apply(importId, userId, mode, Optional.empty(), now);
+    }
+
+    @Transactional
+    public SharedBasketApplyResult apply(
+            UUID importId,
+            UUID userId,
+            ApplyMode mode,
+            Optional<String> confirmedPlanFingerprint,
+            Instant now
+    ) {
         if (importId == null || userId == null || mode == null || now == null) {
             throw new IllegalArgumentException("shared basket apply fields must not be null");
+        }
+        if (confirmedPlanFingerprint == null) {
+            throw new IllegalArgumentException("confirmedPlanFingerprint must not be null");
         }
         Optional<PendingSharedBasketImport> pending = pendingStore.findOwned(importId, userId);
         if (pending.isEmpty() || pending.orElseThrow().isExpired(now)) {
             pendingStore.remove(importId, userId);
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.EXPIRED);
+        }
+        if (mode == ApplyMode.SYNCHRONIZE && pending.orElseThrow().getSkippedItems() > 0) {
+            return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.SYNCHRONIZATION_UNAVAILABLE);
         }
         if (!userProfileStore.existsAndLockById(userId)) {
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.USER_NOT_FOUND);
@@ -135,14 +156,20 @@ public class SharedBasketImportService {
                 .map(PendingSharedBasketItem::getWatchTargetId)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
 
+        List<Subscription> destructivePlan = active.stream()
+                .filter(subscription -> !targetIds.contains(subscription.getWatchTargetId()))
+                .toList();
+        if (mode == ApplyMode.SYNCHRONIZE && !destructivePlan.isEmpty()
+                && !confirmedPlanFingerprint.filter(destructivePlanFingerprint(destructivePlan)::equals).isPresent()) {
+            return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.PLAN_CHANGED);
+        }
+
         int ended = 0;
         if (mode == ApplyMode.SYNCHRONIZE) {
-            for (Subscription subscription : active) {
-                if (!targetIds.contains(subscription.getWatchTargetId())) {
-                    subscriptionStore.end(subscription.end(now));
-                    activeByTarget.remove(subscription.getWatchTargetId());
-                    ended++;
-                }
+            for (Subscription subscription : destructivePlan) {
+                subscriptionStore.end(subscription.end(now));
+                activeByTarget.remove(subscription.getWatchTargetId());
+                ended++;
             }
         }
 
@@ -220,15 +247,39 @@ public class SharedBasketImportService {
                 item.getSubscriptionId(),
                 item.getTitle().orElse("Товар Wildberries")
         ));
-        List<String> missingTitles = active.stream()
+        List<String> absentTitles = active.stream()
+                .filter(subscription -> !basketTargets.contains(subscription.getWatchTargetId()))
+                .map(subscription -> titleBySubscription.getOrDefault(subscription.getId(), "Товар Wildberries"))
+                .toList();
+        List<String> excludedByLimitTitles = active.stream()
+                .filter(subscription -> basketTargets.contains(subscription.getWatchTargetId()))
                 .filter(subscription -> !syncTargets.contains(subscription.getWatchTargetId()))
                 .map(subscription -> titleBySubscription.getOrDefault(subscription.getId(), "Товар Wildberries"))
                 .toList();
+        List<Subscription> destructivePlan = active.stream()
+                .filter(subscription -> !syncTargets.contains(subscription.getWatchTargetId()))
+                .toList();
         return new SharedBasketPreview(
                 pending.getId(), pending.getFoundItems(), pending.getItems().size(), pending.getSkippedItems(),
-                overlap, newItems, missingTitles.size(), freeSlots,
-                Math.min(newItems, freeSlots), Math.min(pending.getItems().size(), ACTIVE_LIMIT), missingTitles
+                overlap, newItems, absentTitles.size(), excludedByLimitTitles.size(), freeSlots,
+                Math.min(newItems, freeSlots), Math.min(pending.getItems().size(), ACTIVE_LIMIT),
+                absentTitles, excludedByLimitTitles, destructivePlanFingerprint(destructivePlan)
         );
+    }
+
+    private String destructivePlanFingerprint(List<Subscription> subscriptions) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            subscriptions.stream()
+                    .map(Subscription::getId)
+                    .sorted()
+                    .forEach(id -> digest.update(id.toString().getBytes(StandardCharsets.US_ASCII)));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                    java.util.Arrays.copyOf(digest.digest(), 8)
+            );
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private Subscription createAnyDecrease(

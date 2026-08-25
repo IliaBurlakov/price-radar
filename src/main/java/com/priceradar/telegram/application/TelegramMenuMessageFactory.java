@@ -31,15 +31,22 @@ public final class TelegramMenuMessageFactory {
 
     public OutgoingTelegramMessage help(long chatId) {
         String text = """
-                Как пользоваться PriceRadar
+                ❓ Помощь
 
-                1. Отправьте ссылку на товар Wildberries.
-                2. Посмотрите текущую цену и выберите способ отслеживания.
-                3. Бот проверит цену автоматически и пришлёт уведомление.
+                PriceRadar следит за ценами товаров Wildberries и уведомляет о новых минимальных или желаемых ценах.
 
-                Раздел «Мои товары» показывает активные подписки, последнюю цену и статистику.
+                ➕ Добавить товар
+                Отправьте ссылку на один товар Wildberries.
 
-                Цена может отличаться от итоговой цены в приложении Wildberries.
+                🛒 Импортировать корзину
+                Можно добавить сразу несколько товаров из общей корзины Wildberries.
+
+                📦 Мои товары
+                Здесь находятся активные отслеживания и статистика.
+
+                Одновременно можно отслеживать до 50 товаров.
+
+                Для навигации используйте кнопки под сообщениями или меню команд Telegram.
                 """;
         return new OutgoingTelegramMessage(
                 chatId,
@@ -50,6 +57,8 @@ public final class TelegramMenuMessageFactory {
 
     public OutgoingTelegramMessage addProduct(long chatId) {
         String text = """
+                ➕ Добавить товар
+
                 Отправьте ссылку на товар Wildberries.
 
                 Например:
@@ -59,6 +68,41 @@ public final class TelegramMenuMessageFactory {
                 chatId,
                 text,
                 TelegramNavigationKeyboard.home()
+        );
+    }
+
+    public OutgoingTelegramMessage unknownCommand(long chatId) {
+        return new OutgoingTelegramMessage(
+                chatId,
+                "Неизвестная команда.\nИспользуйте меню Telegram или /help.",
+                TelegramNavigationKeyboard.home()
+        );
+    }
+
+    public OutgoingTelegramMessage importBasket(long chatId) {
+        String text = """
+                🛒 Импорт корзины Wildberries
+
+                В Wildberries откройте корзину, выберите «Поделиться корзиной» и отправьте полученную ссылку сюда.
+
+                После загрузки можно:
+
+                ➕ Добавить новые
+                Бот добавит товары, которых вы ещё не отслеживаете. Остальные останутся без изменений.
+
+                🔄 Синхронизировать
+                Новые товары добавятся, а товары, которых нет в корзине, будут удалены из отслеживания.
+
+                ⚠️ Перед удалением бот обязательно попросит подтверждение.
+
+                Одновременно можно отслеживать не более 50 товаров. Если корзина больше, бот заранее предупредит об ограничении.
+
+                Отправьте ссылку на общую корзину Wildberries.
+                """;
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                TelegramNavigationKeyboard.basketImportNavigation()
         );
     }
 }

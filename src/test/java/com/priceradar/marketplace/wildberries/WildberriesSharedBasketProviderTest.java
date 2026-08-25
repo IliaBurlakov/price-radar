@@ -5,6 +5,8 @@ import com.priceradar.marketplace.application.ProviderAccessCoordinator;
 import com.priceradar.marketplace.application.ProviderCooldownStore;
 import com.priceradar.marketplace.domain.Marketplace;
 import com.priceradar.pricing.domain.PriceContext;
+import com.priceradar.pricing.application.PriceSemanticsService;
+import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.sharedbasket.application.SharedBasketFailureCode;
 import com.priceradar.sharedbasket.application.SharedBasketItem;
 import com.priceradar.testsupport.LocalHttpStub;
@@ -53,7 +55,19 @@ class WildberriesSharedBasketProviderTest {
             assertThat(resolution.getResolvedItems().getFirst().getVariant().getVariantKey())
                     .isEqualTo("SIZE:75115776");
             assertThat(resolution.getResolvedItems().getFirst().getVariant().getDisplayName())
-                    .contains("Size: XXL");
+                    .contains("Size: 54");
+            assertThat(resolution.getResolvedItems())
+                    .allMatch(item -> item.getPriceFields().isAvailable());
+            assertThat(resolution.getResolvedItems())
+                    .extracting(item -> new PriceSemanticsService()
+                            .interpret(item.getPriceFields())
+                            .getStatus())
+                    .containsOnly(SnapshotStatus.REGULAR_PRICE);
+            assertThat(resolution.getResolvedItems())
+                    .extracting(item -> item.getPriceFields().getProductPrice()
+                            .orElseThrow()
+                            .getMinorUnits())
+                    .containsExactly(123000L, 891400L);
             assertThat(stub.requestCount()).isEqualTo(2);
         }
     }
@@ -67,13 +81,27 @@ class WildberriesSharedBasketProviderTest {
         }
         try (LocalHttpStub malformed = LocalHttpStub.start()) {
             malformed.stub("/share-basket/api/v1/basket/" + SHARE_ID, 200, "{broken");
-            assertThat(provider(malformed, 1).fetch(SHARE_ID).getFailure().orElseThrow().getCode())
+            RecordingCooldownStore cooldowns = new RecordingCooldownStore();
+            WildberriesSharedBasketProvider provider = provider(malformed, 1, cooldowns);
+            assertThat(provider.fetch(SHARE_ID).getFailure().orElseThrow().getCode())
                     .isEqualTo(SharedBasketFailureCode.MALFORMED_RESPONSE);
+            assertThat(cooldowns.findCooldownUntil(Marketplace.WILDBERRIES))
+                    .contains(NOW.plus(Duration.ofMinutes(15)));
+            assertThat(provider.fetch(SHARE_ID).getFailure().orElseThrow().getCode())
+                    .isEqualTo(SharedBasketFailureCode.COOLDOWN_ACTIVE);
+            assertThat(malformed.requestCount()).isOne();
         }
         try (LocalHttpStub schema = LocalHttpStub.start()) {
             schema.stub("/share-basket/api/v1/basket/" + SHARE_ID, 200, "{\"items\":[{\"nmId\":1}]}");
-            assertThat(provider(schema, 1).fetch(SHARE_ID).getFailure().orElseThrow().getCode())
+            RecordingCooldownStore cooldowns = new RecordingCooldownStore();
+            WildberriesSharedBasketProvider provider = provider(schema, 1, cooldowns);
+            assertThat(provider.fetch(SHARE_ID).getFailure().orElseThrow().getCode())
                     .isEqualTo(SharedBasketFailureCode.SCHEMA_VIOLATION);
+            assertThat(cooldowns.findCooldownUntil(Marketplace.WILDBERRIES))
+                    .contains(NOW.plus(Duration.ofMinutes(15)));
+            assertThat(provider.fetch(SHARE_ID).getFailure().orElseThrow().getCode())
+                    .isEqualTo(SharedBasketFailureCode.COOLDOWN_ACTIVE);
+            assertThat(schema.requestCount()).isOne();
         }
         try (LocalHttpStub unavailable = LocalHttpStub.start()) {
             unavailable.stub("/share-basket/api/v1/basket/" + SHARE_ID, 503, "{}");
@@ -82,10 +110,41 @@ class WildberriesSharedBasketProviderTest {
         }
     }
 
+    @Test
+    void invalidCardsResponseActivatesThePersistedInvalidResponseCooldown() {
+        try (LocalHttpStub stub = LocalHttpStub.start()) {
+            stub.stub("/share-basket/api/v1/basket/" + SHARE_ID, 200, """
+                    {"items":[{"nmId":35989562,"chrtId":75115776,"quantity":1}]}
+                    """);
+            stub.stub("/cards/v4/list", 200, "");
+            RecordingCooldownStore cooldowns = new RecordingCooldownStore();
+            WildberriesSharedBasketProvider provider = provider(stub, 1, cooldowns);
+            var basket = provider.fetch(SHARE_ID).getBasket().orElseThrow();
+
+            assertThat(provider.resolveExact(
+                    basket.getItems(), new PriceContext("Moscow", 1259570991L, 30)
+            ).getFailure().orElseThrow().getCode()).isEqualTo(SharedBasketFailureCode.MALFORMED_RESPONSE);
+            assertThat(cooldowns.findCooldownUntil(Marketplace.WILDBERRIES))
+                    .contains(NOW.plus(Duration.ofMinutes(15)));
+            assertThat(provider.resolveExact(
+                    basket.getItems(), new PriceContext("Moscow", 1259570991L, 30)
+            ).getFailure().orElseThrow().getCode()).isEqualTo(SharedBasketFailureCode.COOLDOWN_ACTIVE);
+            assertThat(stub.requestCount()).isEqualTo(2);
+        }
+    }
+
     private WildberriesSharedBasketProvider provider(LocalHttpStub stub, int maxAttempts) {
+        return provider(stub, maxAttempts, new NoCooldownStore());
+    }
+
+    private WildberriesSharedBasketProvider provider(
+            LocalHttpStub stub,
+            int maxAttempts,
+            ProviderCooldownStore cooldownStore
+    ) {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         ProviderAccessCoordinator coordinator = new ProviderAccessCoordinator(
-                Duration.ZERO, clock, Marketplace.WILDBERRIES, new NoCooldownStore()
+                Duration.ZERO, clock, Marketplace.WILDBERRIES, cooldownStore
         );
         return new WildberriesSharedBasketProvider(
                 HttpClient.newHttpClient(),
@@ -110,5 +169,19 @@ class WildberriesSharedBasketProviderTest {
     private static final class NoCooldownStore implements ProviderCooldownStore {
         @Override public Optional<Instant> findCooldownUntil(Marketplace marketplace) { return Optional.empty(); }
         @Override public void saveCooldownUntil(Marketplace marketplace, Instant cooldownUntil, Instant updatedAt) {}
+    }
+
+    private static final class RecordingCooldownStore implements ProviderCooldownStore {
+        private Optional<Instant> cooldownUntil = Optional.empty();
+
+        @Override
+        public Optional<Instant> findCooldownUntil(Marketplace marketplace) {
+            return cooldownUntil;
+        }
+
+        @Override
+        public void saveCooldownUntil(Marketplace marketplace, Instant cooldownUntil, Instant updatedAt) {
+            this.cooldownUntil = Optional.of(cooldownUntil);
+        }
     }
 }

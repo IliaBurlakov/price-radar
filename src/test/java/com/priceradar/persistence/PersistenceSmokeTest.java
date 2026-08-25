@@ -164,7 +164,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("8");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("9");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -172,15 +172,24 @@ class PersistenceSmokeTest {
     @Test
     void persistsPendingSharedBasketImportAcrossStoreCalls() {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        PersistedResolvedQuote quote = quotePersistenceService.save(
+        PersistedResolvedQuote firstQuote = quotePersistenceService.save(
                 quoteCommand(787878L, now.minusSeconds(5))
         );
+        PersistedResolvedQuote secondQuote = quotePersistenceService.save(
+                quoteCommand(787879L, now.minusSeconds(4))
+        );
         UserProfile user = userProfileService.getOrCreate(21001L, 21001L);
+        UserProfile anotherUser = userProfileService.getOrCreate(21002L, 21002L);
         PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
-                UUID.randomUUID(), user.getId(), 1, 0,
-                List.of(new PendingSharedBasketItem(
-                        0, quote.getWatchTargetId(), quote.getSnapshotId(), Optional.of("Test product")
-                )),
+                UUID.randomUUID(), user.getId(), 2, 0,
+                List.of(
+                        new PendingSharedBasketItem(
+                                1, secondQuote.getWatchTargetId(), secondQuote.getSnapshotId(), Optional.of("Second")
+                        ),
+                        new PendingSharedBasketItem(
+                                0, firstQuote.getWatchTargetId(), firstQuote.getSnapshotId(), Optional.of("First")
+                        )
+                ),
                 now, now.plus(15, ChronoUnit.MINUTES)
         );
 
@@ -190,11 +199,40 @@ class PersistenceSmokeTest {
                 .get()
                 .satisfies(restored -> {
                     assertThat(restored.getExpiresAt()).isEqualTo(pendingImport.getExpiresAt());
-                    assertThat(restored.getItems()).singleElement().satisfies(item -> {
-                        assertThat(item.getWatchTargetId()).isEqualTo(quote.getWatchTargetId());
-                        assertThat(item.getSnapshotId()).isEqualTo(quote.getSnapshotId());
-                    });
+                    assertThat(restored.getItems())
+                            .extracting(PendingSharedBasketItem::getPosition)
+                            .containsExactly(0, 1);
+                    assertThat(restored.getItems())
+                            .extracting(PendingSharedBasketItem::getWatchTargetId)
+                            .containsExactly(firstQuote.getWatchTargetId(), secondQuote.getWatchTargetId());
                 });
+        assertThat(pendingSharedBasketImportStore.findOwned(pendingImport.getId(), anotherUser.getId()))
+                .isEmpty();
+
+        PendingSharedBasketImport replacement = new PendingSharedBasketImport(
+                UUID.randomUUID(), user.getId(), 1, 0,
+                List.of(new PendingSharedBasketItem(
+                        0, secondQuote.getWatchTargetId(), secondQuote.getSnapshotId(), Optional.of("Replacement")
+                )),
+                now.plusSeconds(1), now.plus(16, ChronoUnit.MINUTES)
+        );
+        pendingSharedBasketImportStore.save(replacement, now.plusSeconds(1));
+
+        assertThat(pendingSharedBasketImportStore.findOwned(pendingImport.getId(), user.getId())).isEmpty();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM pending_shared_basket_import_items WHERE import_id = ?",
+                Long.class,
+                pendingImport.getId()
+        )).isZero();
+
+        pendingSharedBasketImportStore.remove(replacement.getId(), user.getId());
+
+        assertThat(pendingSharedBasketImportStore.findOwned(replacement.getId(), user.getId())).isEmpty();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM pending_shared_basket_import_items WHERE import_id = ?",
+                Long.class,
+                replacement.getId()
+        )).isZero();
     }
 
     @Test

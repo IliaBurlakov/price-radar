@@ -11,16 +11,20 @@ public final class SharedBasketPreview {
     private final int skippedItems;
     private final int alreadyTracked;
     private final int newItems;
-    private final int missingTracked;
+    private final int absentTracked;
+    private final int excludedByLimit;
     private final int freeSlots;
     private final int addableItems;
     private final int syncTargetItems;
-    private final List<String> missingTitles;
+    private final List<String> absentTitles;
+    private final List<String> excludedByLimitTitles;
+    private final String destructivePlanFingerprint;
 
     public SharedBasketPreview(
             UUID importId, int foundItems, int readyItems, int skippedItems,
-            int alreadyTracked, int newItems, int missingTracked, int freeSlots,
-            int addableItems, int syncTargetItems, List<String> missingTitles
+            int alreadyTracked, int newItems, int absentTracked, int excludedByLimit, int freeSlots,
+            int addableItems, int syncTargetItems, List<String> absentTitles,
+            List<String> excludedByLimitTitles, String destructivePlanFingerprint
     ) {
         this.importId = importId;
         this.foundItems = foundItems;
@@ -28,11 +32,14 @@ public final class SharedBasketPreview {
         this.skippedItems = skippedItems;
         this.alreadyTracked = alreadyTracked;
         this.newItems = newItems;
-        this.missingTracked = missingTracked;
+        this.absentTracked = absentTracked;
+        this.excludedByLimit = excludedByLimit;
         this.freeSlots = freeSlots;
         this.addableItems = addableItems;
         this.syncTargetItems = syncTargetItems;
-        this.missingTitles = List.copyOf(missingTitles);
+        this.absentTitles = List.copyOf(absentTitles);
+        this.excludedByLimitTitles = List.copyOf(excludedByLimitTitles);
+        this.destructivePlanFingerprint = java.util.Objects.requireNonNull(destructivePlanFingerprint);
     }
 
     public UUID getImportId() { return importId; }
@@ -41,11 +48,16 @@ public final class SharedBasketPreview {
     public int getSkippedItems() { return skippedItems; }
     public int getAlreadyTracked() { return alreadyTracked; }
     public int getNewItems() { return newItems; }
-    public int getMissingTracked() { return missingTracked; }
+    public int getAbsentTracked() { return absentTracked; }
+    public int getExcludedByLimit() { return excludedByLimit; }
+    public int getDestructiveRemovalCount() { return absentTracked + excludedByLimit; }
     public int getFreeSlots() { return freeSlots; }
     public int getAddableItems() { return addableItems; }
     public int getAddSkippedByLimit() { return Math.max(0, newItems - addableItems); }
     public int getSyncTargetItems() { return syncTargetItems; }
     public int getSyncSkippedByLimit() { return Math.max(0, readyItems - syncTargetItems); }
-    public List<String> getMissingTitles() { return missingTitles; }
+    public boolean isSynchronizationAvailable() { return skippedItems == 0; }
+    public List<String> getAbsentTitles() { return absentTitles; }
+    public List<String> getExcludedByLimitTitles() { return excludedByLimitTitles; }
+    public String getDestructivePlanFingerprint() { return destructivePlanFingerprint; }
 }

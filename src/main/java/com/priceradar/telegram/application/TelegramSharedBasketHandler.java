@@ -73,8 +73,10 @@ public class TelegramSharedBasketHandler {
             ));
             case ADD -> handleAdd(callback, user, preview.orElseThrow(), false);
             case ADD_CONFIRM -> handleAdd(callback, user, preview.orElseThrow(), true);
-            case SYNC -> handleSync(callback, user, preview.orElseThrow(), false);
-            case SYNC_CONFIRM -> handleSync(callback, user, preview.orElseThrow(), true);
+            case SYNC -> handleSync(callback, user, preview.orElseThrow(), false, Optional.empty());
+            case SYNC_CONFIRM -> handleSync(
+                    callback, user, preview.orElseThrow(), true, data.getPlanFingerprint()
+            );
             case CANCEL -> throw new IllegalStateException("cancel was already handled");
         }
         return true;
@@ -108,26 +110,48 @@ public class TelegramSharedBasketHandler {
             IncomingTelegramCallback callback,
             UserProfile user,
             SharedBasketPreview preview,
-            boolean confirmed
+            boolean confirmed,
+            Optional<String> confirmedPlanFingerprint
     ) {
-        if (!confirmed && preview.getMissingTracked() > 0) {
-            StringBuilder text = new StringBuilder("⚠️ Подтвердите синхронизацию\n\n")
-                    .append("Будет прекращено отслеживание ").append(preview.getMissingTracked())
-                    .append(" товаров, которых нет в переданной корзине.\n")
-                    .append("При повторном добавлении начнётся новый период статистики.\n\n")
-                    .append("Будет прекращено отслеживание:\n");
-            preview.getMissingTitles().stream().limit(5).forEach(title -> text.append("• ").append(title).append('\n'));
-            if (preview.getMissingTracked() > 5) text.append("и ещё ").append(preview.getMissingTracked() - 5).append('\n');
+        if (!preview.isSynchronizationAvailable()) {
+            telegramGateway.sendMessage(synchronizationUnavailable(callback.getChatId()));
+            return;
+        }
+        if (!confirmed && preview.getDestructiveRemovalCount() > 0) {
+            StringBuilder text = new StringBuilder("⚠️ Подтвердите синхронизацию\n");
+            if (preview.getAbsentTracked() > 0) {
+                text.append("\nСейчас вы отслеживаете ")
+                        .append(items(preview.getAbsentTracked())).append(",\n")
+                        .append(relativePronoun(preview.getAbsentTracked())).append(" нет в этой корзине.\n\n")
+                        .append("После синхронизации их отслеживание будет остановлено:\n");
+                appendRemovalTitles(text, preview.getAbsentTitles());
+            }
+            if (preview.getExcludedByLimit() > 0) {
+                appendLimitRemovalWarning(text, preview.getExcludedByLimit());
+            }
+            text.append("\nℹ️ Некоторые товары могли отслеживаться уже несколько месяцев.\n")
+                    .append("При прекращении подписки текущий период отслеживания завершится.\n")
+                    .append("При повторном добавлении начнётся новый период отслеживания и статистики.");
             telegramGateway.sendMessage(confirmMessage(
                     callback.getChatId(), callback.getTelegramUserId(), preview.getImportId(), text.toString(),
-                    "Да, синхронизировать", SharedBasketCallbackCodec.Action.SYNC_CONFIRM
+                    "Да, синхронизировать", SharedBasketCallbackCodec.Action.SYNC_CONFIRM,
+                    Optional.of(preview.getDestructivePlanFingerprint())
             ));
             return;
         }
-        telegramGateway.sendMessage(appliedMessage(
-                callback.getChatId(),
-                importService.apply(preview.getImportId(), user.getId(), SharedBasketImportService.ApplyMode.SYNCHRONIZE, clock.instant())
-        ));
+        SharedBasketApplyResult result = importService.apply(
+                preview.getImportId(), user.getId(), SharedBasketImportService.ApplyMode.SYNCHRONIZE,
+                confirmedPlanFingerprint, clock.instant()
+        );
+        if (result.getStatus() == SharedBasketApplyResult.Status.PLAN_CHANGED) {
+            Optional<SharedBasketPreview> refreshed = importService.findPreview(
+                    preview.getImportId(), user.getId(), clock.instant()
+            );
+            if (refreshed.isEmpty()) telegramGateway.sendMessage(expired(callback.getChatId()));
+            else handleSync(callback, user, refreshed.orElseThrow(), false, Optional.empty());
+            return;
+        }
+        telegramGateway.sendMessage(appliedMessage(callback.getChatId(), result));
     }
 
     private OutgoingTelegramMessage preparationMessage(
@@ -145,33 +169,75 @@ public class TelegramSharedBasketHandler {
 
     private OutgoingTelegramMessage previewMessage(long chatId, long telegramUserId, SharedBasketPreview preview) {
         StringBuilder text = new StringBuilder("🛒 Корзина Wildberries\n\n")
-                .append("Найдено товаров: ").append(preview.getFoundItems()).append('\n')
-                .append("Готово к импорту: ").append(preview.getReadyItems()).append('\n')
-                .append("Уже отслеживаются: ").append(preview.getAlreadyTracked()).append('\n')
-                .append("Новых: ").append(preview.getNewItems()).append('\n')
-                .append("Отслеживаются, но отсутствуют в корзине: ").append(preview.getMissingTracked()).append('\n');
+                .append("Найдено товаров: ").append(preview.getFoundItems());
+        if (preview.getAlreadyTracked() > 0) {
+            text.append("\nУже отслеживаются: ").append(preview.getAlreadyTracked());
+        }
+        if (preview.getNewItems() > 0) {
+            text.append("\nНовых: ").append(preview.getNewItems());
+        }
+        if (preview.getAbsentTracked() > 0) {
+            text.append("\n\nПри синхронизации бот перестанет отслеживать\n")
+                    .append(items(preview.getAbsentTracked())).append(", ")
+                    .append(relativePronoun(preview.getAbsentTracked())).append(" нет в этой корзине.");
+        }
         if (preview.getSkippedItems() > 0) {
-            text.append("Не удалось обработать: ").append(preview.getSkippedItems()).append(" — они будут пропущены.\n");
+            text.append("\n\n⚠️ ").append(items(preview.getSkippedItems()))
+                    .append(" не удалось распознать.\n")
+                    .append(isSingularCount(preview.getSkippedItems())
+                            ? "Он не будет добавлен.\n" : "Они не будут добавлены.\n")
+                    .append("\nБезопасная синхронизация сейчас недоступна.\n")
+                    .append("Попробуйте отправить корзину ещё раз позже.");
         }
         if (preview.getSyncSkippedByLimit() > 0) {
-            text.append("\n⚠️ Лимит отслеживания — 50. При синхронизации будут использованы первые ")
-                    .append(preview.getSyncTargetItems()).append(" товаров, остальные ")
-                    .append(preview.getSyncSkippedByLimit()).append(" будут пропущены.");
+            text.append("\n\n⚠️ Лимит отслеживания — 50 товаров.\n")
+                    .append(items(preview.getSyncSkippedByLimit())).append(" из этой корзины ")
+                    .append(isSingularCount(preview.getSyncSkippedByLimit()) ? "не войдёт" : "не войдут")
+                    .append(" в список.");
         }
-        List<List<TelegramInlineButton>> keyboard = List.of(
-                List.of(button("Добавить новые", SharedBasketCallbackCodec.Action.ADD, preview, telegramUserId)),
-                List.of(button("Синхронизировать", SharedBasketCallbackCodec.Action.SYNC, preview, telegramUserId)),
-                List.of(button("Отмена", SharedBasketCallbackCodec.Action.CANCEL, preview, telegramUserId))
-        );
+        List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
+        keyboard.add(List.of(button("Добавить новые", SharedBasketCallbackCodec.Action.ADD, preview, telegramUserId)));
+        if (preview.isSynchronizationAvailable()) {
+            keyboard.add(List.of(button(
+                    "Синхронизировать", SharedBasketCallbackCodec.Action.SYNC, preview, telegramUserId
+            )));
+        }
+        keyboard.add(List.of(button("Отмена", SharedBasketCallbackCodec.Action.CANCEL, preview, telegramUserId)));
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
+    }
+
+    private void appendRemovalTitles(StringBuilder text, List<String> titles) {
+        titles.stream().limit(5).forEach(title -> text.append("• ").append(title).append('\n'));
+        if (titles.size() > 5) text.append("• и ещё ").append(titles.size() - 5).append('\n');
+    }
+
+    private void appendLimitRemovalWarning(StringBuilder text, int count) {
+        text.append("\n⚠️ Ещё ").append(count);
+        if (isSingularCount(count)) {
+            text.append(" отслеживаемый товар есть в корзине,\n")
+                    .append("но находится после первых 50 и поэтому тоже будет удалён из отслеживания.\n");
+            return;
+        }
+        text.append(" отслеживаемых ").append(itemWord(count)).append(" есть в корзине,\n")
+                .append("но находятся после первых 50 и поэтому тоже будут удалены из отслеживания.\n");
     }
 
     private OutgoingTelegramMessage confirmMessage(
             long chatId, long telegramUserId, java.util.UUID importId, String text,
             String confirmText, SharedBasketCallbackCodec.Action action
     ) {
+        return confirmMessage(chatId, telegramUserId, importId, text, confirmText, action, Optional.empty());
+    }
+
+    private OutgoingTelegramMessage confirmMessage(
+            long chatId, long telegramUserId, java.util.UUID importId, String text,
+            String confirmText, SharedBasketCallbackCodec.Action action, Optional<String> planFingerprint
+    ) {
+        String confirmCallback = action == SharedBasketCallbackCodec.Action.SYNC_CONFIRM
+                ? callbackCodec.encodeSyncConfirm(importId, planFingerprint.orElseThrow(), telegramUserId)
+                : callbackCodec.encode(action, importId, telegramUserId);
         return new OutgoingTelegramMessage(chatId, text, List.of(
-                List.of(new TelegramInlineButton(confirmText, callbackCodec.encode(action, importId, telegramUserId))),
+                List.of(new TelegramInlineButton(confirmText, confirmCallback)),
                 List.of(new TelegramInlineButton("Назад", callbackCodec.encode(
                         SharedBasketCallbackCodec.Action.BACK, importId, telegramUserId
                 )))
@@ -187,20 +253,50 @@ public class TelegramSharedBasketHandler {
 
     private OutgoingTelegramMessage appliedMessage(long chatId, SharedBasketApplyResult result) {
         if (result.getStatus() != SharedBasketApplyResult.Status.APPLIED) return expired(chatId);
-        String text = "Корзина обработана.\n"
-                + "Добавлено: " + result.getAdded() + ".\n"
-                + "Сохранено без изменений: " + result.getKept() + ".\n"
-                + "Отслеживание прекращено: " + result.getEnded() + "."
-                + (result.getSkippedByLimit() > 0
-                ? "\nПропущено из-за лимита: " + result.getSkippedByLimit() + "." : "");
-        return message(chatId, text);
+        StringBuilder text = new StringBuilder("Корзина обработана.");
+        if (result.getAdded() > 0) text.append("\n\nДобавлено: ").append(result.getAdded()).append('.');
+        if (result.getKept() > 0) text.append("\nБез изменений: ").append(result.getKept()).append('.');
+        if (result.getEnded() > 0) text.append("\nУдалено из отслеживания: ").append(result.getEnded()).append('.');
+        if (result.getSkippedByLimit() > 0) {
+            text.append("\nНе вошло из-за лимита: ").append(result.getSkippedByLimit()).append('.');
+        }
+        if (result.getAdded() == 0 && result.getKept() == 0 && result.getEnded() == 0) {
+            text.append("\n\nИзменений нет.");
+        }
+        return message(chatId, text.toString());
     }
 
     private OutgoingTelegramMessage expired(long chatId) {
         return message(chatId, "Импорт устарел. Отправьте ссылку на корзину ещё раз.");
     }
 
+    private OutgoingTelegramMessage synchronizationUnavailable(long chatId) {
+        return message(chatId, "Безопасная синхронизация недоступна: часть товаров не удалось распознать. "
+                + "Можно добавить распознанные новые товары или отправить корзину ещё раз позже.");
+    }
+
     private OutgoingTelegramMessage message(long chatId, String text) {
         return new OutgoingTelegramMessage(chatId, text, TelegramNavigationKeyboard.mainMenu());
+    }
+
+    private String items(int count) {
+        return count + " " + itemWord(count);
+    }
+
+    private String itemWord(int count) {
+        int lastTwo = Math.abs(count) % 100;
+        int last = lastTwo % 10;
+        if (lastTwo >= 11 && lastTwo <= 14) return "товаров";
+        if (last == 1) return "товар";
+        if (last >= 2 && last <= 4) return "товара";
+        return "товаров";
+    }
+
+    private String relativePronoun(int count) {
+        return isSingularCount(count) ? "которого" : "которых";
+    }
+
+    private boolean isSingularCount(int count) {
+        return itemWord(count).equals("товар");
     }
 }

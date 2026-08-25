@@ -108,12 +108,12 @@ public final class TrackedItemsMessageFactory {
                 .flatMap(TelegramDisplayFormatter::variant)
                 .ifPresent(variant -> text.append("\n")
                         .append(truncate(variant, MAX_DETAIL_LENGTH)));
-        text.append("\nРежим: ").append(mode(item));
+        text.append("\n\nРежим: ").append(mode(item));
         appendLatestPrice(text, item, preferences);
         item.getLatestObservedAt().ifPresent(observedAt -> text.append("\nПроверено: ")
                 .append(TelegramDisplayFormatter.observedAt(observedAt)));
-        text.append("\nРегион: ").append(TelegramDisplayFormatter.region(region));
-        text.append("\nОткрыть товар: ").append(item.getCanonicalUrl());
+        text.append("\n\nРегион: ").append(TelegramDisplayFormatter.region(region));
+        text.append("\nОткрыть товар:\n").append(item.getCanonicalUrl());
         text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         List<List<TelegramInlineButton>> keyboard = List.of(

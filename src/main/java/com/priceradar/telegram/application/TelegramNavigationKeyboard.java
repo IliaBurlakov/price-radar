@@ -10,6 +10,7 @@ public final class TelegramNavigationKeyboard {
     public static List<List<TelegramInlineButton>> mainMenu() {
         return List.of(
                 List.of(button("Добавить товар", MainMenuCallbackData.Action.ADD_PRODUCT)),
+                List.of(button("Импортировать корзину", MainMenuCallbackData.Action.IMPORT_BASKET)),
                 List.of(
                         button("Мои товары", MainMenuCallbackData.Action.TRACKED_ITEMS),
                         button("Помощь", MainMenuCallbackData.Action.HELP)
@@ -19,6 +20,13 @@ public final class TelegramNavigationKeyboard {
 
     public static List<List<TelegramInlineButton>> home() {
         return List.of(List.of(
+                button("Главное меню", MainMenuCallbackData.Action.HOME)
+        ));
+    }
+
+    public static List<List<TelegramInlineButton>> basketImportNavigation() {
+        return List.of(List.of(
+                button("Назад", MainMenuCallbackData.Action.HOME),
                 button("Главное меню", MainMenuCallbackData.Action.HOME)
         ));
     }

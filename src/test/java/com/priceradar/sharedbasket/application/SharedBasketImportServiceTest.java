@@ -91,9 +91,7 @@ class SharedBasketImportServiceTest {
         when(subscriptionStore.create(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(subscriptionStore.end(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        SharedBasketApplyResult result = service.apply(
-                pending.getId(), userId, SharedBasketImportService.ApplyMode.SYNCHRONIZE, NOW
-        );
+        SharedBasketApplyResult result = confirmedSynchronization(pending, userId);
 
         assertThat(result.getKept()).isEqualTo(15);
         assertThat(result.getAdded()).isEqualTo(15);
@@ -124,6 +122,52 @@ class SharedBasketImportServiceTest {
         verify(userStore, never()).existsAndLockById(any());
         verify(subscriptionStore, never()).create(any());
         verify(subscriptionStore, never()).end(any());
+    }
+
+    @Test
+    void skippedBasketItemMakesSynchronizationUnavailableAndCannotEndItsSubscription() {
+        UUID userId = UUID.randomUUID();
+        Subscription active = subscriptions(userId, 1).getFirst();
+        PendingSharedBasketImport pending = new PendingSharedBasketImport(
+                UUID.randomUUID(), userId, 1, 1, List.of(),
+                NOW.minusSeconds(30), NOW.plusSeconds(600)
+        );
+        when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
+
+        SharedBasketApplyResult result = service.apply(
+                pending.getId(), userId, SharedBasketImportService.ApplyMode.SYNCHRONIZE,
+                Optional.of("AbCdEf12345"), NOW
+        );
+
+        assertThat(result.getStatus())
+                .isEqualTo(SharedBasketApplyResult.Status.SYNCHRONIZATION_UNAVAILABLE);
+        verify(userStore, never()).existsAndLockById(any());
+        verify(subscriptionStore, never()).end(active);
+        verify(subscriptionStore, never()).create(any());
+    }
+
+    @Test
+    void changedDestructivePlanIsRejectedBeforeAnySubscriptionChanges() {
+        UUID userId = UUID.randomUUID();
+        PendingSharedBasketImport pending = pending(userId, 1);
+        Subscription originallyAbsent = subscriptions(userId, 1).getFirst();
+        Subscription newlyAbsent = subscriptions(userId, 1).getFirst();
+        when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
+        when(userStore.existsAndLockById(userId)).thenReturn(true);
+        when(subscriptionStore.findActiveSubscriptions(userId))
+                .thenReturn(List.of(originallyAbsent))
+                .thenReturn(List.of(originallyAbsent, newlyAbsent));
+
+        SharedBasketPreview confirmedPreview = service.findPreview(pending.getId(), userId, NOW).orElseThrow();
+        SharedBasketApplyResult result = service.apply(
+                pending.getId(), userId, SharedBasketImportService.ApplyMode.SYNCHRONIZE,
+                Optional.of(confirmedPreview.getDestructivePlanFingerprint()), NOW
+        );
+
+        assertThat(result.getStatus()).isEqualTo(SharedBasketApplyResult.Status.PLAN_CHANGED);
+        verify(userStore).existsAndLockById(userId);
+        verify(subscriptionStore, never()).end(any());
+        verify(subscriptionStore, never()).create(any());
     }
 
     @Test
@@ -162,7 +206,7 @@ class SharedBasketImportServiceTest {
     }
 
     @Test
-    void previewTreatsTrackedItemsBeyondSyncFirstFiftyAsDestructiveRemoval() {
+    void previewDistinguishesTrackedItemsExcludedBySyncLimitFromAbsentItems() {
         UUID userId = UUID.randomUUID();
         List<PendingSharedBasketItem> items = new ArrayList<>();
         for (int index = 0; index < 73; index++) items.add(item(index, UUID.randomUUID()));
@@ -182,7 +226,9 @@ class SharedBasketImportServiceTest {
 
         assertThat(preview.getSyncTargetItems()).isEqualTo(50);
         assertThat(preview.getSyncSkippedByLimit()).isEqualTo(23);
-        assertThat(preview.getMissingTracked()).isOne();
+        assertThat(preview.getAbsentTracked()).isZero();
+        assertThat(preview.getExcludedByLimit()).isOne();
+        assertThat(preview.getDestructiveRemovalCount()).isOne();
     }
 
     @Test
@@ -206,9 +252,7 @@ class SharedBasketImportServiceTest {
         when(subscriptionStore.create(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(subscriptionStore.end(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        SharedBasketApplyResult result = service.apply(
-                pending.getId(), userId, SharedBasketImportService.ApplyMode.SYNCHRONIZE, NOW
-        );
+        SharedBasketApplyResult result = confirmedSynchronization(pending, userId);
 
         assertThat(result.getAdded()).isEqualTo(50);
         assertThat(result.getEnded()).isOne();
@@ -228,6 +272,14 @@ class SharedBasketImportServiceTest {
         for (int index = 0; index < count; index++) items.add(item(index, UUID.randomUUID()));
         return new PendingSharedBasketImport(
                 UUID.randomUUID(), userId, count, 0, items, NOW.minusSeconds(30), NOW.plusSeconds(600)
+        );
+    }
+
+    private SharedBasketApplyResult confirmedSynchronization(PendingSharedBasketImport pending, UUID userId) {
+        SharedBasketPreview preview = service.findPreview(pending.getId(), userId, NOW).orElseThrow();
+        return service.apply(
+                pending.getId(), userId, SharedBasketImportService.ApplyMode.SYNCHRONIZE,
+                Optional.of(preview.getDestructivePlanFingerprint()), NOW
         );
     }
 

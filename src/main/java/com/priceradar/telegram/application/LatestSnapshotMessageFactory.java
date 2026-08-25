@@ -96,11 +96,11 @@ public final class LatestSnapshotMessageFactory {
     }
 
     private void appendRegionAndLink(StringBuilder text, LatestSnapshotView snapshot) {
-        text.append("\nРегион: ")
+        text.append("\n\nРегион: ")
                 .append(TelegramDisplayFormatter.region(
                         snapshot.getPriceContext().getCityName()
                 ));
-        text.append("\nОткрыть товар: ").append(snapshot.getCanonicalUrl());
+        text.append("\nОткрыть товар:\n").append(snapshot.getCanonicalUrl());
     }
 
     private OutgoingTelegramMessage withTrackedButton(long chatId, String text) {

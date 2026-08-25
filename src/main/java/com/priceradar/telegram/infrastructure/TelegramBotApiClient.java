@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.priceradar.telegram.application.IncomingTelegramMessage;
 import com.priceradar.telegram.application.IncomingTelegramCallback;
+import com.priceradar.telegram.application.IncomingTelegramMessage;
 import com.priceradar.telegram.application.OutgoingTelegramMessage;
-import com.priceradar.telegram.application.TelegramGateway;
+import com.priceradar.telegram.application.TelegramBotCommand;
+import com.priceradar.telegram.application.TelegramBotCommandRegistrar;
 import com.priceradar.telegram.application.TelegramDeliveryException;
+import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.TelegramInlineButton;
 import com.priceradar.telegram.application.TelegramUpdate;
 
@@ -22,9 +24,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
-public class TelegramBotApiClient implements TelegramGateway {
+public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommandRegistrar {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -139,6 +142,21 @@ public class TelegramBotApiClient implements TelegramGateway {
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("callback_query_id", callbackQueryId.trim());
         call("answerCallbackQuery", requestBody, requestTimeout);
+    }
+
+    @Override
+    public void registerCommands(List<TelegramBotCommand> commands) {
+        if (commands == null || commands.isEmpty() || commands.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("commands must not be null, empty or contain nulls");
+        }
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        ArrayNode commandNodes = requestBody.putArray("commands");
+        for (TelegramBotCommand command : commands) {
+            ObjectNode commandNode = commandNodes.addObject();
+            commandNode.put("command", command.getCommand());
+            commandNode.put("description", command.getDescription());
+        }
+        call("setMyCommands", requestBody, requestTimeout);
     }
 
     private Optional<IncomingTelegramMessage> parseMessage(JsonNode messageNode) {

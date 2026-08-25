@@ -9,6 +9,7 @@ public final class MainMenuCallbackData {
     public enum Action {
         HOME,
         ADD_PRODUCT,
+        IMPORT_BASKET,
         TRACKED_ITEMS,
         HELP
     }
