@@ -70,6 +70,10 @@ public final class TrackedItemsMessageFactory {
             )));
         }
         appendPagination(keyboard, pageNumber, pageCount);
+        keyboard.add(List.of(new TelegramInlineButton(
+                "🧹 Очистить все",
+                ClearTrackingCallbackData.START
+        )));
         keyboard.add(List.of(
                 new TelegramInlineButton(
                         "Добавить товар",

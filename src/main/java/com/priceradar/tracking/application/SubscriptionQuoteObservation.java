@@ -1,6 +1,7 @@
 package com.priceradar.tracking.application;
 
 import com.priceradar.pricing.domain.RubleAmount;
+import com.priceradar.pricing.domain.PriceContext;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -12,14 +13,17 @@ public final class SubscriptionQuoteObservation {
     private final UUID watchTargetId;
     private final Instant observedAt;
     private final Optional<RubleAmount> regularPrice;
+    private final PriceContext priceContext;
 
     public SubscriptionQuoteObservation(
             UUID snapshotId,
             UUID watchTargetId,
             Instant observedAt,
-            Optional<RubleAmount> regularPrice
+            Optional<RubleAmount> regularPrice,
+            PriceContext priceContext
     ) {
-        if (snapshotId == null || watchTargetId == null || observedAt == null || regularPrice == null) {
+        if (snapshotId == null || watchTargetId == null || observedAt == null
+                || regularPrice == null || priceContext == null) {
             throw new IllegalArgumentException("quote observation fields must not be null");
         }
         if (regularPrice.filter(price -> price.getMinorUnits() == 0).isPresent()) {
@@ -29,6 +33,7 @@ public final class SubscriptionQuoteObservation {
         this.watchTargetId = watchTargetId;
         this.observedAt = observedAt;
         this.regularPrice = regularPrice;
+        this.priceContext = priceContext;
     }
 
     public Instant getObservedAt() {
@@ -46,4 +51,6 @@ public final class SubscriptionQuoteObservation {
     public Optional<RubleAmount> getRegularPrice() {
         return regularPrice;
     }
+
+    public PriceContext getPriceContext() { return priceContext; }
 }

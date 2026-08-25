@@ -1,6 +1,6 @@
 package com.priceradar.telegram.application;
 
-import com.priceradar.pricing.domain.PriceContext;
+import com.priceradar.region.domain.MarketplaceRegionCode;
 import com.priceradar.sharedbasket.application.SharedBasketApplyResult;
 import com.priceradar.sharedbasket.application.SharedBasketImportService;
 import com.priceradar.sharedbasket.application.SharedBasketPreview;
@@ -22,6 +22,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 
 class TelegramSharedBasketHandlerTest {
 
@@ -37,10 +38,11 @@ class TelegramSharedBasketHandlerTest {
         SharedBasketCallbackCodec codec = new SharedBasketCallbackCodec("01234567890123456789012345678901");
         UserProfile profile = new UserProfile(
                 userId, telegramUserId, telegramUserId,
-                new PriceContext("Moscow", 1259570991L, 30), UserPricePreferences.defaults()
+                moscow(), UserPricePreferences.defaults()
         );
         SharedBasketPreview preview = new SharedBasketPreview(
-                importId, 60, 60, 60, 0, List.of(), 15, 45, 8, 2, 27, 27, 50,
+                importId, MarketplaceRegionCode.MOSCOW,
+                60, 60, 60, 0, List.of(), 15, 45, 8, 2, 27, 27, 50,
                 List.of("One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"),
                 List.of("Limited one", "Limited two"), "AbCdEf12345"
         );
@@ -107,7 +109,7 @@ class TelegramSharedBasketHandlerTest {
         SharedBasketCallbackCodec codec = new SharedBasketCallbackCodec("01234567890123456789012345678901");
         when(users.getOrCreate(telegramUserId, telegramUserId)).thenReturn(new UserProfile(
                 userId, telegramUserId, telegramUserId,
-                new PriceContext("Moscow", 1259570991L, 30), UserPricePreferences.defaults()
+                moscow(), UserPricePreferences.defaults()
         ));
         when(service.findPreview(importId, userId, now)).thenReturn(Optional.empty());
         TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
@@ -134,12 +136,58 @@ class TelegramSharedBasketHandlerTest {
         );
     }
 
+    @Test
+    void oldBasketCallbackFromPreviousRegionCannotApplyImport() {
+        Instant now = Instant.parse("2026-08-24T10:00:00Z");
+        UUID userId = UUID.randomUUID();
+        UUID importId = UUID.randomUUID();
+        long telegramUserId = 7001L;
+        SharedBasketImportService service = mock(SharedBasketImportService.class);
+        UserProfileService users = mock(UserProfileService.class);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        SharedBasketCallbackCodec codec = new SharedBasketCallbackCodec(
+                "01234567890123456789012345678901"
+        );
+        when(users.getOrCreate(telegramUserId, telegramUserId)).thenReturn(new UserProfile(
+                userId, telegramUserId, telegramUserId,
+                com.priceradar.testsupport.TestMarketplaceRegions.irkutsk(),
+                UserPricePreferences.defaults()
+        ));
+        when(service.findPreview(importId, userId, now)).thenReturn(Optional.of(
+                new SharedBasketPreview(
+                        importId, MarketplaceRegionCode.MOSCOW,
+                        1, 1, 1, 0, List.of(), 0, 1, 0, 0, 50, 1, 1,
+                        List.of(), List.of(), "AbCdEf12345"
+                )
+        ));
+        TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
+                new SharedBasketUrlParser(), service, codec, users, gateway,
+                Clock.fixed(now, ZoneOffset.UTC)
+        );
+
+        handler.handleCallback(new IncomingTelegramCallback(
+                "callback", telegramUserId, telegramUserId, "private",
+                codec.encode(SharedBasketCallbackCodec.Action.ADD, importId, telegramUserId)
+        ));
+
+        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(gateway).sendMessage(message.capture());
+        assertThat(message.getValue().getText()).contains(
+                "импорт относится к предыдущему региону", "Отправьте ссылку"
+        );
+        verify(service, never()).apply(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()
+        );
+    }
+
 
     @Test
     void unresolvedItemsHideSynchronizationAndSignedSyncCallbackCannotApplyIt() {
         TestContext context = context();
         SharedBasketPreview preview = new SharedBasketPreview(
-                context.importId, 3, 2, 2, 1, List.of(), 0, 2, 0, 0, 48, 2, 2,
+                context.importId, MarketplaceRegionCode.MOSCOW,
+                3, 2, 2, 1, List.of(), 0, 2, 0, 0, 48, 2, 2,
                 List.of(), List.of(), "AbCdEf12345"
         );
         when(context.service.findPreview(context.importId, context.userId, context.now))
@@ -183,11 +231,13 @@ class TelegramSharedBasketHandlerTest {
     void changedPlanShowsAReplacementConfirmationInsteadOfApplyingNewDestructiveChanges() {
         TestContext context = context();
         SharedBasketPreview original = new SharedBasketPreview(
-                context.importId, 1, 1, 1, 0, List.of(), 0, 1, 1, 0, 49, 1, 1,
+                context.importId, MarketplaceRegionCode.MOSCOW,
+                1, 1, 1, 0, List.of(), 0, 1, 1, 0, 49, 1, 1,
                 List.of("Old removal"), List.of(), "AbCdEf12345"
         );
         SharedBasketPreview refreshed = new SharedBasketPreview(
-                context.importId, 1, 1, 1, 0, List.of(), 0, 1, 2, 0, 48, 1, 1,
+                context.importId, MarketplaceRegionCode.MOSCOW,
+                1, 1, 1, 0, List.of(), 0, 1, 2, 0, 48, 1, 1,
                 List.of("Old removal", "New removal"), List.of(), "ZyXwVu98765"
         );
         when(context.service.findPreview(context.importId, context.userId, context.now))
@@ -212,7 +262,8 @@ class TelegramSharedBasketHandlerTest {
     @Test
     void previewRendersOnlyRelevantCountsAndWarnings() {
         SharedBasketPreview happyPath = new SharedBasketPreview(
-                UUID.randomUUID(), 3, 3, 3, 0, List.of(), 0, 3, 0, 0, 50, 3, 3,
+                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                3, 3, 3, 0, List.of(), 0, 3, 0, 0, 50, 3, 3,
                 List.of(), List.of(), "AbCdEf12345"
         );
         String happyText = renderPreview(happyPath).getText();
@@ -229,7 +280,8 @@ class TelegramSharedBasketHandlerTest {
                 );
 
         SharedBasketPreview warnings = new SharedBasketPreview(
-                UUID.randomUUID(), 73, 70, 70, 1, List.of("Product A", "Product B"),
+                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                73, 70, 70, 1, List.of("Product A", "Product B"),
                 15, 55, 6, 2, 35, 35, 50,
                 List.of("Outside"), List.of("Limited"), "ZyXwVu98765"
         );
@@ -252,7 +304,8 @@ class TelegramSharedBasketHandlerTest {
     @Test
     void unavailableBlockUsesSingularFormAndLimitsLongProductLists() {
         SharedBasketPreview twoUnavailable = new SharedBasketPreview(
-                UUID.randomUUID(), 28, 26, 26, 0, List.of("Product A", "Product B"),
+                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                28, 26, 26, 0, List.of("Product A", "Product B"),
                 0, 26, 0, 0, 50, 26, 26,
                 List.of(), List.of(), "QrStUv12345"
         );
@@ -264,7 +317,8 @@ class TelegramSharedBasketHandlerTest {
         );
 
         SharedBasketPreview singular = new SharedBasketPreview(
-                UUID.randomUUID(), 1, 0, 0, 0, List.of("Футболка — XXL"),
+                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                1, 0, 0, 0, List.of("Футболка — XXL"),
                 0, 0, 0, 0, 50, 0, 0,
                 List.of(), List.of(), "AbCdEf12345"
         );
@@ -281,7 +335,8 @@ class TelegramSharedBasketHandlerTest {
                 .containsExactly("Добавить новые", "Отмена");
 
         SharedBasketPreview longList = new SharedBasketPreview(
-                UUID.randomUUID(), 8, 0, 0, 0,
+                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                8, 0, 0, 0,
                 List.of("A", "B", "C", "D", "E", "F", "G", "H"),
                 0, 0, 0, 0, 50, 0, 0,
                 List.of(), List.of(), "ZyXwVu98765"
@@ -300,6 +355,7 @@ class TelegramSharedBasketHandlerTest {
         when(context.service.findPreview(context.importId, context.userId, context.now))
                 .thenReturn(Optional.of(new SharedBasketPreview(
                         context.importId,
+                        MarketplaceRegionCode.MOSCOW,
                         preview.getFoundItems(), preview.getAvailableItems(), preview.getReadyItems(),
                         preview.getUnresolvedItems(), preview.getUnavailableTitles(),
                         preview.getAlreadyTracked(), preview.getNewItems(), preview.getAbsentTracked(),
@@ -327,7 +383,7 @@ class TelegramSharedBasketHandlerTest {
         SharedBasketCallbackCodec codec = new SharedBasketCallbackCodec("01234567890123456789012345678901");
         when(users.getOrCreate(telegramUserId, telegramUserId)).thenReturn(new UserProfile(
                 userId, telegramUserId, telegramUserId,
-                new PriceContext("Moscow", 1259570991L, 30), UserPricePreferences.defaults()
+                moscow(), UserPricePreferences.defaults()
         ));
         return new TestContext(
                 now, userId, importId, telegramUserId, service, gateway, codec,

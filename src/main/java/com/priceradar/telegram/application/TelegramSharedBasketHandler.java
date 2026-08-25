@@ -69,6 +69,10 @@ public class TelegramSharedBasketHandler {
             telegramGateway.sendMessage(expired(callback.getChatId()));
             return true;
         }
+        if (preview.orElseThrow().getRegionCode() != user.getRegion().getCode()) {
+            telegramGateway.sendMessage(previousRegionImport(callback.getChatId()));
+            return true;
+        }
         switch (data.getAction()) {
             case BACK -> telegramGateway.sendMessage(previewMessage(
                     callback.getChatId(), callback.getTelegramUserId(), preview.orElseThrow()
@@ -272,6 +276,9 @@ public class TelegramSharedBasketHandler {
     }
 
     private OutgoingTelegramMessage appliedMessage(long chatId, SharedBasketApplyResult result) {
+        if (result.getStatus() == SharedBasketApplyResult.Status.REGION_MISMATCH) {
+            return previousRegionImport(chatId);
+        }
         if (result.getStatus() != SharedBasketApplyResult.Status.APPLIED) return expired(chatId);
         StringBuilder text = new StringBuilder("Корзина обработана.");
         if (result.getAdded() > 0) text.append("\n\nДобавлено: ").append(result.getAdded()).append('.');
@@ -288,6 +295,11 @@ public class TelegramSharedBasketHandler {
 
     private OutgoingTelegramMessage expired(long chatId) {
         return message(chatId, "Импорт устарел. Отправьте ссылку на корзину ещё раз.");
+    }
+
+    private OutgoingTelegramMessage previousRegionImport(long chatId) {
+        return message(chatId, "Этот импорт относится к предыдущему региону. "
+                + "Отправьте ссылку на корзину ещё раз.");
     }
 
     private OutgoingTelegramMessage synchronizationUnavailable(long chatId, SharedBasketPreview preview) {

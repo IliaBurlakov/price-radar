@@ -105,12 +105,15 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     @Override
     public Optional<SubscriptionQuoteObservation> findQuoteObservation(UUID snapshotId) {
         return snapshotRepository.findById(snapshotId)
-                .map(snapshot -> new SubscriptionQuoteObservation(
-                        snapshot.getId(),
-                        snapshot.getWatchTargetId(),
-                        snapshot.getObservedAt(),
-                        validRegularPrice(snapshot)
-                ));
+                .map(snapshot -> {
+                    WatchTargetEntity target = watchTargetRepository.findById(snapshot.getWatchTargetId())
+                            .orElseThrow(() -> new IllegalStateException("Quote watch target disappeared"));
+                    return new SubscriptionQuoteObservation(
+                            snapshot.getId(), snapshot.getWatchTargetId(), snapshot.getObservedAt(),
+                            validRegularPrice(snapshot),
+                            new PriceContext(target.getCityName(), target.getDest(), target.getSpp())
+                    );
+                });
     }
 
     @Override

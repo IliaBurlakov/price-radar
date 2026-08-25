@@ -1,6 +1,8 @@
 package com.priceradar.user.application;
 
-import com.priceradar.pricing.domain.PriceContext;
+import com.priceradar.region.application.MarketplaceRegionStore;
+import com.priceradar.region.domain.MarketplaceRegion;
+import com.priceradar.region.domain.MarketplaceRegionCode;
 import com.priceradar.user.domain.UserPricePreferences;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,22 +12,22 @@ import java.time.Instant;
 public class UserProfileService {
 
     private final UserProfileStore profileStore;
-    private final PriceContext defaultPriceContext;
+    private final MarketplaceRegionStore regionStore;
     private final UserPricePreferences defaultPricePreferences;
     private final Clock clock;
 
     public UserProfileService(
             UserProfileStore profileStore,
-            PriceContext defaultPriceContext,
+            MarketplaceRegionStore regionStore,
             UserPricePreferences defaultPricePreferences,
             Clock clock
     ) {
-        if (profileStore == null || defaultPriceContext == null
+        if (profileStore == null || regionStore == null
                 || defaultPricePreferences == null || clock == null) {
             throw new IllegalArgumentException("user profile service dependencies must not be null");
         }
         this.profileStore = profileStore;
-        this.defaultPriceContext = defaultPriceContext;
+        this.regionStore = regionStore;
         this.defaultPricePreferences = defaultPricePreferences;
         this.clock = clock;
     }
@@ -42,10 +44,16 @@ public class UserProfileService {
                 .orElseGet(() -> profileStore.create(
                         telegramUserId,
                         telegramChatId,
-                        defaultPriceContext,
+                        defaultRegion(),
                         defaultPricePreferences,
                         now
                 ));
+    }
+
+    private MarketplaceRegion defaultRegion() {
+        return regionStore.findByCode(MarketplaceRegionCode.MOSCOW)
+                .filter(MarketplaceRegion::isEnabled)
+                .orElseThrow(() -> new IllegalStateException("Default Moscow region is unavailable"));
     }
 
     private UserProfile updateChatIfNeeded(UserProfile profile, long telegramChatId, Instant now) {

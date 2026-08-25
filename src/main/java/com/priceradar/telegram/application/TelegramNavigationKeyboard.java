@@ -14,6 +14,9 @@ public final class TelegramNavigationKeyboard {
                 List.of(button("Импортировать корзину", MainMenuCallbackData.Action.IMPORT_BASKET)),
                 List.of(
                         button("Мои товары", MainMenuCallbackData.Action.TRACKED_ITEMS),
+                        button("🌍 Регион цен", MainMenuCallbackData.Action.REGION)
+                ),
+                List.of(
                         button("Помощь", MainMenuCallbackData.Action.HELP)
                 )
         );

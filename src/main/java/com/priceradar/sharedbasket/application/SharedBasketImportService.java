@@ -110,6 +110,7 @@ public class SharedBasketImportService {
         PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
                 UUID.randomUUID(),
                 user.getId(),
+                user.getRegion().getCode(),
                 uniqueItems.size(),
                 resolution.getResolvedItems().size(),
                 resolution.getUnresolvedItems().size(),
@@ -158,8 +159,12 @@ public class SharedBasketImportService {
                 || pending.orElseThrow().getUnresolvedItems() > 0)) {
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.SYNCHRONIZATION_UNAVAILABLE);
         }
-        if (!userProfileStore.existsAndLockById(userId)) {
+        UserProfile lockedUser = userProfileStore.findByIdAndLock(userId).orElse(null);
+        if (lockedUser == null) {
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.USER_NOT_FOUND);
+        }
+        if (lockedUser.getRegion().getCode() != pending.orElseThrow().getRegionCode()) {
+            return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.REGION_MISMATCH);
         }
 
         List<Subscription> active = subscriptionStore.findActiveSubscriptions(userId);
@@ -277,7 +282,8 @@ public class SharedBasketImportService {
                 .filter(subscription -> !syncTargets.contains(subscription.getWatchTargetId()))
                 .toList();
         return new SharedBasketPreview(
-                pending.getId(), pending.getFoundItems(), pending.getAvailableItems(), pending.getItems().size(),
+                pending.getId(), pending.getRegionCode(), pending.getFoundItems(),
+                pending.getAvailableItems(), pending.getItems().size(),
                 pending.getUnresolvedItems(), pending.getUnavailableItems().stream()
                         .map(PendingUnavailableSharedBasketItem::getDisplayName)
                         .toList(),

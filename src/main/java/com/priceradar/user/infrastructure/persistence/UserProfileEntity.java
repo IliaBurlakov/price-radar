@@ -1,7 +1,10 @@
 package com.priceradar.user.infrastructure.persistence;
 
+import com.priceradar.region.domain.MarketplaceRegionCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
@@ -22,14 +25,9 @@ public class UserProfileEntity {
     @Column(name = "telegram_chat_id", nullable = false)
     private long telegramChatId;
 
-    @Column(name = "city_name", nullable = false, length = 100)
-    private String cityName;
-
-    @Column(name = "dest", nullable = false)
-    private long dest;
-
-    @Column(name = "spp", nullable = false)
-    private int spp;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "region_code", nullable = false, length = 32)
+    private MarketplaceRegionCode regionCode;
 
     @Column(name = "wallet_discount_percent", nullable = false)
     private int walletDiscountPercent;
@@ -51,9 +49,7 @@ public class UserProfileEntity {
             UUID id,
             long telegramUserId,
             long telegramChatId,
-            String cityName,
-            long dest,
-            int spp,
+            MarketplaceRegionCode regionCode,
             int walletDiscountPercent,
             Instant createdAt,
             Instant updatedAt
@@ -61,9 +57,7 @@ public class UserProfileEntity {
         this.id = id;
         this.telegramUserId = telegramUserId;
         this.telegramChatId = telegramChatId;
-        this.cityName = cityName;
-        this.dest = dest;
-        this.spp = spp;
+        this.regionCode = regionCode;
         this.walletDiscountPercent = walletDiscountPercent;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -81,16 +75,8 @@ public class UserProfileEntity {
         return telegramChatId;
     }
 
-    public String getCityName() {
-        return cityName;
-    }
-
-    public long getDest() {
-        return dest;
-    }
-
-    public int getSpp() {
-        return spp;
+    public MarketplaceRegionCode getRegionCode() {
+        return regionCode;
     }
 
     public int getWalletDiscountPercent() {
@@ -117,6 +103,14 @@ public class UserProfileEntity {
             throw new IllegalArgumentException("updatedAt must not be null");
         }
         this.telegramChatId = telegramChatId;
+        this.updatedAt = updatedAt;
+    }
+
+    public void updateRegion(MarketplaceRegionCode regionCode, Instant updatedAt) {
+        if (regionCode == null || updatedAt == null) {
+            throw new IllegalArgumentException("region update fields must not be null");
+        }
+        this.regionCode = regionCode;
         this.updatedAt = updatedAt;
     }
 }

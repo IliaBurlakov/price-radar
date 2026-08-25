@@ -27,6 +27,7 @@ import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.statistics.domain.StatisticsPeriod;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImport;
+import com.priceradar.region.domain.MarketplaceRegionCode;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImportStore;
 import com.priceradar.sharedbasket.application.PendingSharedBasketItem;
 import com.priceradar.sharedbasket.application.PendingUnavailableSharedBasketItem;
@@ -165,7 +166,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("10");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("11");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -182,7 +183,7 @@ class PersistenceSmokeTest {
         UserProfile user = userProfileService.getOrCreate(21001L, 21001L);
         UserProfile anotherUser = userProfileService.getOrCreate(21002L, 21002L);
         PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
-                UUID.randomUUID(), user.getId(), 3, 2, 0,
+                UUID.randomUUID(), user.getId(), MarketplaceRegionCode.MOSCOW, 3, 2, 0,
                 List.of(new PendingUnavailableSharedBasketItem(0, "Unavailable — XXL")),
                 List.of(
                         new PendingSharedBasketItem(
@@ -217,7 +218,7 @@ class PersistenceSmokeTest {
                 .isEmpty();
 
         PendingSharedBasketImport replacement = new PendingSharedBasketImport(
-                UUID.randomUUID(), user.getId(), 1, 1, 0, List.of(),
+                UUID.randomUUID(), user.getId(), MarketplaceRegionCode.MOSCOW, 1, 1, 0, List.of(),
                 List.of(new PendingSharedBasketItem(
                         0, secondQuote.getWatchTargetId(), secondQuote.getSnapshotId(), Optional.of("Replacement")
                 )),

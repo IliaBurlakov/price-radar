@@ -1,6 +1,8 @@
 package com.priceradar.telegram.application;
 
 import com.priceradar.tracking.application.SubscriptionEndResult;
+import com.priceradar.tracking.application.ClearSubscriptionsPlan;
+import com.priceradar.tracking.application.ClearSubscriptionsResult;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
 import com.priceradar.user.application.UserProfile;
@@ -17,22 +19,26 @@ public class TrackedItemsMessageHandler {
     private final SubscriptionService subscriptionService;
     private final TrackedItemsMessageFactory messageFactory;
     private final TelegramGateway telegramGateway;
+    private final ClearTrackingCallbackCodec clearCallbackCodec;
     private final Clock clock;
 
     public TrackedItemsMessageHandler(
             UserProfileService userProfileService,
             SubscriptionService subscriptionService,
             TrackedItemsMessageFactory messageFactory,
+            ClearTrackingCallbackCodec clearCallbackCodec,
             TelegramGateway telegramGateway,
             Clock clock
     ) {
         if (userProfileService == null || subscriptionService == null || messageFactory == null
+                || clearCallbackCodec == null
                 || telegramGateway == null || clock == null) {
             throw new IllegalArgumentException("tracked items handler dependencies must not be null");
         }
         this.userProfileService = userProfileService;
         this.subscriptionService = subscriptionService;
         this.messageFactory = messageFactory;
+        this.clearCallbackCodec = clearCallbackCodec;
         this.telegramGateway = telegramGateway;
         this.clock = clock;
     }
@@ -58,6 +64,10 @@ public class TrackedItemsMessageHandler {
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
+        Optional<String> clearFingerprint = clearCallbackCodec.decodeConfirm(
+                callback.getData(), callback.getTelegramUserId()
+        );
+        boolean clearStart = ClearTrackingCallbackData.START.equals(callback.getData());
         Optional<UUID> removeId = SubscriptionCallbackData.parse(
                 SubscriptionCallbackData.Action.REMOVE,
                 callback.getData()
@@ -71,7 +81,8 @@ public class TrackedItemsMessageHandler {
                 callback.getData()
         );
         OptionalInt requestedPage = TrackedItemsPageCallbackData.parse(callback.getData());
-        if (removeId.isEmpty() && confirmRemoveId.isEmpty()
+        if (!clearStart && clearFingerprint.isEmpty()
+                && removeId.isEmpty() && confirmRemoveId.isEmpty()
                 && itemId.isEmpty() && requestedPage.isEmpty()) {
             return false;
         }
@@ -83,6 +94,14 @@ public class TrackedItemsMessageHandler {
                 callback.getTelegramUserId(),
                 callback.getChatId()
         );
+        if (clearStart) {
+            showClearConfirmation(callback.getChatId(), callback.getTelegramUserId(), profile.getId());
+            return true;
+        }
+        if (clearFingerprint.isPresent()) {
+            applyClearAll(callback, profile, clearFingerprint.orElseThrow());
+            return true;
+        }
         if (requestedPage.isPresent() || itemId.isPresent() || removeId.isPresent()) {
             List<TrackedSubscriptionItem> items =
                     subscriptionService.findActive(profile.getId());
@@ -163,6 +182,74 @@ public class TrackedItemsMessageHandler {
                 "Этот товар больше не отслеживается.",
                 TelegramNavigationKeyboard.trackedItemsAndHome()
         );
+    }
+
+    private void showClearConfirmation(long chatId, long telegramUserId, UUID userId) {
+        ClearSubscriptionsPlan plan = subscriptionService.prepareClearAll(userId);
+        if (plan.isEmpty()) {
+            telegramGateway.sendMessage(new OutgoingTelegramMessage(
+                    chatId, "У вас нет активных отслеживаний.", TelegramNavigationKeyboard.mainMenu()
+            ));
+            return;
+        }
+        telegramGateway.sendMessage(clearConfirmation(chatId, telegramUserId, plan));
+    }
+
+    private void applyClearAll(
+            IncomingTelegramCallback callback,
+            UserProfile profile,
+            String fingerprint
+    ) {
+        ClearSubscriptionsResult result = subscriptionService.clearAll(
+                profile.getId(), fingerprint, clock.instant()
+        );
+        if (result.getStatus() == ClearSubscriptionsResult.Status.PLAN_CHANGED) {
+            showClearConfirmation(callback.getChatId(), callback.getTelegramUserId(), profile.getId());
+            return;
+        }
+        String text = result.getStatus() == ClearSubscriptionsResult.Status.CLEARED
+                ? "✅ Все отслеживания остановлены.\n\nТеперь можно выбрать новый регион."
+                : "Активных отслеживаний уже нет.";
+        telegramGateway.sendMessage(new OutgoingTelegramMessage(
+                callback.getChatId(), text, List.of(List.of(
+                        TelegramNavigationKeyboard.button(
+                                "🌍 Выбрать регион", MainMenuCallbackData.Action.REGION
+                        ),
+                        TelegramNavigationKeyboard.button(
+                                "Главное меню", MainMenuCallbackData.Action.HOME
+                        )
+                ))
+        ));
+    }
+
+    private OutgoingTelegramMessage clearConfirmation(
+            long chatId,
+            long telegramUserId,
+            ClearSubscriptionsPlan plan
+    ) {
+        int count = plan.getSubscriptionCount();
+        String text = "⚠️ Остановить все отслеживания?\n\nСейчас отслеживается "
+                + itemCount(count) + ".\n\nВсе текущие подписки будут завершены.\n\n"
+                + "Некоторые товары могли отслеживаться несколько месяцев.\n"
+                + "При повторном добавлении начнётся новый период отслеживания и статистики.";
+        return new OutgoingTelegramMessage(chatId, text, List.of(
+                List.of(new TelegramInlineButton(
+                        "Да, очистить все",
+                        clearCallbackCodec.encodeConfirm(plan.getFingerprint(), telegramUserId)
+                )),
+                List.of(TelegramNavigationKeyboard.button(
+                        "← Назад", MainMenuCallbackData.Action.TRACKED_ITEMS
+                ))
+        ));
+    }
+
+    private String itemCount(int count) {
+        int lastTwo = Math.abs(count) % 100;
+        int last = lastTwo % 10;
+        String word = lastTwo >= 11 && lastTwo <= 14 ? "товаров"
+                : last == 1 ? "товар"
+                : last >= 2 && last <= 4 ? "товара" : "товаров";
+        return count + " " + word;
     }
 
     private int normalizedPage(int requestedPage, int itemCount) {

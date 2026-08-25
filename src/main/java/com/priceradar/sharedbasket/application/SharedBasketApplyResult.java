@@ -2,7 +2,10 @@ package com.priceradar.sharedbasket.application;
 
 public final class SharedBasketApplyResult {
 
-    public enum Status { APPLIED, EXPIRED, USER_NOT_FOUND, SYNCHRONIZATION_UNAVAILABLE, PLAN_CHANGED }
+    public enum Status {
+        APPLIED, EXPIRED, USER_NOT_FOUND, REGION_MISMATCH,
+        SYNCHRONIZATION_UNAVAILABLE, PLAN_CHANGED
+    }
 
     private final Status status;
     private final int added;

@@ -1,15 +1,21 @@
 package com.priceradar.tracking.application;
 
 import com.priceradar.pricing.domain.RubleAmount;
+import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.tracking.domain.NotificationMode;
 import com.priceradar.tracking.domain.Subscription;
 import com.priceradar.tracking.domain.SubscriptionStatus;
 import com.priceradar.tracking.domain.ThresholdState;
 import com.priceradar.user.application.UserProfileStore;
+import com.priceradar.user.application.UserProfile;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -112,6 +118,39 @@ public class SubscriptionService {
         return subscriptionStore.findActiveByUserId(userId);
     }
 
+    @Transactional(readOnly = true)
+    public ClearSubscriptionsPlan prepareClearAll(UUID userId) {
+        if (userId == null) throw new IllegalArgumentException("userId must not be null");
+        return clearPlan(subscriptionStore.findActiveSubscriptions(userId));
+    }
+
+    @Transactional
+    public ClearSubscriptionsResult clearAll(
+            UUID userId,
+            String confirmedFingerprint,
+            Instant now
+    ) {
+        if (userId == null || confirmedFingerprint == null || now == null) {
+            throw new IllegalArgumentException("clear all fields must not be null");
+        }
+        if (userProfileStore.findByIdAndLock(userId).isEmpty()) {
+            return ClearSubscriptionsResult.of(ClearSubscriptionsResult.Status.USER_NOT_FOUND);
+        }
+        List<Subscription> active = subscriptionStore.findActiveSubscriptions(userId);
+        if (active.isEmpty()) {
+            return ClearSubscriptionsResult.of(ClearSubscriptionsResult.Status.NOTHING_TO_CLEAR);
+        }
+        ClearSubscriptionsPlan currentPlan = clearPlan(active);
+        if (!MessageDigest.isEqual(
+                currentPlan.getFingerprint().getBytes(StandardCharsets.US_ASCII),
+                confirmedFingerprint.getBytes(StandardCharsets.US_ASCII)
+        )) {
+            return ClearSubscriptionsResult.of(ClearSubscriptionsResult.Status.PLAN_CHANGED);
+        }
+        active.forEach(subscription -> subscriptionStore.end(subscription.end(now)));
+        return ClearSubscriptionsResult.cleared(active.size());
+    }
+
     private Subscription createSubscription(
             UUID userId,
             UUID watchTargetId,
@@ -193,7 +232,10 @@ public class SubscriptionService {
             UUID quoteSnapshotId,
             Instant now
     ) {
-        if (!userProfileStore.existsAndLockById(userId)) {
+        UserProfile user = userProfileStore
+                .findByIdAndLock(userId)
+                .orElse(null);
+        if (user == null) {
             return SubscriptionPreparationResult.failed(
                     SubscriptionPreparationResult.Status.USER_NOT_FOUND
             );
@@ -203,6 +245,13 @@ public class SubscriptionService {
         if (quoteObservation.isEmpty()) {
             return SubscriptionPreparationResult.failed(
                     SubscriptionPreparationResult.Status.WATCH_TARGET_NOT_FOUND
+            );
+        }
+        if (!sameProviderContext(
+                user.getPriceContext(), quoteObservation.orElseThrow().getPriceContext()
+        )) {
+            return SubscriptionPreparationResult.failed(
+                    SubscriptionPreparationResult.Status.REGION_MISMATCH
             );
         }
         UUID watchTargetId = quoteObservation.get().getWatchTargetId();
@@ -240,6 +289,9 @@ public class SubscriptionService {
             case QUOTE_EXPIRED -> SubscriptionCreationResult.failed(
                     SubscriptionCreationResult.Status.QUOTE_EXPIRED
             );
+            case REGION_MISMATCH -> SubscriptionCreationResult.failed(
+                    SubscriptionCreationResult.Status.REGION_MISMATCH
+            );
             case USER_NOT_FOUND -> SubscriptionCreationResult.failed(
                     SubscriptionCreationResult.Status.USER_NOT_FOUND
             );
@@ -248,5 +300,26 @@ public class SubscriptionService {
             );
             case READY -> throw new IllegalArgumentException("READY preparation cannot be a failure");
         };
+    }
+
+    private boolean sameProviderContext(
+            PriceContext first,
+            PriceContext second
+    ) {
+        return first.getDest() == second.getDest() && first.getSpp() == second.getSpp();
+    }
+
+    private ClearSubscriptionsPlan clearPlan(List<Subscription> subscriptions) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            subscriptions.stream().map(Subscription::getId).sorted()
+                    .forEach(id -> digest.update(id.toString().getBytes(StandardCharsets.US_ASCII)));
+            String fingerprint = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                    java.util.Arrays.copyOf(digest.digest(), 8)
+            );
+            return new ClearSubscriptionsPlan(subscriptions.size(), fingerprint);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 }

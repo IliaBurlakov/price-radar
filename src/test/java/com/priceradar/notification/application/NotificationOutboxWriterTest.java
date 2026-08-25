@@ -26,6 +26,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 
 class NotificationOutboxWriterTest {
 
@@ -61,7 +62,8 @@ class NotificationOutboxWriterTest {
                         snapshotId,
                         watchTargetId,
                         observedAt,
-                        Optional.of(RubleAmount.ofMinorUnits(8_000))
+                        Optional.of(RubleAmount.ofMinorUnits(8_000)),
+                        moscow().toPriceContext()
                 );
 
         writer.enqueue(subscription, observation, createdAt);

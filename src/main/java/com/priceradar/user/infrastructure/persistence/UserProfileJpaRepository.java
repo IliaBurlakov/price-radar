@@ -18,10 +18,10 @@ public interface UserProfileJpaRepository extends JpaRepository<UserProfileEntit
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
             INSERT INTO user_profiles (
-                id, telegram_user_id, telegram_chat_id, city_name, dest, spp,
+                id, telegram_user_id, telegram_chat_id, region_code,
                 wallet_discount_percent, created_at, updated_at, version
             ) VALUES (
-                :id, :telegramUserId, :telegramChatId, :cityName, :dest, :spp,
+                :id, :telegramUserId, :telegramChatId, :regionCode,
                 :walletDiscountPercent, :createdAt, :updatedAt, 0
             )
             ON CONFLICT (telegram_user_id) DO UPDATE
@@ -33,9 +33,7 @@ public interface UserProfileJpaRepository extends JpaRepository<UserProfileEntit
             @Param("id") UUID id,
             @Param("telegramUserId") long telegramUserId,
             @Param("telegramChatId") long telegramChatId,
-            @Param("cityName") String cityName,
-            @Param("dest") long dest,
-            @Param("spp") int spp,
+            @Param("regionCode") String regionCode,
             @Param("walletDiscountPercent") int walletDiscountPercent,
             @Param("createdAt") java.time.Instant createdAt,
             @Param("updatedAt") java.time.Instant updatedAt

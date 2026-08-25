@@ -1,7 +1,6 @@
 package com.priceradar.telegram.application;
 
 import com.priceradar.pricing.application.WalletEstimateService;
-import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.statistics.application.ObservedPriceStatistics;
 import com.priceradar.statistics.application.SubscriptionStatistics;
@@ -27,6 +26,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 
 @ExtendWith(MockitoExtension.class)
 class StatisticsCallbackHandlerTest {
@@ -53,7 +53,7 @@ class StatisticsCallbackHandlerTest {
                 UUID.randomUUID(),
                 TELEGRAM_USER_ID,
                 CHAT_ID,
-                new PriceContext("Moscow", 1259570991L, 30),
+                moscow(),
                 UserPricePreferences.defaults()
         );
         handler = new StatisticsCallbackHandler(
