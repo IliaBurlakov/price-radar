@@ -201,8 +201,19 @@ public final class WildberriesSharedBasketProvider
                 .filter(candidate -> candidate.getVariantKey().equals(expectedKey))
                 .findFirst();
         ProviderPriceFields fields = mapped.getPriceFieldsByVariantKey().get(expectedKey);
-        if (option.isEmpty() || fields == null) {
-            return unresolved(item, UnresolvedSharedBasketItem.Reason.VARIANT_NOT_FOUND);
+        if (option.isEmpty()) {
+            if (mapped.getTitle().isEmpty()) {
+                return unresolved(item, UnresolvedSharedBasketItem.Reason.MAPPING_FAILED);
+            }
+            String displayName = mapped.getTitle().orElseThrow();
+            LOGGER.debug(
+                    "Shared basket item unavailable: nmId={}, chrtId={}, name={}, reason=VARIANT_NOT_RETURNED",
+                    item.getNmId(), item.getChrtId(), displayName
+            );
+            return ExactItemResolution.unavailable(new UnavailableSharedBasketItem(item, displayName));
+        }
+        if (fields == null) {
+            return unresolved(item, UnresolvedSharedBasketItem.Reason.MAPPING_FAILED);
         }
 
         MarketplaceProductDetails product = new MarketplaceProductDetails(
@@ -214,9 +225,14 @@ public final class WildberriesSharedBasketProvider
                 Map.of(expectedKey, fields)
         );
         if (priceSemanticsService.interpret(fields).getStatus() == SnapshotStatus.UNAVAILABLE) {
+            if (product.getTitle().isEmpty()) {
+                return unresolved(item, UnresolvedSharedBasketItem.Reason.MAPPING_FAILED);
+            }
             String displayName = unavailableDisplayName(product, option.orElseThrow());
-            LOGGER.debug("Shared basket item unavailable: nmId={}, chrtId={}",
-                    item.getNmId(), item.getChrtId());
+            LOGGER.debug(
+                    "Shared basket item unavailable: nmId={}, chrtId={}, name={}, reason=VARIANT_UNAVAILABLE",
+                    item.getNmId(), item.getChrtId(), displayName
+            );
             return ExactItemResolution.unavailable(new UnavailableSharedBasketItem(item, displayName));
         }
 
@@ -233,13 +249,13 @@ public final class WildberriesSharedBasketProvider
             SharedBasketItem item,
             UnresolvedSharedBasketItem.Reason reason
     ) {
-        LOGGER.warn("Shared basket item could not be resolved: nmId={}, chrtId={}, reason={}",
+        LOGGER.warn("Shared basket item unresolved: nmId={}, chrtId={}, reason={}",
                 item.getNmId(), item.getChrtId(), reason);
         return ExactItemResolution.unresolved(new UnresolvedSharedBasketItem(item, reason));
     }
 
     private String unavailableDisplayName(MarketplaceProductDetails product, VariantOption option) {
-        String title = product.getTitle().orElse("Товар Wildberries");
+        String title = product.getTitle().orElseThrow();
         String variant = option.getAttributes().stream()
                 .map(attribute -> attribute.getValue().trim())
                 .filter(value -> !value.isEmpty() && !value.equals("0"))

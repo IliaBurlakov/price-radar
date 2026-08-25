@@ -43,7 +43,7 @@ class TelegramRegionHandlerTest {
         var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(gateway).sendMessage(message.capture());
         assertThat(message.getValue().getText())
-                .contains("Регион цен", "Сейчас выбран: Москва")
+                .contains("Город", "Сейчас выбран: Москва")
                 .doesNotContain("1259570991", "dest");
         assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
@@ -69,12 +69,12 @@ class TelegramRegionHandlerTest {
         var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(gateway).sendMessage(message.capture());
         assertThat(message.getValue().getText()).contains(
-                "нельзя изменить регион", "активные отслеживания: 5",
+                "нельзя изменить город", "активные отслеживания: 5",
                 "сначала остановите все активные отслеживания"
         );
         assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("🧹 Очистить все", "Мои товары", "← К регионам");
+                .containsExactly("🧹 Очистить все", "Мои товары", "← К городам");
     }
 
     @Test

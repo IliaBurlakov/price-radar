@@ -116,7 +116,7 @@ public final class TrackedItemsMessageFactory {
         appendLatestPrice(text, item, preferences);
         item.getLatestObservedAt().ifPresent(observedAt -> text.append("\nПроверено: ")
                 .append(TelegramDisplayFormatter.observedAt(observedAt)));
-        text.append("\n\nРегион: ").append(TelegramDisplayFormatter.region(region));
+        text.append("\n\nГород: ").append(TelegramDisplayFormatter.region(region));
         text.append("\nОткрыть товар:\n").append(item.getCanonicalUrl());
         text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 

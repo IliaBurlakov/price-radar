@@ -82,10 +82,10 @@ public final class TelegramRegionHandler {
         keyboard.add(List.of(TelegramNavigationKeyboard.button(
                 "← Назад", MainMenuCallbackData.Action.HOME
         )));
-        String text = "🌍 Регион цен\n\nСейчас выбран: "
+        String text = "🌍 Город\n\nСейчас выбран: "
                 + profile.getRegion().getDisplayName()
                 + ".\n\nЦены и наличие товаров могут отличаться в разных городах. "
-                + "Выберите регион:";
+                + "Выберите город:";
         return new OutgoingTelegramMessage(chatId, text, keyboard);
     }
 
@@ -97,17 +97,17 @@ public final class TelegramRegionHandler {
         return switch (result.getStatus()) {
             case CHANGED -> new OutgoingTelegramMessage(
                     chatId,
-                    "✅ Регион цен изменён: "
+                    "✅ Город изменён: "
                             + result.getRegion().orElseThrow().getDisplayName()
-                            + ".\n\nНовые товары и корзины будут проверяться для выбранного региона.",
+                            + ".\n\nНовые товары и корзины будут проверяться для выбранного города.",
                     TelegramNavigationKeyboard.mainMenu()
             );
             case UNCHANGED -> regionSelection(chatId, currentProfile);
             case ACTIVE_SUBSCRIPTIONS -> blockedChange(chatId, result);
             case REGION_NOT_FOUND -> new OutgoingTelegramMessage(
                     chatId,
-                    "Этот регион сейчас недоступен. Выберите другой.",
-                    List.of(List.of(new TelegramInlineButton("← К регионам", RegionCallbackData.OPEN)))
+                    "Этот город сейчас недоступен. Выберите другой.",
+                    List.of(List.of(new TelegramInlineButton("← К городам", RegionCallbackData.OPEN)))
             );
             case USER_NOT_FOUND -> new OutgoingTelegramMessage(
                     chatId, "Не удалось найти профиль. Откройте главное меню и попробуйте ещё раз.",
@@ -118,17 +118,17 @@ public final class TelegramRegionHandler {
 
     private OutgoingTelegramMessage blockedChange(long chatId, RegionChangeResult result) {
         String requested = result.getRegion().orElseThrow().getDisplayName();
-        String text = "⚠️ Пока нельзя изменить регион на " + requested + ".\n\n"
+        String text = "⚠️ Пока нельзя изменить город на " + requested + ".\n\n"
                 + "У вас есть активные отслеживания: " + result.getActiveSubscriptions() + ". "
-                + "Регион влияет на цену и наличие, поэтому существующую историю "
+                + "Город влияет на цену и наличие, поэтому существующую историю "
                 + "нельзя безопасно перенести в другой город.\n\n"
-                + "Чтобы выбрать другой регион, сначала остановите все активные отслеживания.";
+                + "Чтобы выбрать другой город, сначала остановите все активные отслеживания.";
         return new OutgoingTelegramMessage(chatId, text, List.of(
                 List.of(new TelegramInlineButton("🧹 Очистить все", ClearTrackingCallbackData.START)),
                 List.of(TelegramNavigationKeyboard.button(
                         "Мои товары", MainMenuCallbackData.Action.TRACKED_ITEMS
                 )),
-                List.of(new TelegramInlineButton("← К регионам", RegionCallbackData.OPEN))
+                List.of(new TelegramInlineButton("← К городам", RegionCallbackData.OPEN))
         ));
     }
 }

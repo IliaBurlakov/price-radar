@@ -249,12 +249,12 @@ public class TelegramTrackingHandler {
                 yield withTrackedButton(
                         chatId,
                         "Отслеживание включено.\n\nРежим: " + mode
-                                + "\nРегион: " + region
+                                + "\nГород: " + region
                 );
             }
             case ALREADY_ACTIVE -> withTrackedButton(
                     chatId,
-                    "Этот товар уже отслеживается.\nРегион: " + region
+                    "Этот товар уже отслеживается.\nГород: " + region
             );
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
@@ -278,7 +278,7 @@ public class TelegramTrackingHandler {
         return switch (result.getStatus()) {
             case ALREADY_ACTIVE -> withTrackedButton(
                     chatId,
-                    "Этот товар уже отслеживается.\nРегион: "
+                    "Этот товар уже отслеживается.\nГород: "
                             + TelegramDisplayFormatter.region(
                                     profile.getPriceContext().getCityName()
                             )
@@ -308,7 +308,7 @@ public class TelegramTrackingHandler {
     private OutgoingTelegramMessage previousRegionQuoteMessage(long chatId) {
         return withAddButton(
                 chatId,
-                "Этот результат относится к другому региону. "
+                "Этот результат относится к другому городу. "
                         + "Отправьте ссылку на товар ещё раз."
         );
     }

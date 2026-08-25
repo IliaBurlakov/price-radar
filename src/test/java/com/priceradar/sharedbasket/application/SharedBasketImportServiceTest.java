@@ -66,6 +66,8 @@ class SharedBasketImportServiceTest {
 
         assertThat(result.getAdded()).isEqualTo(7);
         assertThat(result.getSkippedByLimit()).isEqualTo(3);
+        assertThat(result.getSkippedByLimitTitles())
+                .containsExactly("Product 7", "Product 8", "Product 9");
         ArgumentCaptor<Subscription> created = ArgumentCaptor.forClass(Subscription.class);
         verify(subscriptionStore, org.mockito.Mockito.times(7)).create(created.capture());
         assertThat(created.getAllValues()).allMatch(value ->
@@ -358,6 +360,13 @@ class SharedBasketImportServiceTest {
 
         assertThat(preview.getSyncTargetItems()).isEqualTo(50);
         assertThat(preview.getSyncSkippedByLimit()).isEqualTo(23);
+        assertThat(preview.getSyncSkippedTitles())
+                .containsExactlyElementsOf(items.subList(50, 73).stream()
+                        .map(item -> item.getTitle().orElseThrow())
+                        .toList());
+        assertThat(preview.getAddSkippedTitles())
+                .allMatch(title -> title.startsWith("Product "))
+                .hasSize(23);
         assertThat(preview.getAbsentTracked()).isZero();
         assertThat(preview.getExcludedByLimit()).isOne();
         assertThat(preview.getDestructiveRemovalCount()).isOne();
@@ -390,6 +399,10 @@ class SharedBasketImportServiceTest {
         assertThat(result.getAdded()).isEqualTo(50);
         assertThat(result.getEnded()).isOne();
         assertThat(result.getSkippedByLimit()).isEqualTo(23);
+        assertThat(result.getSkippedByLimitTitles())
+                .containsExactlyElementsOf(items.subList(50, 73).stream()
+                        .map(item -> item.getTitle().orElseThrow())
+                        .toList());
         ArgumentCaptor<Subscription> created = ArgumentCaptor.forClass(Subscription.class);
         verify(subscriptionStore, org.mockito.Mockito.times(50)).create(created.capture());
         assertThat(created.getAllValues())

@@ -96,7 +96,7 @@ public final class LatestSnapshotMessageFactory {
     }
 
     private void appendRegionAndLink(StringBuilder text, LatestSnapshotView snapshot) {
-        text.append("\n\nРегион: ")
+        text.append("\n\nГород: ")
                 .append(TelegramDisplayFormatter.region(
                         snapshot.getPriceContext().getCityName()
                 ));

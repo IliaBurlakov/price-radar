@@ -208,12 +208,12 @@ public class TrackedItemsMessageHandler {
             return;
         }
         String text = result.getStatus() == ClearSubscriptionsResult.Status.CLEARED
-                ? "✅ Все отслеживания остановлены.\n\nТеперь можно выбрать новый регион."
+                ? "✅ Все отслеживания остановлены.\n\nТеперь можно выбрать новый город."
                 : "Активных отслеживаний уже нет.";
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(), text, List.of(List.of(
                         TelegramNavigationKeyboard.button(
-                                "🌍 Выбрать регион", MainMenuCallbackData.Action.REGION
+                                "🌍 Выбрать город", MainMenuCallbackData.Action.REGION
                         ),
                         TelegramNavigationKeyboard.button(
                                 "Главное меню", MainMenuCallbackData.Action.HOME
@@ -230,7 +230,7 @@ public class TrackedItemsMessageHandler {
         int count = plan.getSubscriptionCount();
         String text = "⚠️ Остановить все отслеживания?\n\nСейчас отслеживается "
                 + itemCount(count) + ".\n\nВсе текущие подписки будут завершены.\n\n"
-                + "Некоторые товары могли отслеживаться несколько месяцев.\n"
+                + "Некоторые товары могли отслеживаться долгое время.\n"
                 + "При повторном добавлении начнётся новый период отслеживания и статистики.";
         return new OutgoingTelegramMessage(chatId, text, List.of(
                 List.of(new TelegramInlineButton(
