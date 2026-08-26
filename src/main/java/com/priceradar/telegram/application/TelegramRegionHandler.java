@@ -40,6 +40,21 @@ public final class TelegramRegionHandler {
         telegramGateway.sendMessage(regionSelection(chatId, profile));
     }
 
+    public void showOnboarding(UserProfile profile) {
+        if (profile == null) {
+            throw new IllegalArgumentException("profile must not be null");
+        }
+        telegramGateway.sendMessage(regionSelection(profile.getTelegramChatId(), profile));
+    }
+
+    public boolean supportsCallback(IncomingTelegramCallback callback) {
+        if (callback == null) {
+            return false;
+        }
+        return RegionCallbackData.OPEN.equals(callback.getData())
+                || RegionCallbackData.parseSelection(callback.getData()).isPresent();
+    }
+
     public boolean handleCallback(IncomingTelegramCallback callback) {
         boolean open = RegionCallbackData.OPEN.equals(callback.getData());
         Optional<MarketplaceRegionCode> selected = RegionCallbackData.parseSelection(callback.getData());
@@ -64,10 +79,13 @@ public final class TelegramRegionHandler {
     }
 
     private OutgoingTelegramMessage regionSelection(long chatId, UserProfile profile) {
+        boolean initialSelection = !profile.isRegionSelected();
         List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
         List<TelegramInlineButton> row = new ArrayList<>(2);
         for (MarketplaceRegion region : userRegionService.listEnabled()) {
-            String marker = region.getCode() == profile.getRegion().getCode() ? "✓ " : "";
+            String marker = !initialSelection && region.getCode() == profile.getRegion().getCode()
+                    ? "✓ "
+                    : "";
             row.add(new TelegramInlineButton(
                     marker + region.getDisplayName(), RegionCallbackData.select(region.getCode())
             ));
@@ -79,10 +97,19 @@ public final class TelegramRegionHandler {
         if (!row.isEmpty()) {
             keyboard.add(List.copyOf(row));
         }
-        keyboard.add(List.of(TelegramNavigationKeyboard.button(
-                "← Назад", MainMenuCallbackData.Action.HOME
-        )));
-        String text = "🌍 Город\n\nСейчас выбран: "
+        if (!initialSelection) {
+            keyboard.add(List.of(TelegramNavigationKeyboard.button(
+                    "← Назад", MainMenuCallbackData.Action.HOME
+            )));
+        }
+        String text = initialSelection
+                ? "👋 Добро пожаловать в PriceRadar!\n\n"
+                + "🌍 Перед началом выберите город.\n\n"
+                + "Цены и наличие товаров на Wildberries могут отличаться "
+                + "в разных городах, поэтому укажите город для проверки товаров.\n\n"
+                + "Город можно будет изменить позже, если нет активных отслеживаний.\n\n"
+                + "Выберите город:"
+                : "🌍 Город\n\nСейчас выбран: "
                 + profile.getRegion().getDisplayName()
                 + ".\n\nЦены и наличие товаров могут отличаться в разных городах. "
                 + "Выберите город:";
@@ -95,6 +122,13 @@ public final class TelegramRegionHandler {
             RegionChangeResult result
     ) {
         return switch (result.getStatus()) {
+            case SELECTED -> new OutgoingTelegramMessage(
+                    chatId,
+                    "✅ Город выбран: "
+                            + result.getRegion().orElseThrow().getDisplayName()
+                            + ".\n\nТеперь можно добавлять товары и импортировать корзину.",
+                    TelegramNavigationKeyboard.mainMenu()
+            );
             case CHANGED -> new OutgoingTelegramMessage(
                     chatId,
                     "✅ Город изменён: "

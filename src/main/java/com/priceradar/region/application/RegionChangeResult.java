@@ -6,7 +6,14 @@ import java.util.Optional;
 
 public final class RegionChangeResult {
 
-    public enum Status { CHANGED, UNCHANGED, ACTIVE_SUBSCRIPTIONS, REGION_NOT_FOUND, USER_NOT_FOUND }
+    public enum Status {
+        SELECTED,
+        CHANGED,
+        UNCHANGED,
+        ACTIVE_SUBSCRIPTIONS,
+        REGION_NOT_FOUND,
+        USER_NOT_FOUND
+    }
 
     private final Status status;
     private final MarketplaceRegion region;

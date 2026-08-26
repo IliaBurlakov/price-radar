@@ -18,6 +18,7 @@ import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.TelegramMenuHandler;
 import com.priceradar.telegram.application.TelegramMenuMessageFactory;
+import com.priceradar.telegram.application.TelegramOnboardingHandler;
 import com.priceradar.telegram.application.TelegramPollingStateStore;
 import com.priceradar.telegram.application.TelegramQuoteMessageFactory;
 import com.priceradar.telegram.application.TelegramRegionHandler;
@@ -222,6 +223,14 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public TelegramOnboardingHandler telegramOnboardingHandler(
+            UserProfileService userProfileService,
+            TelegramRegionHandler regionHandler
+    ) {
+        return new TelegramOnboardingHandler(userProfileService, regionHandler);
+    }
+
+    @Bean
     public LatestSnapshotMessageFactory latestSnapshotMessageFactory() {
         return new LatestSnapshotMessageFactory(new WalletEstimateService());
     }
@@ -265,6 +274,7 @@ public class TelegramBotConfiguration {
 
     @Bean
     public TelegramUpdateDispatcher telegramUpdateDispatcher(
+            TelegramOnboardingHandler onboardingHandler,
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramMenuHandler menuHandler,
             TelegramTrackingHandler trackingHandler,
@@ -275,6 +285,7 @@ public class TelegramBotConfiguration {
             TelegramGateway telegramGateway
     ) {
         return new TelegramUpdateDispatcher(
+                onboardingHandler,
                 currentQuoteHandler,
                 menuHandler,
                 trackingHandler,

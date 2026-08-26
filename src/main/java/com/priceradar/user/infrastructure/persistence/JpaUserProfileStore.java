@@ -57,6 +57,7 @@ public class JpaUserProfileStore implements UserProfileStore {
                 telegramUserId,
                 telegramChatId,
                 region.getCode().name(),
+                false,
                 pricePreferences.getWalletDiscountPercent(),
                 createdAt,
                 createdAt
@@ -89,7 +90,8 @@ public class JpaUserProfileStore implements UserProfileStore {
                 entity.getTelegramChatId(),
                 regionStore.findByCode(entity.getRegionCode())
                         .orElseThrow(() -> new IllegalStateException("User region no longer exists")),
-                new UserPricePreferences(entity.getWalletDiscountPercent())
+                new UserPricePreferences(entity.getWalletDiscountPercent()),
+                entity.isRegionSelected()
         );
     }
 }

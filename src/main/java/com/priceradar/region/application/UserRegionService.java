@@ -52,14 +52,20 @@ public class UserRegionService {
         if (requested == null) {
             return RegionChangeResult.failed(RegionChangeResult.Status.REGION_NOT_FOUND);
         }
-        if (user.getRegion().getCode() == requestedCode) {
+        boolean initialSelection = !user.isRegionSelected();
+        if (!initialSelection && user.getRegion().getCode() == requestedCode) {
             return RegionChangeResult.withRegion(RegionChangeResult.Status.UNCHANGED, requested);
         }
-        long active = subscriptionStore.countActive(userId);
-        if (active > 0) {
-            return RegionChangeResult.blocked(requested, active);
+        if (user.getRegion().getCode() != requestedCode) {
+            long active = subscriptionStore.countActive(userId);
+            if (active > 0) {
+                return RegionChangeResult.blocked(requested, active);
+            }
         }
         UserProfile updated = userProfileStore.updateRegion(user, requested, now);
-        return RegionChangeResult.withRegion(RegionChangeResult.Status.CHANGED, updated.getRegion());
+        RegionChangeResult.Status status = initialSelection
+                ? RegionChangeResult.Status.SELECTED
+                : RegionChangeResult.Status.CHANGED;
+        return RegionChangeResult.withRegion(status, updated.getRegion());
     }
 }

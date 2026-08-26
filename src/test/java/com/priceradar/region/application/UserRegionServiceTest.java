@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static com.priceradar.testsupport.TestMarketplaceRegions.irkutsk;
+import static com.priceradar.testsupport.TestMarketplaceRegions.bratsk;
 import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -76,7 +77,70 @@ class UserRegionServiceTest {
         );
     }
 
+    @Test
+    void initialMoscowSelectionIsNotTreatedAsUnchanged() {
+        UUID userId = UUID.randomUUID();
+        MarketplaceRegionStore regions = mock(MarketplaceRegionStore.class);
+        UserProfileStore users = mock(UserProfileStore.class);
+        SubscriptionStore subscriptions = mock(SubscriptionStore.class);
+        UserProfile unconfigured = profile(userId, moscow(), false);
+        UserProfile configured = profile(userId, moscow(), true);
+        when(users.findByIdAndLock(userId)).thenReturn(Optional.of(unconfigured));
+        when(regions.findByCode(MarketplaceRegionCode.MOSCOW))
+                .thenReturn(Optional.of(moscow()));
+        when(users.updateRegion(
+                org.mockito.ArgumentMatchers.eq(unconfigured),
+                org.mockito.ArgumentMatchers.any(MarketplaceRegion.class),
+                org.mockito.ArgumentMatchers.eq(NOW)
+        )).thenReturn(configured);
+
+        RegionChangeResult result = new UserRegionService(regions, users, subscriptions)
+                .changeRegion(userId, MarketplaceRegionCode.MOSCOW, NOW);
+
+        assertThat(result.getStatus()).isEqualTo(RegionChangeResult.Status.SELECTED);
+        assertThat(result.getRegion()).get().extracting(MarketplaceRegion::getCode)
+                .isEqualTo(MarketplaceRegionCode.MOSCOW);
+        verify(users).updateRegion(
+                org.mockito.ArgumentMatchers.eq(unconfigured),
+                org.mockito.ArgumentMatchers.any(MarketplaceRegion.class),
+                org.mockito.ArgumentMatchers.eq(NOW)
+        );
+        verify(subscriptions, never()).countActive(userId);
+    }
+
+    @Test
+    void initialDifferentRegionSelectionUsesSelectedStatus() {
+        UUID userId = UUID.randomUUID();
+        MarketplaceRegionStore regions = mock(MarketplaceRegionStore.class);
+        UserProfileStore users = mock(UserProfileStore.class);
+        SubscriptionStore subscriptions = mock(SubscriptionStore.class);
+        UserProfile unconfigured = profile(userId, moscow(), false);
+        UserProfile configured = profile(userId, bratsk(), true);
+        when(users.findByIdAndLock(userId)).thenReturn(Optional.of(unconfigured));
+        when(regions.findByCode(MarketplaceRegionCode.BRATSK))
+                .thenReturn(Optional.of(bratsk()));
+        when(subscriptions.countActive(userId)).thenReturn(0L);
+        when(users.updateRegion(
+                org.mockito.ArgumentMatchers.eq(unconfigured),
+                org.mockito.ArgumentMatchers.any(MarketplaceRegion.class),
+                org.mockito.ArgumentMatchers.eq(NOW)
+        )).thenReturn(configured);
+
+        RegionChangeResult result = new UserRegionService(regions, users, subscriptions)
+                .changeRegion(userId, MarketplaceRegionCode.BRATSK, NOW);
+
+        assertThat(result.getStatus()).isEqualTo(RegionChangeResult.Status.SELECTED);
+        assertThat(result.getRegion()).get().extracting(MarketplaceRegion::getCode)
+                .isEqualTo(MarketplaceRegionCode.BRATSK);
+    }
+
     private UserProfile profile(UUID userId, MarketplaceRegion region) {
-        return new UserProfile(userId, 7001L, 7001L, region, UserPricePreferences.defaults());
+        return profile(userId, region, true);
+    }
+
+    private UserProfile profile(UUID userId, MarketplaceRegion region, boolean selected) {
+        return new UserProfile(
+                userId, 7001L, 7001L, region, UserPricePreferences.defaults(), selected
+        );
     }
 }
