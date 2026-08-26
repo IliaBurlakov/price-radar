@@ -11,6 +11,7 @@ public final class SubscriptionPreparationResult {
         ALREADY_ACTIVE,
         LIMIT_REACHED,
         QUOTE_EXPIRED,
+        REGION_MISMATCH,
         USER_NOT_FOUND,
         WATCH_TARGET_NOT_FOUND
     }

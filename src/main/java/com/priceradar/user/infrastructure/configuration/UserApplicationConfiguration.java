@@ -1,6 +1,6 @@
 package com.priceradar.user.infrastructure.configuration;
 
-import com.priceradar.pricing.domain.PriceContext;
+import com.priceradar.region.application.MarketplaceRegionStore;
 import com.priceradar.user.application.UserProfileService;
 import com.priceradar.user.application.UserProfileStore;
 import com.priceradar.user.domain.UserPricePreferences;
@@ -17,20 +17,16 @@ public class UserApplicationConfiguration {
     @Bean
     public UserProfileService userProfileService(
             UserProfileStore profileStore,
+            MarketplaceRegionStore regionStore,
             UserDefaultsProperties properties,
             Clock providerClock
     ) {
-        PriceContext defaultPriceContext = new PriceContext(
-                properties.getCityName(),
-                properties.getDest(),
-                properties.getSpp()
-        );
         UserPricePreferences defaultPricePreferences = new UserPricePreferences(
                 properties.getWalletDiscountPercent()
         );
         return new UserProfileService(
                 profileStore,
-                defaultPriceContext,
+                regionStore,
                 defaultPricePreferences,
                 providerClock
         );

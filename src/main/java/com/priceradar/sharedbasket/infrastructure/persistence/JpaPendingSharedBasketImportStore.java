@@ -34,7 +34,8 @@ public class JpaPendingSharedBasketImportStore implements PendingSharedBasketImp
         importRepository.deleteExpired(now);
         importRepository.deleteByUserId(pendingImport.getUserId());
         importRepository.save(new PendingSharedBasketImportEntity(
-                pendingImport.getId(), pendingImport.getUserId(), pendingImport.getFoundItems(),
+                pendingImport.getId(), pendingImport.getUserId(), pendingImport.getRegionCode(),
+                pendingImport.getFoundItems(),
                 pendingImport.getAvailableItems(), pendingImport.getUnresolvedItems(),
                 pendingImport.getCreatedAt(), pendingImport.getExpiresAt()
         ));
@@ -57,7 +58,8 @@ public class JpaPendingSharedBasketImportStore implements PendingSharedBasketImp
     public Optional<PendingSharedBasketImport> findOwned(UUID importId, UUID userId) {
         return importRepository.findByIdAndUserId(importId, userId).map(entity ->
                 new PendingSharedBasketImport(
-                        entity.getId(), entity.getUserId(), entity.getFoundItems(),
+                        entity.getId(), entity.getUserId(), entity.getRegionCode(),
+                        entity.getFoundItems(),
                         entity.getAvailableItems(), entity.getUnresolvedItems(),
                         unavailableItemRepository.findByImportIdOrderByPositionAsc(importId).stream()
                                 .map(item -> new PendingUnavailableSharedBasketItem(

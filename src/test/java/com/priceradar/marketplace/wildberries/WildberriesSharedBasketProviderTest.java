@@ -51,11 +51,13 @@ class WildberriesSharedBasketProviderTest {
 
             assertThat(resolution.isSuccess()).isTrue();
             assertThat(resolution.getResolvedItems()).hasSize(2);
-            assertThat(resolution.getUnavailableItems()).isEmpty();
-            assertThat(resolution.getUnresolvedItems())
+            assertThat(resolution.getUnavailableItems())
                     .singleElement()
-                    .extracting(item -> item.getReason())
-                    .isEqualTo(com.priceradar.sharedbasket.application.UnresolvedSharedBasketItem.Reason.VARIANT_NOT_FOUND);
+                    .satisfies(item -> {
+                        assertThat(item.getBasketItem().getChrtId()).isEqualTo(99999999);
+                        assertThat(item.getDisplayName()).isNotBlank();
+                    });
+            assertThat(resolution.getUnresolvedItems()).isEmpty();
             assertThat(resolution.getResolvedItems().getFirst().getVariant().getVariantKey())
                     .isEqualTo("SIZE:75115776");
             assertThat(resolution.getResolvedItems().getFirst().getVariant().getDisplayName())
@@ -77,7 +79,7 @@ class WildberriesSharedBasketProviderTest {
     }
 
     @Test
-    void distinguishesUnavailableExactVariantFromMissingProductAndVariant() {
+    void distinguishesUnavailableExactOrRemovedVariantFromMissingProduct() {
         try (LocalHttpStub stub = LocalHttpStub.start()) {
             stub.stub("/cards/v4/list", 200, """
                     {"products":[{
@@ -89,6 +91,9 @@ class WildberriesSharedBasketProviderTest {
                         "available":false,
                         "price":{"product":120000,"basic":150000}
                       }]
+                    },{
+                      "id":200,
+                      "sizes":[{"optionId":2001,"name":"M","wh":123,"price":{"product":100000}}]
                     }]}
                     """);
             WildberriesSharedBasketProvider provider = provider(stub, 1);
@@ -96,22 +101,29 @@ class WildberriesSharedBasketProviderTest {
             var resolution = provider.resolveExact(List.of(
                     new SharedBasketItem(100, 1001, 1),
                     new SharedBasketItem(999, 9001, 1),
-                    new SharedBasketItem(100, 1999, 1)
+                    new SharedBasketItem(100, 1999, 1),
+                    new SharedBasketItem(200, 2999, 1)
             ), new PriceContext("Moscow", 1259570991L, 30));
 
             assertThat(resolution.isSuccess()).isTrue();
             assertThat(resolution.getResolvedItems()).isEmpty();
             assertThat(resolution.getUnavailableItems())
-                    .singleElement()
-                    .satisfies(item -> {
-                        assertThat(item.getBasketItem().getChrtId()).isEqualTo(1001);
-                        assertThat(item.getDisplayName()).isEqualTo("Футболка — XXL");
-                    });
+                    .hasSize(2)
+                    .satisfiesExactly(
+                            item -> {
+                                assertThat(item.getBasketItem().getChrtId()).isEqualTo(1001);
+                                assertThat(item.getDisplayName()).isEqualTo("Футболка — XXL");
+                            },
+                            item -> {
+                                assertThat(item.getBasketItem().getChrtId()).isEqualTo(1999);
+                                assertThat(item.getDisplayName()).isEqualTo("Футболка");
+                            }
+                    );
             assertThat(resolution.getUnresolvedItems())
                     .extracting(item -> item.getReason())
                     .containsExactly(
                             com.priceradar.sharedbasket.application.UnresolvedSharedBasketItem.Reason.PRODUCT_NOT_RETURNED,
-                            com.priceradar.sharedbasket.application.UnresolvedSharedBasketItem.Reason.VARIANT_NOT_FOUND
+                            com.priceradar.sharedbasket.application.UnresolvedSharedBasketItem.Reason.MAPPING_FAILED
                     );
         }
     }

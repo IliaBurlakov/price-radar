@@ -42,7 +42,7 @@ public final class StatisticsMessageFactory {
 
         if (!statistics.hasData()) {
             text.append("\n\nЗа этот период пока недостаточно данных.");
-            text.append("\n\n🌍 Регион: ")
+            text.append("\n\n🌍 Город: ")
                     .append(TelegramDisplayFormatter.region(region));
             text.append("\n\nИстория ведётся с момента добавления товара.");
             text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
@@ -100,7 +100,7 @@ public final class StatisticsMessageFactory {
                 .append(formatAverage(averageMinorUnits));
         text.append("\nНаблюдений: ")
                 .append(statistics.getObservationCount());
-        text.append("\n\n🌍 Регион: ")
+        text.append("\n\n🌍 Город: ")
                 .append(TelegramDisplayFormatter.region(region));
         text.append("\n\nℹ️ WB Кошелёк: оценка со скидкой ")
                 .append(preferences.getWalletDiscountPercent())

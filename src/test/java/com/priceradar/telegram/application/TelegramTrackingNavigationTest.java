@@ -1,6 +1,5 @@
 package com.priceradar.telegram.application;
 
-import com.priceradar.pricing.domain.PriceContext;
 import com.priceradar.tracking.application.SubscriptionPreparationResult;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.user.application.UserProfile;
@@ -18,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 
 class TelegramTrackingNavigationTest {
 
@@ -28,7 +28,7 @@ class TelegramTrackingNavigationTest {
         UUID quoteSnapshotId = UUID.randomUUID();
         UserProfile profile = new UserProfile(
                 UUID.randomUUID(), telegramId, telegramId,
-                new PriceContext("Moscow", 1259570991L, 30),
+                moscow(),
                 UserPricePreferences.defaults()
         );
         UserProfileService users = mock(UserProfileService.class);

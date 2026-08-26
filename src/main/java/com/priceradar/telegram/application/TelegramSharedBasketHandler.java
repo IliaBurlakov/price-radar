@@ -69,6 +69,10 @@ public class TelegramSharedBasketHandler {
             telegramGateway.sendMessage(expired(callback.getChatId()));
             return true;
         }
+        if (preview.orElseThrow().getRegionCode() != user.getRegion().getCode()) {
+            telegramGateway.sendMessage(previousRegionImport(callback.getChatId()));
+            return true;
+        }
         switch (data.getAction()) {
             case BACK -> telegramGateway.sendMessage(previewMessage(
                     callback.getChatId(), callback.getTelegramUserId(), preview.orElseThrow()
@@ -91,13 +95,14 @@ public class TelegramSharedBasketHandler {
             boolean confirmed
     ) {
         if (!confirmed && preview.getAddSkippedByLimit() > 0) {
-            String text = "⚠️ Недостаточно свободных мест\n\n"
-                    + "Свободно: " + preview.getFreeSlots() + ".\n"
-                    + "Найдено новых товаров: " + preview.getNewItems() + ".\n"
-                    + "Будут добавлены первые " + preview.getAddableItems() + ".\n"
-                    + "Оставшиеся " + preview.getAddSkippedByLimit() + " будут пропущены.";
+            StringBuilder text = new StringBuilder("⚠️ Недостаточно свободных мест\n\n")
+                    .append("Свободно: ").append(preview.getFreeSlots()).append(".\n")
+                    .append("Найдено новых товаров: ").append(preview.getNewItems()).append(".\n")
+                    .append("Будут добавлены первые ").append(preview.getAddableItems()).append(".\n\n")
+                    .append("Не войдут в отслеживание:\n");
+            appendProductTitles(text, preview.getAddSkippedTitles());
             telegramGateway.sendMessage(confirmMessage(
-                    callback.getChatId(), callback.getTelegramUserId(), preview.getImportId(), text,
+                    callback.getChatId(), callback.getTelegramUserId(), preview.getImportId(), text.toString(),
                     "Продолжить", SharedBasketCallbackCodec.Action.ADD_CONFIRM
             ));
             return;
@@ -129,9 +134,11 @@ public class TelegramSharedBasketHandler {
                 appendRemovalTitles(text, preview.getAbsentTitles());
             }
             if (preview.getExcludedByLimit() > 0) {
-                appendLimitRemovalWarning(text, preview.getExcludedByLimit());
+                appendLimitRemovalWarning(
+                        text, preview.getExcludedByLimit(), preview.getExcludedByLimitTitles()
+                );
             }
-            text.append("\nℹ️ Некоторые товары могли отслеживаться уже несколько месяцев.\n")
+            text.append("\nℹ️ Некоторые товары могли отслеживаться долгое время.\n")
                     .append("При прекращении подписки текущий период отслеживания завершится.\n")
                     .append("При повторном добавлении начнётся новый период отслеживания и статистики.");
             telegramGateway.sendMessage(confirmMessage(
@@ -192,14 +199,17 @@ public class TelegramSharedBasketHandler {
                     .append("Попробуйте повторить импорт позже.");
         }
         if (!preview.isSynchronizationAvailable()) {
-            text.append("\n\n🔄 Синхронизация сейчас недоступна.\n")
+            text.append("\n\n🔄 Синхронизация сейчас недоступна.\n\n")
+                    .append(synchronizationUnavailableReason(preview))
+                    .append("\n\n")
                     .append("Можно добавить остальные новые товары или повторить импорт позже.");
         }
         if (preview.getSyncSkippedByLimit() > 0) {
             text.append("\n\n⚠️ Лимит отслеживания — 50 товаров.\n")
                     .append(items(preview.getSyncSkippedByLimit())).append(" из этой корзины ")
                     .append(isSingularCount(preview.getSyncSkippedByLimit()) ? "не войдёт" : "не войдут")
-                    .append(" в список.");
+                    .append(" в отслеживание:\n");
+            appendProductTitles(text, preview.getSyncSkippedTitles());
         }
         List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
         keyboard.add(List.of(button("Добавить новые", SharedBasketCallbackCodec.Action.ADD, preview, telegramUserId)));
@@ -231,15 +241,21 @@ public class TelegramSharedBasketHandler {
                 ? "Он не будет добавлен." : "Они не будут добавлены.");
     }
 
-    private void appendLimitRemovalWarning(StringBuilder text, int count) {
+    private void appendLimitRemovalWarning(StringBuilder text, int count, List<String> titles) {
         text.append("\n⚠️ Ещё ").append(count);
         if (isSingularCount(count)) {
             text.append(" отслеживаемый товар есть в корзине,\n")
-                    .append("но находится после первых 50 и поэтому тоже будет удалён из отслеживания.\n");
+                    .append("но находится после первых 50 и поэтому тоже будет удалён из отслеживания:\n");
+            appendProductTitles(text, titles);
             return;
         }
         text.append(" отслеживаемых ").append(itemWord(count)).append(" есть в корзине,\n")
-                .append("но находятся после первых 50 и поэтому тоже будут удалены из отслеживания.\n");
+                .append("но находятся после первых 50 и поэтому тоже будут удалены из отслеживания:\n");
+        appendProductTitles(text, titles);
+    }
+
+    private void appendProductTitles(StringBuilder text, List<String> titles) {
+        titles.forEach(title -> text.append("• ").append(title).append('\n'));
     }
 
     private OutgoingTelegramMessage confirmMessage(
@@ -272,13 +288,17 @@ public class TelegramSharedBasketHandler {
     }
 
     private OutgoingTelegramMessage appliedMessage(long chatId, SharedBasketApplyResult result) {
+        if (result.getStatus() == SharedBasketApplyResult.Status.REGION_MISMATCH) {
+            return previousRegionImport(chatId);
+        }
         if (result.getStatus() != SharedBasketApplyResult.Status.APPLIED) return expired(chatId);
         StringBuilder text = new StringBuilder("Корзина обработана.");
         if (result.getAdded() > 0) text.append("\n\nДобавлено: ").append(result.getAdded()).append('.');
         if (result.getKept() > 0) text.append("\nБез изменений: ").append(result.getKept()).append('.');
         if (result.getEnded() > 0) text.append("\nУдалено из отслеживания: ").append(result.getEnded()).append('.');
         if (result.getSkippedByLimit() > 0) {
-            text.append("\nНе вошло из-за лимита: ").append(result.getSkippedByLimit()).append('.');
+            text.append("\n\nНе вошли в отслеживание из-за лимита:\n");
+            appendProductTitles(text, result.getSkippedByLimitTitles());
         }
         if (result.getAdded() == 0 && result.getKept() == 0 && result.getEnded() == 0) {
             text.append("\n\nИзменений нет.");
@@ -290,20 +310,28 @@ public class TelegramSharedBasketHandler {
         return message(chatId, "Импорт устарел. Отправьте ссылку на корзину ещё раз.");
     }
 
+    private OutgoingTelegramMessage previousRegionImport(long chatId) {
+        return message(chatId, "Этот импорт относится к предыдущему городу. "
+                + "Отправьте ссылку на корзину ещё раз.");
+    }
+
     private OutgoingTelegramMessage synchronizationUnavailable(long chatId, SharedBasketPreview preview) {
-        String reason;
-        if (preview.getUnavailableItems() > 0 && preview.getUnresolvedItems() > 0) {
-            reason = "В корзине есть товары, которые Wildberries сейчас показывает как недоступные, "
-                    + "а часть товаров не удалось обработать.";
-        } else if (preview.getUnavailableItems() > 0) {
-            reason = "В корзине есть товары, которые Wildberries сейчас показывает как недоступные, "
-                    + "поэтому бот не может безопасно определить полный список для синхронизации.";
-        } else {
-            reason = "Часть товаров не удалось обработать, поэтому бот не может безопасно определить "
-                    + "полный список для синхронизации.";
-        }
-        return message(chatId, "🔄 Синхронизация сейчас недоступна.\n\n" + reason
+        return message(chatId, "🔄 Синхронизация сейчас недоступна.\n\n"
+                + synchronizationUnavailableReason(preview)
                 + "\n\nМожно добавить остальные новые товары или повторить импорт позже.");
+    }
+
+    private String synchronizationUnavailableReason(SharedBasketPreview preview) {
+        if (preview.getUnavailableItems() > 0 && preview.getUnresolvedItems() > 0) {
+            return "В корзине есть товары, которые Wildberries сейчас показывает как недоступные, "
+                    + "а часть товаров не удалось обработать.";
+        }
+        if (preview.getUnavailableItems() > 0) {
+            return "В корзине есть недоступные товары, "
+                    + "поэтому бот не может безопасно определить полный список для синхронизации.";
+        }
+        return "Часть товаров не удалось обработать, поэтому бот не может безопасно определить "
+                + "полный список для синхронизации.";
     }
 
     private OutgoingTelegramMessage message(long chatId, String text) {

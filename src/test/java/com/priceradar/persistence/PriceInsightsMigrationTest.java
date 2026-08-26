@@ -13,6 +13,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -169,6 +170,69 @@ class PriceInsightsMigrationTest {
                 .isEqualTo(43_400L);
         assertThat(backfilled.get("last_processed_price_observed_at"))
                 .isEqualTo(Timestamp.from(latestObservedAt));
+    }
+
+    @Test
+    void regionCatalogBackfillsExistingUsersAndDefaultsNewUsersToMoscow() {
+        String schema = "regions_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .target(MigrationVersion.fromVersion("10"))
+                .load()
+                .migrate();
+        JdbcTemplate jdbc = jdbcTemplate(schema);
+        UUID existingUserId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-08-25T10:00:00Z");
+        jdbc.update(
+                """
+                        INSERT INTO user_profiles (
+                            id, telegram_user_id, telegram_chat_id, city_name, dest, spp,
+                            wallet_discount_percent, created_at, updated_at
+                        ) VALUES (?, 7001, 7001, 'Moscow', 1259570991, 30, 3, ?, ?)
+                        """,
+                existingUserId, Timestamp.from(now), Timestamp.from(now)
+        );
+
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .load()
+                .migrate();
+
+        assertThat(jdbc.queryForObject(
+                "SELECT region_code FROM user_profiles WHERE id = ?", String.class, existingUserId
+        )).isEqualTo("MOSCOW");
+        List<Map<String, Object>> catalog = jdbc.queryForList(
+                "SELECT code, wb_destination FROM marketplace_regions ORDER BY sort_order"
+        );
+        assertThat(catalog).extracting(row -> row.get("code"), row -> row.get("wb_destination"))
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("MOSCOW", 1259570991L),
+                        org.assertj.core.groups.Tuple.tuple("SAINT_PETERSBURG", -1123299L),
+                        org.assertj.core.groups.Tuple.tuple("EKATERINBURG", 123589409L),
+                        org.assertj.core.groups.Tuple.tuple("NOVOSIBIRSK", -366519L),
+                        org.assertj.core.groups.Tuple.tuple("KRASNOYARSK", -5854093L),
+                        org.assertj.core.groups.Tuple.tuple("IRKUTSK", -5827722L),
+                        org.assertj.core.groups.Tuple.tuple("BRATSK", 123586041L),
+                        org.assertj.core.groups.Tuple.tuple("CHITA", -5551586L)
+                );
+
+        UUID newUserId = UUID.randomUUID();
+        jdbc.update(
+                """
+                        INSERT INTO user_profiles (
+                            id, telegram_user_id, telegram_chat_id,
+                            wallet_discount_percent, created_at, updated_at
+                        ) VALUES (?, 7002, 7002, 3, ?, ?)
+                        """,
+                newUserId, Timestamp.from(now), Timestamp.from(now)
+        );
+        assertThat(jdbc.queryForObject(
+                "SELECT region_code FROM user_profiles WHERE id = ?", String.class, newUserId
+        )).isEqualTo("MOSCOW");
     }
 
     private JdbcTemplate jdbcTemplate(String schema) {

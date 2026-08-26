@@ -52,7 +52,9 @@ class TelegramUpdateDispatcherTest {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TrackedItemsMessageHandler trackedItems = mock(TrackedItemsMessageHandler.class);
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
-        TelegramMenuHandler handler = new TelegramMenuHandler(messages, trackedItems, gateway);
+        TelegramMenuHandler handler = new TelegramMenuHandler(
+                messages, trackedItems, mock(TelegramRegionHandler.class), gateway
+        );
 
         assertSentMessage(
                 gateway,
@@ -84,7 +86,8 @@ class TelegramUpdateDispatcherTest {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
-                messages, mock(TrackedItemsMessageHandler.class), gateway
+                messages, mock(TrackedItemsMessageHandler.class),
+                mock(TelegramRegionHandler.class), gateway
         );
 
         assertSentMessage(
@@ -112,7 +115,8 @@ class TelegramUpdateDispatcherTest {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
-                messages, mock(TrackedItemsMessageHandler.class), gateway
+                messages, mock(TrackedItemsMessageHandler.class),
+                mock(TelegramRegionHandler.class), gateway
         );
         OutgoingTelegramMessage mainMenu = messages.mainMenu(7001L);
 

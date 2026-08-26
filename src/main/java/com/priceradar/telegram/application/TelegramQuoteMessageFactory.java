@@ -47,7 +47,7 @@ public final class TelegramQuoteMessageFactory {
         text.append("\n\n");
         appendAvailability(text, quote.getInterpretedPrice());
         appendPrice(text, quote.getInterpretedPrice(), userProfile);
-        text.append("\n\nРегион: ")
+        text.append("\n\nГород: ")
                 .append(TelegramDisplayFormatter.region(
                         quote.getPriceContext().getCityName()
                 ));

@@ -249,12 +249,12 @@ public class TelegramTrackingHandler {
                 yield withTrackedButton(
                         chatId,
                         "Отслеживание включено.\n\nРежим: " + mode
-                                + "\nРегион: " + region
+                                + "\nГород: " + region
                 );
             }
             case ALREADY_ACTIVE -> withTrackedButton(
                     chatId,
-                    "Этот товар уже отслеживается.\nРегион: " + region
+                    "Этот товар уже отслеживается.\nГород: " + region
             );
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
@@ -262,6 +262,7 @@ public class TelegramTrackingHandler {
                             + "Удалите один из списка, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
+            case REGION_MISMATCH -> previousRegionQuoteMessage(chatId);
             case USER_NOT_FOUND, WATCH_TARGET_NOT_FOUND -> withAddButton(
                     chatId,
                     "Данные товара устарели. Отправьте ссылку ещё раз."
@@ -277,7 +278,7 @@ public class TelegramTrackingHandler {
         return switch (result.getStatus()) {
             case ALREADY_ACTIVE -> withTrackedButton(
                     chatId,
-                    "Этот товар уже отслеживается.\nРегион: "
+                    "Этот товар уже отслеживается.\nГород: "
                             + TelegramDisplayFormatter.region(
                                     profile.getPriceContext().getCityName()
                             )
@@ -288,6 +289,7 @@ public class TelegramTrackingHandler {
                             + "Удалите один из списка, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
+            case REGION_MISMATCH -> previousRegionQuoteMessage(chatId);
             case USER_NOT_FOUND, WATCH_TARGET_NOT_FOUND -> withAddButton(
                     chatId,
                     "Данные товара устарели. Отправьте ссылку ещё раз."
@@ -300,6 +302,14 @@ public class TelegramTrackingHandler {
         return withAddButton(
                 chatId,
                 "Эта карточка цены устарела. Отправьте ссылку на товар ещё раз."
+        );
+    }
+
+    private OutgoingTelegramMessage previousRegionQuoteMessage(long chatId) {
+        return withAddButton(
+                chatId,
+                "Этот результат относится к другому городу. "
+                        + "Отправьте ссылку на товар ещё раз."
         );
     }
 

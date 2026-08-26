@@ -11,6 +11,7 @@ public final class MainMenuCallbackData {
         ADD_PRODUCT,
         IMPORT_BASKET,
         TRACKED_ITEMS,
+        REGION,
         HELP
     }
 

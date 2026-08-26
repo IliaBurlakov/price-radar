@@ -6,18 +6,22 @@ public final class TelegramMenuHandler {
 
     private final TelegramMenuMessageFactory messageFactory;
     private final TrackedItemsMessageHandler trackedItemsHandler;
+    private final TelegramRegionHandler regionHandler;
     private final TelegramGateway telegramGateway;
 
     public TelegramMenuHandler(
             TelegramMenuMessageFactory messageFactory,
             TrackedItemsMessageHandler trackedItemsHandler,
+            TelegramRegionHandler regionHandler,
             TelegramGateway telegramGateway
     ) {
-        if (messageFactory == null || trackedItemsHandler == null || telegramGateway == null) {
+        if (messageFactory == null || trackedItemsHandler == null
+                || regionHandler == null || telegramGateway == null) {
             throw new IllegalArgumentException("menu handler dependencies must not be null");
         }
         this.messageFactory = messageFactory;
         this.trackedItemsHandler = trackedItemsHandler;
+        this.regionHandler = regionHandler;
         this.telegramGateway = telegramGateway;
     }
 
@@ -59,6 +63,9 @@ public final class TelegramMenuHandler {
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
+        if (regionHandler.handleCallback(callback)) {
+            return true;
+        }
         Optional<MainMenuCallbackData.Action> action = MainMenuCallbackData.parse(
                 callback.getData()
         );
@@ -82,6 +89,7 @@ public final class TelegramMenuHandler {
                     callback.getTelegramUserId(),
                     callback.getChatId()
             );
+            case REGION -> regionHandler.show(callback.getTelegramUserId(), callback.getChatId());
             case HELP -> telegramGateway.sendMessage(
                     messageFactory.help(callback.getChatId())
             );

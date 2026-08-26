@@ -113,7 +113,7 @@ class TelegramItemNavigationTest {
     private TestContext context() {
         UserProfile profile = new UserProfile(
                 UUID.randomUUID(), TELEGRAM_ID, TELEGRAM_ID,
-                new PriceContext("Moscow", 1259570991L, 30),
+                com.priceradar.testsupport.TestMarketplaceRegions.moscow(),
                 UserPricePreferences.defaults()
         );
         UserProfileService users = mock(UserProfileService.class);
@@ -125,6 +125,7 @@ class TelegramItemNavigationTest {
                 users,
                 subscriptions,
                 new TrackedItemsMessageFactory(new WalletEstimateService()),
+                new ClearTrackingCallbackCodec("test-only-callback-secret-with-more-than-32-bytes"),
                 gateway,
                 Clock.systemUTC()
         );

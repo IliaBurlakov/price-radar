@@ -65,7 +65,7 @@ public final class NotificationMessageRenderer {
                 "Новая цена",
                 true
         );
-        text.append("\n\nРегион: ")
+        text.append("\n\nГород: ")
                 .append(TelegramDisplayFormatter.region(notification.getCityName()));
         text.append("\nПроверено: ")
                 .append(TelegramDisplayFormatter.observedAt(notification.getObservedAt()));

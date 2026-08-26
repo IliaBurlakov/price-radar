@@ -54,9 +54,6 @@ priceradar:
       password: ${ACTUATOR_PASSWORD}
   user:
     defaults:
-      city-name: Moscow
-      dest: 1259570991
-      spp: 30
       wallet-discount-percent: 3
   provider:
     wildberries:

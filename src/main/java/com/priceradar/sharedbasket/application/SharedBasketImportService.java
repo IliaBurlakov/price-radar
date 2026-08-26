@@ -110,6 +110,7 @@ public class SharedBasketImportService {
         PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
                 UUID.randomUUID(),
                 user.getId(),
+                user.getRegion().getCode(),
                 uniqueItems.size(),
                 resolution.getResolvedItems().size(),
                 resolution.getUnresolvedItems().size(),
@@ -158,8 +159,12 @@ public class SharedBasketImportService {
                 || pending.orElseThrow().getUnresolvedItems() > 0)) {
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.SYNCHRONIZATION_UNAVAILABLE);
         }
-        if (!userProfileStore.existsAndLockById(userId)) {
+        UserProfile lockedUser = userProfileStore.findByIdAndLock(userId).orElse(null);
+        if (lockedUser == null) {
             return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.USER_NOT_FOUND);
+        }
+        if (lockedUser.getRegion().getCode() != pending.orElseThrow().getRegionCode()) {
+            return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.REGION_MISMATCH);
         }
 
         List<Subscription> active = subscriptionStore.findActiveSubscriptions(userId);
@@ -193,8 +198,13 @@ public class SharedBasketImportService {
         int kept = (int) targetIds.stream().filter(activeByTarget::containsKey).count();
         int freeSlots = ACTIVE_LIMIT - activeByTarget.size();
         int added = 0;
+        List<String> skippedByLimitTitles = new ArrayList<>();
         for (PendingSharedBasketItem item : targetItems) {
-            if (activeByTarget.containsKey(item.getWatchTargetId()) || added >= freeSlots) continue;
+            if (activeByTarget.containsKey(item.getWatchTargetId())) continue;
+            if (added >= freeSlots) {
+                skippedByLimitTitles.add(displayName(item));
+                continue;
+            }
             SubscriptionQuoteObservation observation = subscriptionStore
                     .findQuoteObservation(item.getSnapshotId())
                     .orElseThrow(() -> new IllegalStateException("Pending basket snapshot disappeared"));
@@ -207,11 +217,14 @@ public class SharedBasketImportService {
             added++;
         }
 
-        int skippedByLimit = mode == ApplyMode.SYNCHRONIZE
-                ? Math.max(0, pending.orElseThrow().getItems().size() - ACTIVE_LIMIT)
-                : Math.max(0, targetIds.size() - kept - added);
+        if (mode == ApplyMode.SYNCHRONIZE) {
+            skippedByLimitTitles = pending.orElseThrow().getItems().stream()
+                    .skip(ACTIVE_LIMIT)
+                    .map(this::displayName)
+                    .toList();
+        }
         pendingStore.remove(importId, userId);
-        return SharedBasketApplyResult.applied(added, kept, ended, skippedByLimit);
+        return SharedBasketApplyResult.applied(added, kept, ended, skippedByLimitTitles);
     }
 
     @Transactional
@@ -256,8 +269,19 @@ public class SharedBasketImportService {
                 .map(PendingSharedBasketItem::getWatchTargetId)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         int overlap = (int) basketTargets.stream().filter(activeTargets::contains).count();
-        int newItems = basketTargets.size() - overlap;
+        List<PendingSharedBasketItem> newPendingItems = pending.getItems().stream()
+                .filter(item -> !activeTargets.contains(item.getWatchTargetId()))
+                .toList();
+        int newItems = newPendingItems.size();
         int freeSlots = Math.max(0, ACTIVE_LIMIT - activeTargets.size());
+        List<String> addSkippedTitles = newPendingItems.stream()
+                .skip(freeSlots)
+                .map(this::displayName)
+                .toList();
+        List<String> syncSkippedTitles = pending.getItems().stream()
+                .skip(ACTIVE_LIMIT)
+                .map(this::displayName)
+                .toList();
         List<TrackedSubscriptionItem> trackedItems = subscriptionStore.findActiveByUserId(userId);
         Map<UUID, String> titleBySubscription = new LinkedHashMap<>();
         trackedItems.forEach(item -> titleBySubscription.put(
@@ -277,14 +301,20 @@ public class SharedBasketImportService {
                 .filter(subscription -> !syncTargets.contains(subscription.getWatchTargetId()))
                 .toList();
         return new SharedBasketPreview(
-                pending.getId(), pending.getFoundItems(), pending.getAvailableItems(), pending.getItems().size(),
+                pending.getId(), pending.getRegionCode(), pending.getFoundItems(),
+                pending.getAvailableItems(), pending.getItems().size(),
                 pending.getUnresolvedItems(), pending.getUnavailableItems().stream()
                         .map(PendingUnavailableSharedBasketItem::getDisplayName)
                         .toList(),
                 overlap, newItems, absentTitles.size(), excludedByLimitTitles.size(), freeSlots,
                 Math.min(newItems, freeSlots), Math.min(pending.getItems().size(), ACTIVE_LIMIT),
-                absentTitles, excludedByLimitTitles, destructivePlanFingerprint(destructivePlan)
+                addSkippedTitles, syncSkippedTitles, absentTitles, excludedByLimitTitles,
+                destructivePlanFingerprint(destructivePlan)
         );
+    }
+
+    private String displayName(PendingSharedBasketItem item) {
+        return item.getTitle().orElse("Товар Wildberries #" + (item.getPosition() + 1));
     }
 
     private String destructivePlanFingerprint(List<Subscription> subscriptions) {
