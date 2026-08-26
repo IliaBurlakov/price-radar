@@ -9,7 +9,9 @@ public final class PendingSharedBasketImport {
     private final UUID id;
     private final UUID userId;
     private final int foundItems;
-    private final int skippedItems;
+    private final int availableItems;
+    private final int unresolvedItems;
+    private final List<PendingUnavailableSharedBasketItem> unavailableItems;
     private final List<PendingSharedBasketItem> items;
     private final Instant createdAt;
     private final Instant expiresAt;
@@ -18,13 +20,19 @@ public final class PendingSharedBasketImport {
             UUID id,
             UUID userId,
             int foundItems,
-            int skippedItems,
+            int availableItems,
+            int unresolvedItems,
+            List<PendingUnavailableSharedBasketItem> unavailableItems,
             List<PendingSharedBasketItem> items,
             Instant createdAt,
             Instant expiresAt
     ) {
-        if (id == null || userId == null || items == null || createdAt == null || expiresAt == null
-                || foundItems < 0 || skippedItems < 0 || foundItems != items.size() + skippedItems
+        if (id == null || userId == null || unavailableItems == null || items == null
+                || createdAt == null || expiresAt == null
+                || foundItems < 0 || availableItems < 0 || unresolvedItems < 0
+                || availableItems < items.size()
+                || foundItems != availableItems + unavailableItems.size() + unresolvedItems
+                || unavailableItems.stream().anyMatch(item -> item == null)
                 || items.stream().anyMatch(item -> item == null)
                 || expiresAt.isBefore(createdAt)) {
             throw new IllegalArgumentException("pending shared basket import fields are invalid");
@@ -32,7 +40,9 @@ public final class PendingSharedBasketImport {
         this.id = id;
         this.userId = userId;
         this.foundItems = foundItems;
-        this.skippedItems = skippedItems;
+        this.availableItems = availableItems;
+        this.unresolvedItems = unresolvedItems;
+        this.unavailableItems = List.copyOf(unavailableItems);
         this.items = List.copyOf(items);
         this.createdAt = createdAt;
         this.expiresAt = expiresAt;
@@ -41,7 +51,9 @@ public final class PendingSharedBasketImport {
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public int getFoundItems() { return foundItems; }
-    public int getSkippedItems() { return skippedItems; }
+    public int getAvailableItems() { return availableItems; }
+    public int getUnresolvedItems() { return unresolvedItems; }
+    public List<PendingUnavailableSharedBasketItem> getUnavailableItems() { return unavailableItems; }
     public List<PendingSharedBasketItem> getItems() { return items; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getExpiresAt() { return expiresAt; }

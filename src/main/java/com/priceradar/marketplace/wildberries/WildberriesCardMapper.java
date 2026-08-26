@@ -259,7 +259,16 @@ public final class WildberriesCardMapper {
             }
             return false;
         }
-        return positiveLong(sizeNode, "quantity", "qty", "stockCount").isPresent();
+        for (String quantityField : List.of("quantity", "qty", "stockCount")) {
+            JsonNode quantity = sizeNode.path(quantityField);
+            if (quantity.isIntegralNumber() && quantity.canConvertToLong()) {
+                return quantity.longValue() > 0;
+            }
+        }
+
+        // cards/v4/list resolves an available option to a concrete warehouse via `wh`.
+        // Its production payload currently omits stocks/quantity/available entirely.
+        return positiveLong(sizeNode, "wh").isPresent();
     }
 
     private Optional<Boolean> booleanValue(JsonNode node, String... fieldNames) {

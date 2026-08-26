@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public class TelegramTrackingHandler {
 
@@ -66,6 +67,11 @@ public class TelegramTrackingHandler {
             return;
         }
 
+        if (callbackData.get().getAction() == TrackingCallbackData.Action.CANCEL_TARGET) {
+            cancelTargetPriceInput(callback, callbackData.orElseThrow());
+            return;
+        }
+
         UserProfile profile = userProfileService.getOrCreate(
                 callback.getTelegramUserId(),
                 callback.getChatId()
@@ -105,7 +111,10 @@ public class TelegramTrackingHandler {
             telegramGateway.sendMessage(new OutgoingTelegramMessage(
                     message.getChatId(),
                     "Введите цену в рублях, например 1500.",
-                    TelegramNavigationKeyboard.home()
+                    targetInputKeyboard(
+                            pending.get().getQuoteSnapshotId(),
+                            message.getTelegramUserId()
+                    )
             ));
             return true;
         }
@@ -181,7 +190,45 @@ public class TelegramTrackingHandler {
                 callback.getChatId(),
                 "Введите желаемую цену в рублях, например 1500.\n"
                         + "Ответ можно отправить в течение 15 минут.",
-                TelegramNavigationKeyboard.home()
+                targetInputKeyboard(
+                        callbackData.getQuoteSnapshotId(),
+                        callback.getTelegramUserId()
+                )
+        ));
+    }
+
+    private List<List<TelegramInlineButton>> targetInputKeyboard(
+            UUID quoteSnapshotId,
+            long telegramUserId
+    ) {
+        return List.of(List.of(new TelegramInlineButton(
+                "Отмена",
+                trackingCallbackCodec.encode(
+                        TrackingCallbackData.Action.CANCEL_TARGET,
+                        quoteSnapshotId,
+                        telegramUserId
+                )
+        )));
+    }
+
+    private void cancelTargetPriceInput(
+            IncomingTelegramCallback callback,
+            TrackingCallbackData callbackData
+    ) {
+        Instant now = clock.instant();
+        pendingTargetPriceStore.find(
+                        callback.getTelegramUserId(),
+                        callback.getChatId(),
+                        now
+                )
+                .filter(pending -> pending.getQuoteSnapshotId().equals(
+                        callbackData.getQuoteSnapshotId()
+                ))
+                .ifPresent(pendingTargetPriceStore::remove);
+        telegramGateway.sendMessage(new OutgoingTelegramMessage(
+                callback.getChatId(),
+                "Ввод желаемой цены отменён.",
+                TelegramNavigationKeyboard.addProductAndHome()
         ));
     }
 
@@ -201,7 +248,7 @@ public class TelegramTrackingHandler {
                         : "уведомлять о новой минимальной цене";
                 yield withTrackedButton(
                         chatId,
-                        "Отслеживание включено.\nРежим: " + mode
+                        "Отслеживание включено.\n\nРежим: " + mode
                                 + "\nРегион: " + region
                 );
             }

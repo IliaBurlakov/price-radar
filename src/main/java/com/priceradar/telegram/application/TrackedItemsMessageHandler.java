@@ -62,12 +62,17 @@ public class TrackedItemsMessageHandler {
                 SubscriptionCallbackData.Action.REMOVE,
                 callback.getData()
         );
+        Optional<UUID> confirmRemoveId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.CONFIRM_REMOVE,
+                callback.getData()
+        );
         Optional<UUID> itemId = SubscriptionCallbackData.parse(
                 SubscriptionCallbackData.Action.OPEN_ITEM,
                 callback.getData()
         );
         OptionalInt requestedPage = TrackedItemsPageCallbackData.parse(callback.getData());
-        if (removeId.isEmpty() && itemId.isEmpty() && requestedPage.isEmpty()) {
+        if (removeId.isEmpty() && confirmRemoveId.isEmpty()
+                && itemId.isEmpty() && requestedPage.isEmpty()) {
             return false;
         }
 
@@ -78,23 +83,42 @@ public class TrackedItemsMessageHandler {
                 callback.getTelegramUserId(),
                 callback.getChatId()
         );
-        if (requestedPage.isPresent() || itemId.isPresent()) {
+        if (requestedPage.isPresent() || itemId.isPresent() || removeId.isPresent()) {
             List<TrackedSubscriptionItem> items =
                     subscriptionService.findActive(profile.getId());
             if (requestedPage.isPresent()) {
                 showPage(callback.getChatId(), items, requestedPage.getAsInt());
                 return true;
             }
-            showItemDetails(callback.getChatId(), profile, items, itemId.orElseThrow());
+            UUID requestedItemId = itemId.orElseGet(removeId::orElseThrow);
+            if (removeId.isPresent()) {
+                showRemovalConfirmation(callback.getChatId(), items, requestedItemId);
+                return true;
+            }
+            showItemDetails(callback.getChatId(), profile, items, requestedItemId);
             return true;
         }
         SubscriptionEndResult result = subscriptionService.end(
                 profile.getId(),
-                removeId.orElseThrow(),
+                confirmRemoveId.orElseThrow(),
                 clock.instant()
         );
         telegramGateway.sendMessage(removalMessage(callback.getChatId(), result));
         return true;
+    }
+
+    private void showRemovalConfirmation(
+            long chatId,
+            List<TrackedSubscriptionItem> items,
+            UUID subscriptionId
+    ) {
+        for (TrackedSubscriptionItem item : items) {
+            if (item.getSubscriptionId().equals(subscriptionId)) {
+                telegramGateway.sendMessage(messageFactory.createRemovalConfirmation(chatId, item));
+                return;
+            }
+        }
+        telegramGateway.sendMessage(itemNotFoundMessage(chatId));
     }
 
     private void showPage(
@@ -130,11 +154,15 @@ public class TrackedItemsMessageHandler {
                 return;
             }
         }
-        telegramGateway.sendMessage(new OutgoingTelegramMessage(
+        telegramGateway.sendMessage(itemNotFoundMessage(chatId));
+    }
+
+    private OutgoingTelegramMessage itemNotFoundMessage(long chatId) {
+        return new OutgoingTelegramMessage(
                 chatId,
                 "Этот товар больше не отслеживается.",
                 TelegramNavigationKeyboard.trackedItemsAndHome()
-        ));
+        );
     }
 
     private int normalizedPage(int requestedPage, int itemCount) {

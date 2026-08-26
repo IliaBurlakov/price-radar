@@ -6,6 +6,7 @@ import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -95,7 +96,7 @@ public class StatisticsCallbackHandler {
             telegramGateway.sendMessage(notFoundMessage(callback.getChatId()));
             return;
         }
-        List<List<TelegramInlineButton>> keyboard = List.of(
+        List<List<TelegramInlineButton>> keyboard = new ArrayList<>(List.of(
                 List.of(
                         periodButton("7 дней", subscriptionId,
                                 com.priceradar.statistics.domain.StatisticsPeriod.LAST_7_DAYS),
@@ -107,9 +108,9 @@ public class StatisticsCallbackHandler {
                                 com.priceradar.statistics.domain.StatisticsPeriod.LAST_365_DAYS),
                         periodButton("Всё время", subscriptionId,
                                 com.priceradar.statistics.domain.StatisticsPeriod.ALL_TIME)
-                ),
-                TelegramNavigationKeyboard.trackedItemsAndHome().getFirst()
-        );
+                )
+        ));
+        keyboard.addAll(TelegramNavigationKeyboard.itemSubscreen(subscriptionId));
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(),
                 "За какой период показать статистику?",

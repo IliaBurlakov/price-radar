@@ -9,7 +9,7 @@ import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.tracking.application.LatestSnapshotView;
 import com.priceradar.user.application.UserProfile;
 
-import java.util.List;
+import java.util.UUID;
 
 public final class LatestSnapshotMessageFactory {
 
@@ -43,7 +43,7 @@ public final class LatestSnapshotMessageFactory {
         if (!snapshot.hasSnapshot()) {
             text.append("\n\nЦена пока не проверялась.");
             appendRegionAndLink(text, snapshot);
-            return withTrackedButton(chatId, text.toString());
+            return withItemNavigation(chatId, text.toString(), snapshot.getSubscriptionId());
         }
 
         InterpretedPrice price = snapshot.getInterpretedPrice().orElseThrow();
@@ -55,7 +55,7 @@ public final class LatestSnapshotMessageFactory {
         appendRegionAndLink(text, snapshot);
         text.append("\n\nПоказана последняя сохранённая цена.");
         text.append("\n").append(TelegramDisplayFormatter.approximatePriceWarning());
-        return withTrackedButton(chatId, text.toString());
+        return withItemNavigation(chatId, text.toString(), snapshot.getSubscriptionId());
     }
 
     private void appendPrice(
@@ -96,18 +96,22 @@ public final class LatestSnapshotMessageFactory {
     }
 
     private void appendRegionAndLink(StringBuilder text, LatestSnapshotView snapshot) {
-        text.append("\nРегион: ")
+        text.append("\n\nРегион: ")
                 .append(TelegramDisplayFormatter.region(
                         snapshot.getPriceContext().getCityName()
                 ));
-        text.append("\nОткрыть товар: ").append(snapshot.getCanonicalUrl());
+        text.append("\nОткрыть товар:\n").append(snapshot.getCanonicalUrl());
     }
 
-    private OutgoingTelegramMessage withTrackedButton(long chatId, String text) {
+    private OutgoingTelegramMessage withItemNavigation(
+            long chatId,
+            String text,
+            UUID subscriptionId
+    ) {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
-                TelegramNavigationKeyboard.trackedItemsAndHome()
+                TelegramNavigationKeyboard.itemSubscreen(subscriptionId)
         );
     }
 

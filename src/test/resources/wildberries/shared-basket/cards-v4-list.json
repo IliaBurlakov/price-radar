@@ -1,20 +1,35 @@
 {
   "products": [
     {
-      "id": 35989562,
-      "name": "Футболка",
-      "brand": "Example",
+      "id": 584886456,
+      "name": "Смартфон P3 Lite 4 + 128 ГБ, RMX5300, Белое облако",
+      "brand": "Realme",
+      "totalQuantity": 45,
       "sizes": [
-        {"optionId": 11111111, "origName": "L", "stocks": [{"qty": 4}], "price": {"product": 120000, "basic": 150000}},
-        {"optionId": 75115776, "origName": "XXL", "stocks": [{"qty": 2}], "price": {"product": 130000, "basic": 150000}}
+        {
+          "name": "",
+          "origName": "0",
+          "rank": 0,
+          "optionId": 799537776,
+          "wh": 8008592451,
+          "price": {"basic": 1169900, "product": 891400, "logistics": 0, "return": 0}
+        }
       ]
     },
     {
-      "id": 584886456,
-      "name": "Книга",
-      "brand": "Издательство",
+      "id": 35989562,
+      "name": "Футболка с принтом ПИВОZИЛЛА",
+      "brand": "Smerch",
+      "totalQuantity": 45,
       "sizes": [
-        {"optionId": 799537776, "origName": "0", "stocks": [{"qty": 10}], "price": {"product": 90000}}
+        {
+          "name": "54",
+          "origName": "XXL",
+          "rank": 745776,
+          "optionId": 75115776,
+          "wh": 5874577983,
+          "price": {"basic": 150000, "product": 123000, "logistics": 0, "return": 0}
+        }
       ]
     }
   ]

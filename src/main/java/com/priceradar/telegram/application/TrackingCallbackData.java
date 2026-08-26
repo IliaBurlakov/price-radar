@@ -6,7 +6,8 @@ public final class TrackingCallbackData {
 
     public enum Action {
         TRACK_ANY_DECREASE,
-        TRACK_TARGET
+        TRACK_TARGET,
+        CANCEL_TARGET
     }
 
     private final Action action;

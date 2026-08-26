@@ -52,13 +52,13 @@ public class TelegramUpdateDispatcher {
             return;
         }
         update.getMessage().ifPresent(message -> {
+            if (menuHandler.handleMessage(message)) {
+                return;
+            }
             if (trackingHandler.handleTargetPriceInput(message)) {
                 return;
             }
             if (sharedBasketHandler.handleMessage(message)) {
-                return;
-            }
-            if (menuHandler.handleMessage(message)) {
                 return;
             }
             if (trackedItemsHandler.handleMessage(message)) {

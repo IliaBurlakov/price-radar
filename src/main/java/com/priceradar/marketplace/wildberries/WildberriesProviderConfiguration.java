@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.priceradar.marketplace.application.ProviderAccessCoordinator;
 import com.priceradar.marketplace.application.ProviderCooldownStore;
 import com.priceradar.marketplace.domain.Marketplace;
+import com.priceradar.pricing.application.PriceSemanticsService;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -85,6 +86,7 @@ public class WildberriesProviderConfiguration {
             HttpClient wildberriesHttpClient,
             ObjectMapper objectMapper,
             WildberriesCardMapper cardMapper,
+            PriceSemanticsService priceSemanticsService,
             ProviderAccessCoordinator accessCoordinator,
             WildberriesProviderProperties properties,
             Clock providerClock
@@ -95,6 +97,7 @@ public class WildberriesProviderConfiguration {
                 properties.getSharedBasketCardsEndpoint(),
                 new WildberriesSharedBasketMapper(objectMapper),
                 cardMapper,
+                priceSemanticsService,
                 accessCoordinator,
                 properties.getRequestTimeout(),
                 properties.getBaseBackoff(),
