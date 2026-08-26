@@ -3,6 +3,7 @@ package com.priceradar.telegram.infrastructure;
 import com.priceradar.telegram.application.TelegramBotCommand;
 import com.priceradar.telegram.application.TelegramBotCommandRegistrar;
 import com.priceradar.telegram.application.TelegramDeliveryException;
+import com.priceradar.telegram.application.TelegramDeliveryFailureType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -28,10 +29,23 @@ public final class TelegramCommandMenuInitializer implements ApplicationRunner {
         try {
             commandRegistrar.registerCommands(List.of(TelegramBotCommand.values()));
         } catch (TelegramDeliveryException exception) {
-            if (!exception.isRetryable()) {
+            if (exception.getFailureType() == TelegramDeliveryFailureType.PERMANENT_FAILURE) {
                 throw exception;
             }
-            LOGGER.warn("Could not configure Telegram command menu: {}", exception.getMessage());
+            LOGGER.warn(
+                    "Could not confirm Telegram command menu configuration, failureType={}, causeType={}, error={}",
+                    exception.getFailureType(),
+                    rootCauseType(exception),
+                    exception.getMessage()
+            );
         }
+    }
+
+    private String rootCauseType(Throwable exception) {
+        Throwable rootCause = exception;
+        while (rootCause.getCause() != null) {
+            rootCause = rootCause.getCause();
+        }
+        return rootCause.getClass().getName();
     }
 }
