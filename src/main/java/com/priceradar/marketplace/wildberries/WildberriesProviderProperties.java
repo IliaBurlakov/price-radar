@@ -9,6 +9,10 @@ import java.time.Duration;
 public final class WildberriesProviderProperties {
 
     private URI endpoint = URI.create("https://card.wb.ru/cards/v4/detail");
+    private URI sharedBasketEndpoint = URI.create(
+            "https://wbx-api-gateway.wildberries.ru/share-basket/api/v1/basket/"
+    );
+    private URI sharedBasketCardsEndpoint = URI.create("https://card.wb.ru/cards/v4/list");
     private Duration minRequestDelay = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(10);
     private Duration cacheTtl = Duration.ofMinutes(5);
@@ -25,6 +29,22 @@ public final class WildberriesProviderProperties {
 
     public void setEndpoint(URI endpoint) {
         this.endpoint = endpoint;
+    }
+
+    public URI getSharedBasketEndpoint() {
+        return sharedBasketEndpoint;
+    }
+
+    public void setSharedBasketEndpoint(URI sharedBasketEndpoint) {
+        this.sharedBasketEndpoint = sharedBasketEndpoint;
+    }
+
+    public URI getSharedBasketCardsEndpoint() {
+        return sharedBasketCardsEndpoint;
+    }
+
+    public void setSharedBasketCardsEndpoint(URI sharedBasketCardsEndpoint) {
+        this.sharedBasketCardsEndpoint = sharedBasketCardsEndpoint;
     }
 
     public Duration getMinRequestDelay() {

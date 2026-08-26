@@ -10,6 +10,7 @@ public class TelegramUpdateDispatcher {
     private final TelegramCurrentQuoteHandler currentQuoteHandler;
     private final TelegramMenuHandler menuHandler;
     private final TelegramTrackingHandler trackingHandler;
+    private final TelegramSharedBasketHandler sharedBasketHandler;
     private final TrackedItemsMessageHandler trackedItemsHandler;
     private final ShowLastKnownCallbackHandler showLastKnownHandler;
     private final StatisticsCallbackHandler statisticsHandler;
@@ -19,12 +20,14 @@ public class TelegramUpdateDispatcher {
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramMenuHandler menuHandler,
             TelegramTrackingHandler trackingHandler,
+            TelegramSharedBasketHandler sharedBasketHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
             TelegramGateway telegramGateway
     ) {
         if (currentQuoteHandler == null || menuHandler == null || trackingHandler == null
+                || sharedBasketHandler == null
                 || trackedItemsHandler == null
                 || showLastKnownHandler == null || statisticsHandler == null
                 || telegramGateway == null) {
@@ -33,6 +36,7 @@ public class TelegramUpdateDispatcher {
         this.currentQuoteHandler = currentQuoteHandler;
         this.menuHandler = menuHandler;
         this.trackingHandler = trackingHandler;
+        this.sharedBasketHandler = sharedBasketHandler;
         this.trackedItemsHandler = trackedItemsHandler;
         this.showLastKnownHandler = showLastKnownHandler;
         this.statisticsHandler = statisticsHandler;
@@ -51,6 +55,9 @@ public class TelegramUpdateDispatcher {
             if (trackingHandler.handleTargetPriceInput(message)) {
                 return;
             }
+            if (sharedBasketHandler.handleMessage(message)) {
+                return;
+            }
             if (menuHandler.handleMessage(message)) {
                 return;
             }
@@ -63,6 +70,9 @@ public class TelegramUpdateDispatcher {
 
     private void dispatchCallback(IncomingTelegramCallback callback) {
         try {
+            if (sharedBasketHandler.handleCallback(callback)) {
+                return;
+            }
             if (menuHandler.handleCallback(callback)) {
                 return;
             }

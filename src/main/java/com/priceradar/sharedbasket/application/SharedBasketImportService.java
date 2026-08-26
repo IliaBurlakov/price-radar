@@ -1,0 +1,253 @@
+package com.priceradar.sharedbasket.application;
+
+import com.priceradar.pricing.application.InterpretedPrice;
+import com.priceradar.pricing.application.PriceSemanticsService;
+import com.priceradar.product.application.PersistedResolvedQuote;
+import com.priceradar.product.application.ResolvedQuotePersistenceCommand;
+import com.priceradar.product.application.ResolvedQuotePersistenceService;
+import com.priceradar.tracking.application.SubscriptionQuoteObservation;
+import com.priceradar.tracking.application.SubscriptionStore;
+import com.priceradar.tracking.application.TrackedSubscriptionItem;
+import com.priceradar.tracking.domain.NotificationMode;
+import com.priceradar.tracking.domain.Subscription;
+import com.priceradar.tracking.domain.SubscriptionStatus;
+import com.priceradar.tracking.domain.ThresholdState;
+import com.priceradar.user.application.UserProfile;
+import com.priceradar.user.application.UserProfileStore;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+public class SharedBasketImportService {
+
+    public enum ApplyMode { ADD_NEW, SYNCHRONIZE }
+
+    private static final int ACTIVE_LIMIT = 50;
+    private static final Duration IMPORT_TTL = Duration.ofMinutes(15);
+    private static final String CANONICAL_URL = "https://www.wildberries.ru/catalog/%d/detail.aspx";
+
+    private final SharedBasketUrlParser urlParser;
+    private final SharedBasketProvider basketProvider;
+    private final SharedBasketProductResolver productResolver;
+    private final PriceSemanticsService priceSemanticsService;
+    private final ResolvedQuotePersistenceService quotePersistenceService;
+    private final PendingSharedBasketImportStore pendingStore;
+    private final UserProfileStore userProfileStore;
+    private final SubscriptionStore subscriptionStore;
+
+    public SharedBasketImportService(
+            SharedBasketUrlParser urlParser,
+            SharedBasketProvider basketProvider,
+            SharedBasketProductResolver productResolver,
+            PriceSemanticsService priceSemanticsService,
+            ResolvedQuotePersistenceService quotePersistenceService,
+            PendingSharedBasketImportStore pendingStore,
+            UserProfileStore userProfileStore,
+            SubscriptionStore subscriptionStore
+    ) {
+        this.urlParser = java.util.Objects.requireNonNull(urlParser);
+        this.basketProvider = java.util.Objects.requireNonNull(basketProvider);
+        this.productResolver = java.util.Objects.requireNonNull(productResolver);
+        this.priceSemanticsService = java.util.Objects.requireNonNull(priceSemanticsService);
+        this.quotePersistenceService = java.util.Objects.requireNonNull(quotePersistenceService);
+        this.pendingStore = java.util.Objects.requireNonNull(pendingStore);
+        this.userProfileStore = java.util.Objects.requireNonNull(userProfileStore);
+        this.subscriptionStore = java.util.Objects.requireNonNull(subscriptionStore);
+    }
+
+    public SharedBasketPreviewResult prepare(String rawUrl, UserProfile user, Instant now) {
+        if (user == null || now == null) throw new IllegalArgumentException("user and now must not be null");
+        final String shareId;
+        try {
+            shareId = urlParser.parse(rawUrl);
+        } catch (InvalidSharedBasketUrlException exception) {
+            return SharedBasketPreviewResult.failed(SharedBasketPreviewResult.Status.INVALID_URL);
+        }
+
+        SharedBasketProviderResult basketResult = basketProvider.fetch(shareId);
+        if (!basketResult.isSuccess()) return providerFailure(basketResult.getFailure().orElseThrow());
+
+        List<SharedBasketItem> uniqueItems = new ArrayList<>(new LinkedHashSet<>(
+                basketResult.getBasket().orElseThrow().getItems()
+        ));
+        SharedBasketProductResolution resolution = productResolver.resolveExact(
+                uniqueItems,
+                user.getPriceContext()
+        );
+        if (!resolution.isSuccess()) return providerFailure(resolution.getFailure().orElseThrow());
+
+        List<PendingSharedBasketItem> pendingItems = persistResolvedItems(
+                resolution.getResolvedItems(),
+                user
+        );
+        int skipped = uniqueItems.size() - pendingItems.size();
+        PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
+                UUID.randomUUID(),
+                user.getId(),
+                uniqueItems.size(),
+                skipped,
+                pendingItems,
+                now,
+                now.plus(IMPORT_TTL)
+        );
+        pendingStore.save(pendingImport, now);
+        return SharedBasketPreviewResult.ready(buildPreview(pendingImport, user.getId()));
+    }
+
+    public Optional<SharedBasketPreview> findPreview(UUID importId, UUID userId, Instant now) {
+        if (importId == null || userId == null || now == null) throw new IllegalArgumentException("preview identity must not be null");
+        return pendingStore.findOwned(importId, userId)
+                .filter(value -> !value.isExpired(now))
+                .map(value -> buildPreview(value, userId));
+    }
+
+    @Transactional
+    public SharedBasketApplyResult apply(UUID importId, UUID userId, ApplyMode mode, Instant now) {
+        if (importId == null || userId == null || mode == null || now == null) {
+            throw new IllegalArgumentException("shared basket apply fields must not be null");
+        }
+        Optional<PendingSharedBasketImport> pending = pendingStore.findOwned(importId, userId);
+        if (pending.isEmpty() || pending.orElseThrow().isExpired(now)) {
+            pendingStore.remove(importId, userId);
+            return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.EXPIRED);
+        }
+        if (!userProfileStore.existsAndLockById(userId)) {
+            return SharedBasketApplyResult.failed(SharedBasketApplyResult.Status.USER_NOT_FOUND);
+        }
+
+        List<Subscription> active = subscriptionStore.findActiveSubscriptions(userId);
+        Map<UUID, Subscription> activeByTarget = new LinkedHashMap<>();
+        active.forEach(subscription -> activeByTarget.put(subscription.getWatchTargetId(), subscription));
+
+        List<PendingSharedBasketItem> targetItems = mode == ApplyMode.SYNCHRONIZE
+                ? pending.orElseThrow().getItems().stream().limit(ACTIVE_LIMIT).toList()
+                : pending.orElseThrow().getItems();
+        Set<UUID> targetIds = targetItems.stream()
+                .map(PendingSharedBasketItem::getWatchTargetId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        int ended = 0;
+        if (mode == ApplyMode.SYNCHRONIZE) {
+            for (Subscription subscription : active) {
+                if (!targetIds.contains(subscription.getWatchTargetId())) {
+                    subscriptionStore.end(subscription.end(now));
+                    activeByTarget.remove(subscription.getWatchTargetId());
+                    ended++;
+                }
+            }
+        }
+
+        int kept = (int) targetIds.stream().filter(activeByTarget::containsKey).count();
+        int freeSlots = ACTIVE_LIMIT - activeByTarget.size();
+        int added = 0;
+        for (PendingSharedBasketItem item : targetItems) {
+            if (activeByTarget.containsKey(item.getWatchTargetId()) || added >= freeSlots) continue;
+            SubscriptionQuoteObservation observation = subscriptionStore
+                    .findQuoteObservation(item.getSnapshotId())
+                    .orElseThrow(() -> new IllegalStateException("Pending basket snapshot disappeared"));
+            if (!observation.getWatchTargetId().equals(item.getWatchTargetId())) {
+                throw new IllegalStateException("Pending basket snapshot does not belong to its watch target");
+            }
+            Subscription created = createAnyDecrease(userId, observation, now);
+            subscriptionStore.create(created);
+            activeByTarget.put(item.getWatchTargetId(), created);
+            added++;
+        }
+
+        int skippedByLimit = mode == ApplyMode.SYNCHRONIZE
+                ? Math.max(0, pending.orElseThrow().getItems().size() - ACTIVE_LIMIT)
+                : Math.max(0, targetIds.size() - kept - added);
+        pendingStore.remove(importId, userId);
+        return SharedBasketApplyResult.applied(added, kept, ended, skippedByLimit);
+    }
+
+    @Transactional
+    public void cancel(UUID importId, UUID userId) {
+        pendingStore.remove(importId, userId);
+    }
+
+    private List<PendingSharedBasketItem> persistResolvedItems(
+            List<ResolvedSharedBasketItem> resolvedItems,
+            UserProfile user
+    ) {
+        Map<UUID, PendingSharedBasketItem> byTarget = new LinkedHashMap<>();
+        for (ResolvedSharedBasketItem item : resolvedItems) {
+            InterpretedPrice price = priceSemanticsService.interpret(item.getPriceFields());
+            ResolvedQuotePersistenceCommand command = new ResolvedQuotePersistenceCommand(
+                    item.getProduct(),
+                    item.getBasketItem().getNmId(),
+                    CANONICAL_URL.formatted(item.getBasketItem().getNmId()),
+                    item.getVariant(),
+                    user.getPriceContext(),
+                    price,
+                    item.getObservedAt()
+            );
+            PersistedResolvedQuote quote = quotePersistenceService.save(command);
+            byTarget.putIfAbsent(quote.getWatchTargetId(), new PendingSharedBasketItem(
+                    byTarget.size(), quote.getWatchTargetId(), quote.getSnapshotId(), item.getProduct().getTitle()
+            ));
+        }
+        return new ArrayList<>(byTarget.values());
+    }
+
+    private SharedBasketPreview buildPreview(PendingSharedBasketImport pending, UUID userId) {
+        List<Subscription> active = subscriptionStore.findActiveSubscriptions(userId);
+        Set<UUID> activeTargets = active.stream()
+                .map(Subscription::getWatchTargetId)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> basketTargets = pending.getItems().stream()
+                .map(PendingSharedBasketItem::getWatchTargetId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<UUID> syncTargets = pending.getItems().stream()
+                .limit(ACTIVE_LIMIT)
+                .map(PendingSharedBasketItem::getWatchTargetId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        int overlap = (int) basketTargets.stream().filter(activeTargets::contains).count();
+        int newItems = basketTargets.size() - overlap;
+        int freeSlots = Math.max(0, ACTIVE_LIMIT - activeTargets.size());
+        List<TrackedSubscriptionItem> trackedItems = subscriptionStore.findActiveByUserId(userId);
+        Map<UUID, String> titleBySubscription = new LinkedHashMap<>();
+        trackedItems.forEach(item -> titleBySubscription.put(
+                item.getSubscriptionId(),
+                item.getTitle().orElse("Товар Wildberries")
+        ));
+        List<String> missingTitles = active.stream()
+                .filter(subscription -> !syncTargets.contains(subscription.getWatchTargetId()))
+                .map(subscription -> titleBySubscription.getOrDefault(subscription.getId(), "Товар Wildberries"))
+                .toList();
+        return new SharedBasketPreview(
+                pending.getId(), pending.getFoundItems(), pending.getItems().size(), pending.getSkippedItems(),
+                overlap, newItems, missingTitles.size(), freeSlots,
+                Math.min(newItems, freeSlots), Math.min(pending.getItems().size(), ACTIVE_LIMIT), missingTitles
+        );
+    }
+
+    private Subscription createAnyDecrease(
+            UUID userId,
+            SubscriptionQuoteObservation observation,
+            Instant now
+    ) {
+        return new Subscription(
+                UUID.randomUUID(), userId, observation.getWatchTargetId(), NotificationMode.ANY_DECREASE,
+                Optional.empty(), observation.getRegularPrice(),
+                observation.getRegularPrice().map(ignored -> observation.getObservedAt()),
+                ThresholdState.NOT_APPLICABLE, Optional.empty(), SubscriptionStatus.ACTIVE,
+                now, Optional.empty(), 0
+        );
+    }
+
+    private SharedBasketPreviewResult providerFailure(SharedBasketFailure failure) {
+        return SharedBasketPreviewResult.failed(failure.getCode() == SharedBasketFailureCode.NOT_FOUND
+                ? SharedBasketPreviewResult.Status.NOT_FOUND
+                : SharedBasketPreviewResult.Status.TEMPORARILY_UNAVAILABLE);
+    }
+}
