@@ -22,9 +22,44 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
 import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 
 class TelegramSharedBasketHandlerTest {
+
+    @Test
+    void sharedBasketLinkShowsProcessingFeedbackBeforePreparingTheImport() {
+        TestContext context = context();
+        IncomingTelegramMessage message = new IncomingTelegramMessage(
+                context.telegramUserId,
+                context.telegramUserId,
+                "private",
+                "https://www.wildberries.ru/basket?shareId=abc123def4"
+        );
+        when(context.service.prepare(
+                org.mockito.ArgumentMatchers.eq(message.getText()),
+                org.mockito.ArgumentMatchers.any(UserProfile.class),
+                org.mockito.ArgumentMatchers.eq(context.now)
+        ))
+                .thenReturn(com.priceradar.sharedbasket.application.SharedBasketPreviewResult.failed(
+                        com.priceradar.sharedbasket.application.SharedBasketPreviewResult.Status.TEMPORARILY_UNAVAILABLE
+                ));
+
+        assertThat(context.handler.handleMessage(message)).isTrue();
+
+        var order = inOrder(context.gateway, context.service);
+        order.verify(context.gateway).sendMessage(org.mockito.ArgumentMatchers.argThat(outgoing ->
+                outgoing.getText().equals("⏳ Ваш запрос обрабатывается...")
+        ));
+        order.verify(context.service).prepare(
+                org.mockito.ArgumentMatchers.eq(message.getText()),
+                org.mockito.ArgumentMatchers.any(UserProfile.class),
+                org.mockito.ArgumentMatchers.eq(context.now)
+        );
+        order.verify(context.gateway).sendMessage(org.mockito.ArgumentMatchers.argThat(outgoing ->
+                outgoing.getText().contains("Wildberries временно недоступен")
+        ));
+    }
 
     @Test
     void firstSyncClickShowsDestructiveConfirmationWithoutApplyingChanges() {

@@ -4,6 +4,7 @@ import com.priceradar.notification.domain.NotificationType;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.telegram.application.OutgoingTelegramMessage;
 import com.priceradar.telegram.application.TelegramDeliveryException;
+import com.priceradar.telegram.application.TelegramDeliveryFailureType;
 import com.priceradar.telegram.application.TelegramGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,8 +90,9 @@ class NotificationDeliveryServiceTest {
         when(messageRenderer.render(notification)).thenReturn(message);
         doThrow(new TelegramDeliveryException(
                 "temporary",
-                true,
-                Optional.of(Duration.ofMinutes(1))
+                TelegramDeliveryFailureType.SAFE_TO_RETRY,
+                Optional.of(Duration.ofMinutes(1)),
+                new java.net.ConnectException("connection refused")
         ))
                 .when(telegramGateway).sendMessage(message);
 
@@ -112,7 +114,10 @@ class NotificationDeliveryServiceTest {
         OutgoingTelegramMessage message = OutgoingTelegramMessage.text(7001L, "message");
         dueAndClaimed(notification);
         when(messageRenderer.render(notification)).thenReturn(message);
-        doThrow(new TelegramDeliveryException("rejected", false))
+        doThrow(new TelegramDeliveryException(
+                "rejected",
+                TelegramDeliveryFailureType.PERMANENT_FAILURE
+        ))
                 .when(telegramGateway).sendMessage(message);
 
         deliveryService.deliverDue();
@@ -122,6 +127,54 @@ class NotificationDeliveryServiceTest {
                 NOW.plus(CLAIM_TIMEOUT),
                 1,
                 "TELEGRAM_PERMANENT"
+        );
+        verify(deliveryStore, never()).markRetry(any(), any(), anyInt(), any(), any());
+    }
+
+    @Test
+    void schedulesRetryForAmbiguousDeliveryOutcome() {
+        PendingNotificationDelivery notification = notification(true, 0);
+        OutgoingTelegramMessage message = OutgoingTelegramMessage.text(7001L, "message");
+        dueAndClaimed(notification);
+        when(messageRenderer.render(notification)).thenReturn(message);
+        doThrow(new TelegramDeliveryException(
+                "response was lost",
+                TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS,
+                new java.net.http.HttpTimeoutException("response timeout")
+        )).when(telegramGateway).sendMessage(message);
+
+        deliveryService.deliverDue();
+
+        verify(deliveryStore).markRetry(
+                notification.getOutboxId(),
+                NOW.plus(CLAIM_TIMEOUT),
+                1,
+                NOW.plusSeconds(10),
+                "TELEGRAM_AMBIGUOUS"
+        );
+        verify(deliveryStore, never()).markSent(any(), any(), any());
+        verify(telegramGateway).sendMessage(message);
+    }
+
+    @Test
+    void stopsRetryingAmbiguousDeliveryAtConfiguredMaximumAttempts() {
+        PendingNotificationDelivery notification = notification(true, 4);
+        OutgoingTelegramMessage message = OutgoingTelegramMessage.text(7001L, "message");
+        dueAndClaimed(notification);
+        when(messageRenderer.render(notification)).thenReturn(message);
+        doThrow(new TelegramDeliveryException(
+                "response was lost",
+                TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS,
+                new java.net.http.HttpTimeoutException("response timeout")
+        )).when(telegramGateway).sendMessage(message);
+
+        deliveryService.deliverDue();
+
+        verify(deliveryStore).markFailed(
+                notification.getOutboxId(),
+                NOW.plus(CLAIM_TIMEOUT),
+                5,
+                "TELEGRAM_AMBIGUOUS"
         );
         verify(deliveryStore, never()).markRetry(any(), any(), anyInt(), any(), any());
     }

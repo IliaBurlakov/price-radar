@@ -2,6 +2,7 @@ package com.priceradar.telegram.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.priceradar.pricing.application.WalletEstimateService;
+import com.priceradar.product.application.ProductUrlParser;
 import com.priceradar.product.application.ResolvedQuoteService;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.telegram.application.LatestSnapshotMessageFactory;
@@ -123,12 +124,14 @@ public class TelegramBotConfiguration {
 
     @Bean
     public TelegramCurrentQuoteHandler telegramCurrentQuoteHandler(
+            ProductUrlParser productUrlParser,
             UserProfileService userProfileService,
             ResolvedQuoteService resolvedQuoteService,
             TelegramQuoteMessageFactory messageFactory,
             TelegramGateway telegramGateway
     ) {
         return new TelegramCurrentQuoteHandler(
+                productUrlParser,
                 userProfileService,
                 resolvedQuoteService,
                 messageFactory,

@@ -1,6 +1,7 @@
 package com.priceradar.telegram.application;
 
 import com.priceradar.product.application.InvalidProductUrlException;
+import com.priceradar.product.application.ProductUrlParser;
 import com.priceradar.product.application.ResolvedQuoteResult;
 import com.priceradar.product.application.ResolvedQuoteService;
 import com.priceradar.user.application.UserProfile;
@@ -8,47 +9,49 @@ import com.priceradar.user.application.UserProfileService;
 
 public class TelegramCurrentQuoteHandler {
 
-    private static final String INPUT_HELP_MESSAGE =
-            "Отправьте ссылку на товар Wildberries или откройте /help.";
+    private static final String PROCESSING_MESSAGE = "⏳ Ваш запрос обрабатывается...";
 
+    private final ProductUrlParser productUrlParser;
     private final UserProfileService userProfileService;
     private final ResolvedQuoteService resolvedQuoteService;
     private final TelegramQuoteMessageFactory messageFactory;
     private final TelegramGateway telegramGateway;
 
     public TelegramCurrentQuoteHandler(
+            ProductUrlParser productUrlParser,
             UserProfileService userProfileService,
             ResolvedQuoteService resolvedQuoteService,
             TelegramQuoteMessageFactory messageFactory,
             TelegramGateway telegramGateway
     ) {
-        if (userProfileService == null || resolvedQuoteService == null
+        if (productUrlParser == null || userProfileService == null || resolvedQuoteService == null
                 || messageFactory == null || telegramGateway == null) {
             throw new IllegalArgumentException("Telegram quote handler dependencies must not be null");
         }
+        this.productUrlParser = productUrlParser;
         this.userProfileService = userProfileService;
         this.resolvedQuoteService = resolvedQuoteService;
         this.messageFactory = messageFactory;
         this.telegramGateway = telegramGateway;
     }
 
-    public void handle(IncomingTelegramMessage message) {
+    public boolean handle(IncomingTelegramMessage message) {
         if (!message.isPrivateChat()) {
-            return;
+            return false;
         }
 
-        String text = message.getText();
-        if (text.isBlank() || text.startsWith("/")) {
-            telegramGateway.sendMessage(new OutgoingTelegramMessage(
-                    message.getChatId(),
-                    INPUT_HELP_MESSAGE,
-                    TelegramNavigationKeyboard.mainMenu()
-            ));
-            return;
+        try {
+            productUrlParser.parse(message.getText());
+        } catch (InvalidProductUrlException exception) {
+            return false;
         }
 
+        telegramGateway.sendMessage(OutgoingTelegramMessage.text(
+                message.getChatId(), PROCESSING_MESSAGE
+        ));
         OutgoingTelegramMessage response = resolveQuote(message);
         telegramGateway.sendMessage(response);
+        return true;
     }
 
     private OutgoingTelegramMessage resolveQuote(IncomingTelegramMessage message) {

@@ -97,6 +97,14 @@ public final class TelegramMenuHandler {
         return true;
     }
 
+    public boolean showHelpForUnsupportedText(IncomingTelegramMessage message) {
+        if (!message.isPrivateChat()) {
+            return false;
+        }
+        telegramGateway.sendMessage(messageFactory.help(message.getChatId()));
+        return true;
+    }
+
     private boolean isLegacyMenuCommand(String text) {
         return text.equals("/menu") || text.startsWith("/menu@");
     }

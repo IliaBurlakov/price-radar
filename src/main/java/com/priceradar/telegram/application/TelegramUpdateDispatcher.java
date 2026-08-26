@@ -64,7 +64,10 @@ public class TelegramUpdateDispatcher {
             if (trackedItemsHandler.handleMessage(message)) {
                 return;
             }
-            currentQuoteHandler.handle(message);
+            if (currentQuoteHandler.handle(message)) {
+                return;
+            }
+            menuHandler.showHelpForUnsupportedText(message);
         });
     }
 

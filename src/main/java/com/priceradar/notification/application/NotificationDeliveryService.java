@@ -2,6 +2,7 @@ package com.priceradar.notification.application;
 
 import com.priceradar.telegram.application.OutgoingTelegramMessage;
 import com.priceradar.telegram.application.TelegramDeliveryException;
+import com.priceradar.telegram.application.TelegramDeliveryFailureType;
 import com.priceradar.telegram.application.TelegramGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,7 @@ public final class NotificationDeliveryService {
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationDeliveryService.class);
     private static final String SUBSCRIPTION_ENDED = "SUBSCRIPTION_ENDED";
     private static final String TELEGRAM_TEMPORARY = "TELEGRAM_TEMPORARY";
+    private static final String TELEGRAM_AMBIGUOUS = "TELEGRAM_AMBIGUOUS";
     private static final String TELEGRAM_PERMANENT = "TELEGRAM_PERMANENT";
     private static final String UNEXPECTED_DELIVERY_ERROR = "UNEXPECTED_DELIVERY_ERROR";
 
@@ -98,49 +100,90 @@ public final class NotificationDeliveryService {
             return true;
         }
 
+        OutgoingTelegramMessage message;
         try {
-            OutgoingTelegramMessage message = messageRenderer.render(notification);
-            telegramGateway.sendMessage(message);
-            boolean sent = deliveryStore.markSent(
-                    notification.getOutboxId(),
+            message = messageRenderer.render(notification);
+        } catch (RuntimeException exception) {
+            retryOrFail(
+                    notification,
                     claimUntil,
-                    clock.instant()
+                    UNEXPECTED_DELIVERY_ERROR,
+                    Optional.empty(),
+                    exception
             );
-            if (!sent) {
-                LOGGER.warn(
-                        "Notification was sent but its outbox claim changed, outboxId={}",
-                        notification.getOutboxId()
-                );
-            }
             return true;
+        }
+
+        try {
+            telegramGateway.sendMessage(message);
         } catch (TelegramDeliveryException exception) {
-            if (exception.isRetryable()) {
+            if (exception.getFailureType() == TelegramDeliveryFailureType.SAFE_TO_RETRY) {
                 retryOrFail(
                         notification,
                         claimUntil,
                         TELEGRAM_TEMPORARY,
-                        exception.getRetryAfter()
+                        exception.getRetryAfter(),
+                        exception
                 );
                 return false;
             }
+            if (exception.getFailureType() == TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS) {
+                retryOrFail(
+                        notification,
+                        claimUntil,
+                        TELEGRAM_AMBIGUOUS,
+                        Optional.empty(),
+                        exception
+                );
+                return false;
+            }
+            LOGGER.warn(
+                    "Telegram notification delivery failed permanently, outboxId={}, attempt={}, failureType={}, causeType={}, error={}",
+                    notification.getOutboxId(),
+                    notification.getAttemptCount() + 1,
+                    exception.getFailureType(),
+                    rootCauseType(exception),
+                    exception.getMessage()
+            );
             markFailed(notification, claimUntil, TELEGRAM_PERMANENT);
             return true;
         } catch (RuntimeException exception) {
-            LOGGER.error(
-                    "Unexpected notification delivery failure, outboxId={}, errorType={}",
-                    notification.getOutboxId(),
-                    exception.getClass().getSimpleName()
+            retryOrFail(
+                    notification,
+                    claimUntil,
+                    UNEXPECTED_DELIVERY_ERROR,
+                    Optional.empty(),
+                    exception
             );
-            retryOrFail(notification, claimUntil, UNEXPECTED_DELIVERY_ERROR, Optional.empty());
             return true;
         }
+
+        boolean sent = deliveryStore.markSent(
+                notification.getOutboxId(),
+                claimUntil,
+                clock.instant()
+        );
+        if (!sent) {
+            LOGGER.warn(
+                    "Notification was sent but its outbox claim changed, outboxId={}",
+                    notification.getOutboxId()
+            );
+        } else {
+            LOGGER.info(
+                    "Telegram notification delivered, outboxId={}, attemptsBeforeSuccess={}",
+                    notification.getOutboxId(),
+                    notification.getAttemptCount()
+            );
+        }
+        return true;
     }
 
     private void retryOrFail(
             PendingNotificationDelivery notification,
             Instant claimUntil,
             String errorCode,
-            Optional<Duration> requestedDelay
+            Optional<Duration> requestedDelay,
+            RuntimeException exception
     ) {
         int attemptCount = notification.getAttemptCount() + 1;
         if (attemptCount >= maxAttempts) {
@@ -151,6 +194,15 @@ public final class NotificationDeliveryService {
                     errorCode
             );
             logStateConflict(failed, notification.getOutboxId(), "FAILED");
+            if (failed) {
+                LOGGER.warn(
+                        "Notification delivery attempts exhausted, outboxId={}, attempt={}, failureType={}, causeType={}, status=FAILED",
+                        notification.getOutboxId(),
+                        attemptCount,
+                        failureType(exception),
+                        rootCauseType(exception)
+                );
+            }
             return;
         }
         Duration calculatedBackoff = backoff(attemptCount);
@@ -166,6 +218,16 @@ public final class NotificationDeliveryService {
                 errorCode
         );
         logStateConflict(retried, notification.getOutboxId(), "RETRY");
+        if (retried) {
+            LOGGER.warn(
+                    "Notification delivery retry scheduled, outboxId={}, attempt={}, failureType={}, causeType={}, nextAttemptAt={}",
+                    notification.getOutboxId(),
+                    attemptCount,
+                    failureType(exception),
+                    rootCauseType(exception),
+                    nextAttemptAt
+            );
+        }
     }
 
     private void markFailed(
@@ -202,6 +264,21 @@ public final class NotificationDeliveryService {
             return maxBackoff;
         }
         return calculated.compareTo(maxBackoff) > 0 ? maxBackoff : calculated;
+    }
+
+    private String rootCauseType(Throwable exception) {
+        Throwable rootCause = exception;
+        while (rootCause.getCause() != null) {
+            rootCause = rootCause.getCause();
+        }
+        return rootCause.getClass().getName();
+    }
+
+    private Object failureType(RuntimeException exception) {
+        if (exception instanceof TelegramDeliveryException telegramException) {
+            return telegramException.getFailureType();
+        }
+        return UNEXPECTED_DELIVERY_ERROR;
     }
 
     private void validateDuration(Duration duration, String fieldName) {

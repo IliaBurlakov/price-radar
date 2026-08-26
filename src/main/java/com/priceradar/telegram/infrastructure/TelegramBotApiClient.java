@@ -10,6 +10,7 @@ import com.priceradar.telegram.application.OutgoingTelegramMessage;
 import com.priceradar.telegram.application.TelegramBotCommand;
 import com.priceradar.telegram.application.TelegramBotCommandRegistrar;
 import com.priceradar.telegram.application.TelegramDeliveryException;
+import com.priceradar.telegram.application.TelegramDeliveryFailureType;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.TelegramInlineButton;
 import com.priceradar.telegram.application.TelegramUpdate;
@@ -17,7 +18,10 @@ import com.priceradar.telegram.application.TelegramUpdate;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -101,7 +105,7 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
                 timeout.plus(requestTimeout)
         );
         if (!result.isArray()) {
-            throw new TelegramDeliveryException("Telegram API returned invalid updates data");
+            throw permanentFailure("Telegram API returned invalid updates data");
         }
         List<TelegramUpdate> updates = new ArrayList<>();
         for (JsonNode updateNode : result) {
@@ -236,27 +240,57 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new TelegramDeliveryException("Telegram request was interrupted", true);
+            throw new TelegramDeliveryException(
+                    "Telegram request was interrupted before its outcome was confirmed",
+                    TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS,
+                    exception
+            );
         } catch (IOException exception) {
-            throw new TelegramDeliveryException("Telegram API is temporarily unavailable", true);
+            throw transportFailure(exception);
         }
 
-        String rawResponse = readBoundedBody(response.body());
+        String rawResponse = readBoundedBody(response.body(), response.statusCode());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             Optional<Duration> retryAfter = response.statusCode() == 429
                     ? extractRetryAfter(rawResponse)
                     : Optional.empty();
             throw new TelegramDeliveryException(
                     "Telegram API returned HTTP " + response.statusCode(),
-                    response.statusCode() == 429 || response.statusCode() >= 500,
-                    retryAfter
+                    response.statusCode() == 429 || response.statusCode() >= 500
+                            ? TelegramDeliveryFailureType.SAFE_TO_RETRY
+                            : TelegramDeliveryFailureType.PERMANENT_FAILURE,
+                    retryAfter,
+                    null
             );
         }
 
-        JsonNode responseBody = readJson(rawResponse);
+        JsonNode responseBody = readSuccessfulResponseJson(rawResponse);
+        if (responseBody == null) {
+            throw new TelegramDeliveryException(
+                    "Telegram accepted the request but returned an empty response",
+                    TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS
+            );
+        }
         JsonNode result = responseBody.path("result");
-        if (!responseBody.path("ok").asBoolean(false) || result.isMissingNode() || result.isNull()) {
-            throw new TelegramDeliveryException("Telegram API returned an unsuccessful response");
+        if (!responseBody.path("ok").asBoolean(false)) {
+            int errorCode = responseBody.path("error_code").asInt(0);
+            Optional<Duration> retryAfter = errorCode == 429
+                    ? extractRetryAfter(rawResponse)
+                    : Optional.empty();
+            throw new TelegramDeliveryException(
+                    "Telegram API returned an unsuccessful response",
+                    errorCode == 429 || errorCode >= 500
+                            ? TelegramDeliveryFailureType.SAFE_TO_RETRY
+                            : TelegramDeliveryFailureType.PERMANENT_FAILURE,
+                    retryAfter,
+                    null
+            );
+        }
+        if (result.isMissingNode() || result.isNull()) {
+            throw new TelegramDeliveryException(
+                    "Telegram accepted the request but omitted the result",
+                    TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS
+            );
         }
         return result;
     }
@@ -265,28 +299,84 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
         try {
             return objectMapper.writeValueAsString(body);
         } catch (IOException exception) {
-            throw new TelegramDeliveryException("Could not create Telegram request");
+            throw new TelegramDeliveryException(
+                    "Could not create Telegram request",
+                    TelegramDeliveryFailureType.PERMANENT_FAILURE,
+                    exception
+            );
         }
     }
 
-    private JsonNode readJson(String body) {
+    private JsonNode readSuccessfulResponseJson(String body) {
         try {
             return objectMapper.readTree(body);
         } catch (IOException exception) {
-            throw new TelegramDeliveryException("Telegram API returned malformed JSON");
+            throw new TelegramDeliveryException(
+                    "Telegram accepted the request but returned malformed JSON",
+                    TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS,
+                    exception
+            );
         }
     }
 
-    private String readBoundedBody(InputStream body) {
+    private String readBoundedBody(InputStream body, int statusCode) {
+        boolean successfulHttpStatus = statusCode >= 200 && statusCode < 300;
         try (body) {
             byte[] bytes = body.readNBytes(maxResponseBytes + 1);
             if (bytes.length > maxResponseBytes) {
-                throw new TelegramDeliveryException("Telegram API response is too large", true);
+                throw new TelegramDeliveryException(
+                        "Telegram API response is too large",
+                        successfulHttpStatus
+                                ? TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS
+                                : failureTypeForHttpError(statusCode)
+                );
             }
             return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
         } catch (IOException exception) {
-            throw new TelegramDeliveryException("Could not read Telegram API response", true);
+            throw new TelegramDeliveryException(
+                    "Could not read Telegram API response",
+                    successfulHttpStatus
+                            ? TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS
+                            : failureTypeForHttpError(statusCode),
+                    exception
+            );
         }
+    }
+
+    private TelegramDeliveryFailureType failureTypeForHttpError(int statusCode) {
+        return statusCode == 429 || statusCode >= 500
+                ? TelegramDeliveryFailureType.SAFE_TO_RETRY
+                : TelegramDeliveryFailureType.PERMANENT_FAILURE;
+    }
+
+    private TelegramDeliveryException transportFailure(IOException exception) {
+        TelegramDeliveryFailureType failureType = isDefinitelyNotSent(exception)
+                ? TelegramDeliveryFailureType.SAFE_TO_RETRY
+                : TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS;
+        String message = failureType == TelegramDeliveryFailureType.SAFE_TO_RETRY
+                ? "Telegram API connection could not be established"
+                : "Telegram request outcome could not be confirmed";
+        return new TelegramDeliveryException(message, failureType, exception);
+    }
+
+    private boolean isDefinitelyNotSent(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof UnknownHostException
+                    || current instanceof ConnectException
+                    || current instanceof HttpConnectTimeoutException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private TelegramDeliveryException permanentFailure(String message) {
+        return new TelegramDeliveryException(
+                message,
+                TelegramDeliveryFailureType.PERMANENT_FAILURE
+        );
     }
 
     private Optional<Duration> extractRetryAfter(String rawResponse) {

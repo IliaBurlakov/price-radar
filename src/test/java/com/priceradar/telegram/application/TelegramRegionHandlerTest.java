@@ -8,6 +8,7 @@ import com.priceradar.user.application.UserProfileService;
 import com.priceradar.user.domain.UserPricePreferences;
 import com.priceradar.product.application.ResolvedQuoteResult;
 import com.priceradar.product.application.ResolvedQuoteService;
+import com.priceradar.product.application.ProductUrlParser;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -95,12 +96,18 @@ class TelegramRegionHandlerTest {
         when(quotes.resolve(url, irkutsk().toPriceContext())).thenReturn(failure);
         when(messages.createFailureMessage(TELEGRAM_ID, failure)).thenReturn(response);
 
-        new TelegramCurrentQuoteHandler(users, quotes, messages, gateway).handle(
+        new TelegramCurrentQuoteHandler(
+                new ProductUrlParser(), users, quotes, messages, gateway
+        ).handle(
                 new IncomingTelegramMessage(TELEGRAM_ID, TELEGRAM_ID, "private", url)
         );
 
         verify(quotes).resolve(url, irkutsk().toPriceContext());
-        verify(gateway).sendMessage(response);
+        var sent = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(gateway, org.mockito.Mockito.times(2)).sendMessage(sent.capture());
+        assertThat(sent.getAllValues().getFirst().getText())
+                .isEqualTo("⏳ Ваш запрос обрабатывается...");
+        assertThat(sent.getAllValues().getLast()).isEqualTo(response);
     }
 
     private TelegramRegionHandler handler(

@@ -901,9 +901,21 @@ In-memory semaphore provider coordinator, in-memory cache и Telegram long polli
 
 ### Нет exactly-once доставки Telegram
 
-Outbox защищает от потери intent и большинства дублей. Но Telegram API не даёт
-transactional send вместе с нашей PostgreSQL. Crash в узком окне между успешным
-`sendMessage` и `markSent` может привести к повторной доставке.
+Transactional outbox и уникальный `idempotency_key` гарантируют, что одно
+бизнес-событие записывается в БД один раз. Однако Telegram Bot API не принимает
+клиентский idempotency key для `sendMessage`, поэтому PriceRadar не заявляет
+exactly-once доставку внешнего сообщения.
+
+Telegram notification delivery использует at-least-once semantics. DNS/connect
+failures, response timeout, connection reset, другие неопределённые transport
+outcomes и HTTP 5xx повторяются с ограниченным exponential backoff. Для HTTP 429
+учитывается `retry_after`, а permanent HTTP 4xx переводит outbox в `FAILED`.
+
+Если Telegram принял `sendMessage`, но PriceRadar потерял response, уведомление
+может быть отправлено повторно. Это сознательный trade-off в пользу недопущения
+потери уведомлений. По умолчанию выполняется не более пяти delivery attempts;
+последняя неуспешная попытка переводит событие в `FAILED`. `attempt_count` хранит
+число неуспешных или неподтверждённых попыток до success либо terminal failure.
 
 ### Рост истории snapshots
 
