@@ -17,6 +17,7 @@ import java.util.Optional;
 public final class TelegramRegionHandler {
 
     private static final String SEARCHING_MESSAGE = "🔎 Ищу населённый пункт...";
+    private static final String APPLYING_MESSAGE = "⏳ Устанавливаю населённый пункт...";
 
     private final UserProfileService userProfileService;
     private final CitySelectionService citySelectionService;
@@ -105,7 +106,16 @@ public final class TelegramRegionHandler {
         Optional<PendingCitySelection> pending = citySelectionService.pending(profile, now);
         Optional<Integer> number = parseNumber(input);
         if (number.isPresent() && pending.filter(value -> !value.getCandidates().isEmpty()).isPresent()) {
-            CitySelectionResult result = citySelectionService.choose(profile, number.orElseThrow(), now);
+            int selectedNumber = number.orElseThrow();
+            int optionCount = pending.orElseThrow().getCandidates().size();
+            if (selectedNumber < 1 || selectedNumber > optionCount) {
+                telegramGateway.sendMessage(invalidNumber(profile.getTelegramChatId(), optionCount));
+                return;
+            }
+            telegramGateway.sendMessage(OutgoingTelegramMessage.text(
+                    profile.getTelegramChatId(), APPLYING_MESSAGE
+            ));
+            CitySelectionResult result = citySelectionService.choose(profile, selectedNumber, now);
             telegramGateway.sendMessage(resultMessage(profile.getTelegramChatId(), profile, result, now));
             return;
         }
@@ -169,6 +179,10 @@ public final class TelegramRegionHandler {
         int size = citySelectionService.pending(profile, now)
                 .map(selection -> selection.getCandidates().size())
                 .orElse(0);
+        return invalidNumber(chatId, size);
+    }
+
+    private OutgoingTelegramMessage invalidNumber(long chatId, int size) {
         return new OutgoingTelegramMessage(
                 chatId,
                 "Введите номер от 1 до " + size + ".",

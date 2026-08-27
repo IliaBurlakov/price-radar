@@ -23,6 +23,7 @@ import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -79,13 +80,38 @@ class TelegramRegionHandlerTest {
         );
         when(context.selection.hasPending(profile, NOW)).thenReturn(true);
         when(context.selection.pending(profile, NOW)).thenReturn(Optional.of(pending));
-        when(context.selection.choose(profile, 7, NOW)).thenReturn(
-                CitySelectionResult.status(CitySelectionResult.Status.INVALID_NUMBER)
-        );
-
         context.handler.handleMessage(message("7"));
 
         assertThat(captured(context.gateway).getText()).isEqualTo("Введите номер от 1 до 2.");
+        verify(context.selection, never()).choose(profile, 7, NOW);
+    }
+
+    @Test
+    void validOptionShowsImmediateFeedbackBeforeResolvingSelection() {
+        UserProfile profile = profile(null, false);
+        Context context = context(profile);
+        GeoCandidate first = candidate("Киров", "Кировская область", null, 58.60, 49.66);
+        GeoCandidate second = candidate("Киров", "Калужская область", null, 54.08, 34.30);
+        when(context.selection.hasPending(profile, NOW)).thenReturn(true);
+        when(context.selection.pending(profile, NOW)).thenReturn(Optional.of(
+                new PendingCitySelection(UUID.randomUUID(), profile.getId(), List.of(first, second),
+                        NOW.minusSeconds(1), NOW.plusSeconds(60))
+        ));
+        when(context.selection.choose(profile, 2, NOW)).thenReturn(
+                CitySelectionResult.selected(CitySelectionResult.Status.SELECTED, moscow())
+        );
+
+        context.handler.handleMessage(message("2"));
+
+        var order = inOrder(context.gateway, context.selection);
+        var progress = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        order.verify(context.gateway).sendMessage(progress.capture());
+        assertThat(progress.getValue().getText())
+                .isEqualTo("⏳ Устанавливаю населённый пункт...");
+        order.verify(context.selection).choose(profile, 2, NOW);
+        var messages = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(context.gateway, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
+        assertThat(messages.getAllValues().getLast().getText()).contains("Город выбран: Москва");
     }
 
     @Test
@@ -105,6 +131,13 @@ class TelegramRegionHandlerTest {
         context.handler.handleMessage(message("Томск"));
 
         verify(context.selection).search(profile, "Томск", NOW);
+        var messages = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(context.gateway, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
+        assertThat(messages.getAllValues().getFirst().getText())
+                .isEqualTo("🔎 Ищу населённый пункт...");
+        assertThat(messages.getAllValues())
+                .extracting(OutgoingTelegramMessage::getText)
+                .noneMatch(text -> text.contains("Устанавливаю населённый пункт"));
     }
 
     @Test

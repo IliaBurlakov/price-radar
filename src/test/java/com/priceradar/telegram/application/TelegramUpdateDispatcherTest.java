@@ -1,10 +1,15 @@
 package com.priceradar.telegram.application;
 
+import com.priceradar.user.application.UserProfile;
+import com.priceradar.user.application.UserProfileService;
+import com.priceradar.user.domain.UserPricePreferences;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
+import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
@@ -16,7 +21,7 @@ import static org.mockito.Mockito.when;
 class TelegramUpdateDispatcherTest {
 
     @Test
-    void onboardingGateStopsCommandsAndUrlsBeforeBusinessHandlers() {
+    void onboardingGateStopsBusinessCommandsAndUrlsBeforeBusinessHandlers() {
         TelegramOnboardingHandler onboarding = mock(TelegramOnboardingHandler.class);
         TelegramCurrentQuoteHandler quotes = mock(TelegramCurrentQuoteHandler.class);
         TelegramMenuHandler menu = mock(TelegramMenuHandler.class);
@@ -37,7 +42,6 @@ class TelegramUpdateDispatcherTest {
         );
 
         for (String text : List.of(
-                "/start",
                 "/add",
                 "/import",
                 "https://www.wildberries.ru/catalog/123456/detail.aspx",
@@ -51,6 +55,44 @@ class TelegramUpdateDispatcherTest {
         }
 
         verifyNoInteractions(quotes, menu, tracking, baskets, tracked);
+    }
+
+    @Test
+    void startAndHelpReachOrdinaryMenuFlowWithoutSelectedCity() {
+        UserProfileService users = mock(UserProfileService.class);
+        TelegramRegionHandler regions = mock(TelegramRegionHandler.class);
+        UserProfile unconfigured = new UserProfile(
+                UUID.randomUUID(), 7001L, 7001L, null, UserPricePreferences.defaults()
+        );
+        UserProfile configured = new UserProfile(
+                UUID.randomUUID(), 7001L, 7001L, moscow(), UserPricePreferences.defaults()
+        );
+        when(users.getOrCreate(7001L, 7001L))
+                .thenReturn(unconfigured, configured, unconfigured);
+        TelegramOnboardingHandler onboarding = new TelegramOnboardingHandler(users, regions);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
+        TelegramMenuHandler menu = new TelegramMenuHandler(
+                messages, mock(TrackedItemsMessageHandler.class), regions, gateway
+        );
+        TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
+                onboarding, mock(TelegramCurrentQuoteHandler.class), menu, regions,
+                mock(TelegramTrackingHandler.class), mock(TelegramSharedBasketHandler.class),
+                mock(TrackedItemsMessageHandler.class), mock(ShowLastKnownCallbackHandler.class),
+                mock(StatisticsCallbackHandler.class), gateway
+        );
+
+        assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
+                1L, Optional.of(message("/start"))
+        )), messages.welcome(7001L));
+        assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
+                2L, Optional.of(message("/start"))
+        )), messages.welcome(7001L));
+        assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
+                3L, Optional.of(message("/help"))
+        )), messages.help(7001L));
+
+        verify(regions, never()).showOnboarding(unconfigured);
     }
 
     @Test
