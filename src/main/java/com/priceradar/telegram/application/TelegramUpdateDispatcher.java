@@ -99,7 +99,7 @@ public class TelegramUpdateDispatcher {
             if (onboardingHandler.handleCallback(callback)) {
                 return;
             }
-            clearPendingCitySelectionOnMenuExit(callback);
+            clearPendingCitySelectionOnCallbackExit(callback);
             trackingHandler.clearPendingInput(
                     callback.getTelegramUserId(),
                     callback.getChatId()
@@ -128,12 +128,16 @@ public class TelegramUpdateDispatcher {
         }
     }
 
-    private void clearPendingCitySelectionOnMenuExit(IncomingTelegramCallback callback) {
-        MainMenuCallbackData.parse(callback.getData())
-                .filter(action -> action != MainMenuCallbackData.Action.REGION)
-                .ifPresent(action -> regionHandler.clearPendingInput(
-                        callback.getTelegramUserId(), callback.getChatId()
-                ));
+    private void clearPendingCitySelectionOnCallbackExit(IncomingTelegramCallback callback) {
+        boolean opensRegionFlow = regionHandler.supportsCallback(callback)
+                || MainMenuCallbackData.parse(callback.getData())
+                .filter(action -> action == MainMenuCallbackData.Action.REGION)
+                .isPresent();
+        if (!opensRegionFlow) {
+            regionHandler.clearPendingInput(
+                    callback.getTelegramUserId(), callback.getChatId()
+            );
+        }
     }
 
     private void answerCallbackBestEffort(String callbackQueryId) {

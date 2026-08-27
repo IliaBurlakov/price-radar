@@ -22,6 +22,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,6 +48,15 @@ class CitySelectionServiceTest {
     @BeforeEach
     void defaults() {
         when(catalog.findCompletedSearch(any())).thenReturn(Optional.empty());
+        when(catalog.saveCompletedSearch(any(), any(), any())).thenAnswer(invocation -> {
+            List<GeoCandidate> candidates = invocation.getArgument(1);
+            Instant completedAt = invocation.getArgument(2);
+            return candidates.stream()
+                    .map(candidate -> new GeoLocation(
+                            UUID.randomUUID(), candidate, GeoLocationSource.NOMINATIM, completedAt
+                    ))
+                    .toList();
+        });
     }
 
     @Test
@@ -156,6 +166,35 @@ class CitySelectionServiceTest {
                 .extracting(GeoCandidate::getRegionName)
                 .containsExactly(Optional.of("Кировская область"), Optional.of("Калужская область"));
         verify(geocoding).search("Киров");
+    }
+
+    @Test
+    void usesCanonicalCandidatesReturnedByCompletedSearchPersistence() {
+        GeoCandidate transientFirst = candidate(
+                "Киров", "Кировская область", 58.60, 49.66, "city", 0.8
+        );
+        GeoCandidate transientSecond = candidate(
+                "Киров", "Калужская область", 54.08, 34.30, "town", 0.5
+        );
+        GeoCandidate canonicalFirst = candidate(
+                "Киров", "Калужская область", 54.081, 34.301, "town", 0.6
+        );
+        GeoCandidate canonicalSecond = candidate(
+                "Киров", "Кировская область", 58.601, 49.661, "city", 0.9
+        );
+        when(geocoding.search("Киров")).thenReturn(GeocodingResult.success(
+                List.of(transientFirst, transientSecond)
+        ));
+        doReturn(List.of(
+                resolved(canonicalFirst).getLocation(), resolved(canonicalSecond).getLocation()
+        )).when(catalog).saveCompletedSearch(any(), any(), any());
+
+        CitySelectionResult result = service.search(user, "Киров", NOW);
+
+        assertThat(result.getStatus()).isEqualTo(CitySelectionResult.Status.OPTIONS);
+        assertThat(result.getCandidates()).containsExactly(canonicalFirst, canonicalSecond);
+        assertThat(pending.findByUserId(user.getId(), NOW).orElseThrow().getCandidates())
+                .containsExactly(canonicalFirst, canonicalSecond);
     }
 
     @Test

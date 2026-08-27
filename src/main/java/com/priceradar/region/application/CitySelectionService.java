@@ -87,8 +87,12 @@ public final class CitySelectionService {
         if (!geocoding.isSuccess()) {
             return CitySelectionResult.status(CitySelectionResult.Status.GEOCODING_UNAVAILABLE);
         }
-        List<GeoCandidate> candidates = deduplicator.deduplicate(geocoding.getCandidates());
-        locationCatalog.saveCompletedSearch(normalizedQuery, candidates, now);
+        List<GeoCandidate> transientCandidates = deduplicator.deduplicate(geocoding.getCandidates());
+        List<GeoCandidate> candidates = locationCatalog.saveCompletedSearch(
+                        normalizedQuery, transientCandidates, now
+                ).stream()
+                .map(GeoLocation::toCandidate)
+                .toList();
         if (candidates.isEmpty()) return CitySelectionResult.status(CitySelectionResult.Status.NOT_FOUND);
         if (candidates.size() == 1) return resolveAndApplyFromSearch(user, candidates.getFirst(), now);
         storeOptions(user, candidates, now);
