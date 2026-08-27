@@ -177,6 +177,7 @@ public class TelegramBotConfiguration {
             SubscriptionService subscriptionService,
             TrackedItemsMessageFactory messageFactory,
             ClearTrackingCallbackCodec clearTrackingCallbackCodec,
+            PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
             Clock providerClock
     ) {
@@ -185,6 +186,7 @@ public class TelegramBotConfiguration {
                 subscriptionService,
                 messageFactory,
                 clearTrackingCallbackCodec,
+                pendingTargetPriceStore,
                 telegramGateway,
                 providerClock
         );

@@ -10,4 +10,6 @@ public interface PendingTargetPriceStore {
     Optional<PendingTargetPrice> find(long telegramUserId, long chatId, Instant now);
 
     void remove(PendingTargetPrice pending);
+
+    void remove(long telegramUserId, long chatId);
 }

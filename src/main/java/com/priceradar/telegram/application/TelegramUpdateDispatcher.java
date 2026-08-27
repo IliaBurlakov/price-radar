@@ -59,6 +59,12 @@ public class TelegramUpdateDispatcher {
             if (onboardingHandler.handleMessage(message)) {
                 return;
             }
+            if (TelegramBotCommand.isCommandText(message.getText())) {
+                trackingHandler.clearPendingInput(
+                        message.getTelegramUserId(),
+                        message.getChatId()
+                );
+            }
             if (menuHandler.handleMessage(message)) {
                 return;
             }
@@ -83,6 +89,10 @@ public class TelegramUpdateDispatcher {
             if (onboardingHandler.handleCallback(callback)) {
                 return;
             }
+            trackingHandler.clearPendingInput(
+                    callback.getTelegramUserId(),
+                    callback.getChatId()
+            );
             if (sharedBasketHandler.handleCallback(callback)) {
                 return;
             }

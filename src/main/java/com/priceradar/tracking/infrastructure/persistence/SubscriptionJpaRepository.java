@@ -2,6 +2,7 @@ package com.priceradar.tracking.infrastructure.persistence;
 
 import com.priceradar.tracking.domain.SubscriptionStatus;
 import com.priceradar.tracking.domain.ThresholdState;
+import com.priceradar.tracking.domain.NotificationMode;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -70,6 +71,67 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
             @Param("thresholdObservedAt") Instant thresholdObservedAt,
             @Param("activeStatus") SubscriptionStatus activeStatus,
             @Param("expectedVersion") long expectedVersion
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE SubscriptionEntity subscription
+            SET subscription.notificationMode = :notificationMode,
+                subscription.targetPriceMinor = :targetPriceMinor,
+                subscription.notificationReferencePriceMinor = :notificationReferencePriceMinor,
+                subscription.lastProcessedPriceObservedAt = :lastProcessedPriceObservedAt,
+                subscription.thresholdState = :thresholdState,
+                subscription.thresholdObservedAt = :thresholdObservedAt,
+                subscription.version = subscription.version + 1
+            WHERE subscription.id = :subscriptionId
+              AND subscription.status = :activeStatus
+              AND subscription.version = :expectedVersion
+            """)
+    int updateConditionIfActive(
+            @Param("subscriptionId") UUID subscriptionId,
+            @Param("notificationMode") NotificationMode notificationMode,
+            @Param("targetPriceMinor") Long targetPriceMinor,
+            @Param("notificationReferencePriceMinor") Long notificationReferencePriceMinor,
+            @Param("lastProcessedPriceObservedAt") Instant lastProcessedPriceObservedAt,
+            @Param("thresholdState") ThresholdState thresholdState,
+            @Param("thresholdObservedAt") Instant thresholdObservedAt,
+            @Param("activeStatus") SubscriptionStatus activeStatus,
+            @Param("expectedVersion") long expectedVersion
+    );
+
+    @Query(value = """
+            SELECT
+                MIN(snapshot.regular_price_minor) AS "minimumPriceMinor",
+                (
+                    SELECT latest.regular_price_minor
+                    FROM price_snapshots latest
+                    WHERE latest.watch_target_id = subscription.watch_target_id
+                      AND latest.observed_at >= subscription.created_at
+                      AND latest.observed_at <= :observedToInclusive
+                      AND latest.status = 'REGULAR_PRICE'
+                      AND latest.price_source = 'PRODUCT'
+                      AND latest.regular_price_minor > 0
+                    ORDER BY latest.observed_at DESC, latest.id DESC
+                    LIMIT 1
+                ) AS "latestPriceMinor",
+                MAX(snapshot.observed_at) AS "latestObservedAt"
+            FROM subscriptions subscription
+            LEFT JOIN price_snapshots snapshot
+              ON snapshot.watch_target_id = subscription.watch_target_id
+             AND snapshot.observed_at >= subscription.created_at
+             AND snapshot.observed_at <= :observedToInclusive
+             AND snapshot.status = 'REGULAR_PRICE'
+             AND snapshot.price_source = 'PRODUCT'
+             AND snapshot.regular_price_minor > 0
+            WHERE subscription.id = :subscriptionId
+              AND subscription.user_id = :userId
+              AND subscription.status = 'ACTIVE'
+            GROUP BY subscription.id, subscription.watch_target_id, subscription.created_at
+            """, nativeQuery = true)
+    Optional<SubscriptionPriceHistoryProjection> findValidPriceHistory(
+            @Param("userId") UUID userId,
+            @Param("subscriptionId") UUID subscriptionId,
+            @Param("observedToInclusive") Instant observedToInclusive
     );
 
     @Query(value = """

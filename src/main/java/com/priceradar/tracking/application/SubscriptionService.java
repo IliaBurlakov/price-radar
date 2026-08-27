@@ -111,6 +111,82 @@ public class SubscriptionService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<Subscription> findActiveOwned(UUID userId, UUID subscriptionId) {
+        if (userId == null || subscriptionId == null) {
+            throw new IllegalArgumentException("subscription lookup fields must not be null");
+        }
+        return subscriptionStore.findActiveOwned(userId, subscriptionId);
+    }
+
+    @Transactional
+    public SubscriptionConditionChangeResult changeToTargetPrice(
+            UUID userId,
+            UUID subscriptionId,
+            RubleAmount targetPrice,
+            Instant now
+    ) {
+        if (userId == null || subscriptionId == null || targetPrice == null || now == null
+                || targetPrice.getMinorUnits() == 0) {
+            throw new IllegalArgumentException("target condition fields are invalid");
+        }
+        Optional<Subscription> active = findActiveOwnedForUpdate(userId, subscriptionId);
+        if (active.isEmpty()) {
+            return SubscriptionConditionChangeResult.of(
+                    SubscriptionConditionChangeResult.Status.NOT_FOUND
+            );
+        }
+        Subscription current = active.orElseThrow();
+        if (current.getNotificationMode() == NotificationMode.TARGET_PRICE
+                && current.getTargetPrice().filter(targetPrice::equals).isPresent()) {
+            return SubscriptionConditionChangeResult.unchanged(current);
+        }
+
+        SubscriptionPriceHistory history = subscriptionStore.findValidPriceHistory(
+                userId,
+                subscriptionId,
+                now
+        );
+        Subscription changed = current.changeToTargetPrice(
+                targetPrice,
+                history.getLatestPrice(),
+                history.getLatestObservedAt()
+        );
+        return persistConditionChange(changed);
+    }
+
+    @Transactional
+    public SubscriptionConditionChangeResult changeToAnyDecrease(
+            UUID userId,
+            UUID subscriptionId,
+            Instant now
+    ) {
+        if (userId == null || subscriptionId == null || now == null) {
+            throw new IllegalArgumentException("minimum condition fields must not be null");
+        }
+        Optional<Subscription> active = findActiveOwnedForUpdate(userId, subscriptionId);
+        if (active.isEmpty()) {
+            return SubscriptionConditionChangeResult.of(
+                    SubscriptionConditionChangeResult.Status.NOT_FOUND
+            );
+        }
+        Subscription current = active.orElseThrow();
+        if (current.getNotificationMode() == NotificationMode.ANY_DECREASE) {
+            return SubscriptionConditionChangeResult.unchanged(current);
+        }
+
+        SubscriptionPriceHistory history = subscriptionStore.findValidPriceHistory(
+                userId,
+                subscriptionId,
+                now
+        );
+        Subscription changed = current.changeToAnyDecrease(
+                history.getMinimumPrice(),
+                history.getLatestObservedAt()
+        );
+        return persistConditionChange(changed);
+    }
+
+    @Transactional(readOnly = true)
     public List<TrackedSubscriptionItem> findActive(UUID userId) {
         if (userId == null) {
             throw new IllegalArgumentException("userId must not be null");
@@ -191,7 +267,7 @@ public class SubscriptionService {
                 mode,
                 Optional.of(target),
                 Optional.empty(),
-                Optional.empty(),
+                currentRegularPrice.map(SubscriptionQuoteObservation::getObservedAt),
                 thresholdState,
                 currentRegularPrice.map(SubscriptionQuoteObservation::getObservedAt),
                 SubscriptionStatus.ACTIVE,
@@ -199,6 +275,26 @@ public class SubscriptionService {
                 Optional.empty(),
                 0
         );
+    }
+
+    private Optional<Subscription> findActiveOwnedForUpdate(
+            UUID userId,
+            UUID subscriptionId
+    ) {
+        if (!userProfileStore.existsAndLockById(userId)) {
+            return Optional.empty();
+        }
+        return subscriptionStore.findActiveOwned(userId, subscriptionId);
+    }
+
+    private SubscriptionConditionChangeResult persistConditionChange(Subscription changed) {
+        NotificationStateUpdateResult update = subscriptionStore.updateConditionIfActive(changed);
+        if (update == NotificationStateUpdateResult.CONFLICT) {
+            return SubscriptionConditionChangeResult.of(
+                    SubscriptionConditionChangeResult.Status.CONFLICT
+            );
+        }
+        return SubscriptionConditionChangeResult.changed(changed);
     }
 
     private void validateCreationInput(

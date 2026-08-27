@@ -37,8 +37,10 @@ import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotEntity;
 import com.priceradar.tracking.infrastructure.persistence.PriceSnapshotJpaRepository;
 import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaRepository;
 import com.priceradar.tracking.application.SubscriptionCreationResult;
+import com.priceradar.tracking.application.SubscriptionConditionChangeResult;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.tracking.domain.NotificationMode;
+import com.priceradar.tracking.domain.Subscription;
 import com.priceradar.telegram.application.PendingTargetPrice;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
 import com.priceradar.user.application.UserProfile;
@@ -176,7 +178,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("12");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("13");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -361,6 +363,98 @@ class PersistenceSmokeTest {
                 .get()
                 .extracting(PendingTargetPrice::getQuoteSnapshotId)
                 .isEqualTo(quote.getSnapshotId());
+
+        UserProfile user = userProfileService.getOrCreate(20001L, 20001L);
+        userRegionService.changeRegion(
+                user.getId(), MarketplaceRegionCode.MOSCOW, now
+        );
+        Subscription subscription = subscriptionService.createFromQuote(
+                user.getId(),
+                quote.getSnapshotId(),
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                now
+        ).getSubscription().orElseThrow();
+        PendingTargetPrice edit = new PendingTargetPrice(
+                20001L,
+                20001L,
+                PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION,
+                subscription.getId(),
+                now.plus(15, ChronoUnit.MINUTES)
+        );
+
+        pendingTargetPriceStore.put(edit, now);
+
+        assertThat(pendingTargetPriceStore.find(20001L, 20001L, now))
+                .get()
+                .satisfies(saved -> {
+                    assertThat(saved.getPurpose())
+                            .isEqualTo(PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION);
+                    assertThat(saved.requireSubscriptionId()).isEqualTo(subscription.getId());
+                });
+    }
+
+    @Test
+    void changesConditionInPlaceAndPreservesSubscriptionStatistics() {
+        Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        PersistedResolvedQuote quote = quotePersistenceService.save(
+                quoteCommand(889999L, createdAt.minusSeconds(5))
+        );
+        UserProfile user = userProfileService.getOrCreate(20002L, 20002L);
+        userRegionService.changeRegion(user.getId(), MarketplaceRegionCode.MOSCOW, createdAt);
+        Subscription original = subscriptionService.createFromQuote(
+                user.getId(), quote.getSnapshotId(), NotificationMode.ANY_DECREASE,
+                Optional.empty(), createdAt
+        ).getSubscription().orElseThrow();
+        saveSnapshot(
+                quote.getWatchTargetId(), createdAt.plusSeconds(60),
+                SnapshotStatus.REGULAR_PRICE, PriceSource.PRODUCT,
+                35_000L, null, true
+        );
+        saveSnapshot(
+                quote.getWatchTargetId(), createdAt.plusSeconds(120),
+                SnapshotStatus.REGULAR_PRICE, PriceSource.PRODUCT,
+                30_000L, null, true
+        );
+        saveSnapshot(
+                quote.getWatchTargetId(), createdAt.plusSeconds(180),
+                SnapshotStatus.REGULAR_PRICE, PriceSource.PRODUCT,
+                36_000L, null, true
+        );
+        Instant statisticsAt = createdAt.plusSeconds(240);
+        SubscriptionStatistics before = subscriptionStatisticsService.calculate(
+                user.getId(), original.getId(), StatisticsPeriod.ALL_TIME, statisticsAt
+        ).orElseThrow();
+
+        SubscriptionConditionChangeResult target = subscriptionService.changeToTargetPrice(
+                user.getId(), original.getId(), RubleAmount.ofMinorUnits(28_000), statisticsAt
+        );
+        SubscriptionStatistics afterTarget = subscriptionStatisticsService.calculate(
+                user.getId(), original.getId(), StatisticsPeriod.ALL_TIME, statisticsAt
+        ).orElseThrow();
+        SubscriptionConditionChangeResult minimum = subscriptionService.changeToAnyDecrease(
+                user.getId(), original.getId(), statisticsAt.plusSeconds(60)
+        );
+        SubscriptionStatistics afterMinimum = subscriptionStatisticsService.calculate(
+                user.getId(), original.getId(), StatisticsPeriod.ALL_TIME,
+                statisticsAt.plusSeconds(60)
+        ).orElseThrow();
+
+        assertThat(target.getSubscription().orElseThrow().getId()).isEqualTo(original.getId());
+        assertThat(minimum.getSubscription().orElseThrow().getId()).isEqualTo(original.getId());
+        assertThat(minimum.getSubscription().orElseThrow().getCreatedAt())
+                .isEqualTo(original.getCreatedAt());
+        assertThat(minimum.getSubscription().orElseThrow().getNotificationReferencePrice())
+                .contains(RubleAmount.ofMinorUnits(30_000));
+        assertThat(minimum.getSubscription().orElseThrow().getLastProcessedPriceObservedAt())
+                .contains(createdAt.plusSeconds(180));
+        assertThat(afterTarget.getMinimumPrice()).isEqualTo(before.getMinimumPrice());
+        assertThat(afterTarget.getFirstPrice()).isEqualTo(before.getFirstPrice());
+        assertThat(afterTarget.getLatestPrice()).isEqualTo(before.getLatestPrice());
+        assertThat(afterMinimum.getMinimumPrice()).isEqualTo(before.getMinimumPrice());
+        assertThat(afterMinimum.getFirstPrice()).isEqualTo(before.getFirstPrice());
+        assertThat(afterMinimum.getLatestPrice()).isEqualTo(before.getLatestPrice());
+        assertThat(notificationOutboxRepository.count()).isZero();
     }
 
     @Test

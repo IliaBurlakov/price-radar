@@ -38,17 +38,24 @@ public class JpaPendingTargetPriceStore implements PendingTargetPriceStore {
         );
         jdbcTemplate.update("""
                 INSERT INTO telegram_pending_target_prices (
-                    telegram_user_id, chat_id, quote_snapshot_id, expires_at, created_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    telegram_user_id, chat_id, purpose, quote_snapshot_id,
+                    subscription_id, expires_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (telegram_user_id) DO UPDATE
                 SET chat_id = EXCLUDED.chat_id,
+                    purpose = EXCLUDED.purpose,
                     quote_snapshot_id = EXCLUDED.quote_snapshot_id,
+                    subscription_id = EXCLUDED.subscription_id,
                     expires_at = EXCLUDED.expires_at,
                     created_at = EXCLUDED.created_at
                 """,
                 pending.getTelegramUserId(),
                 pending.getChatId(),
-                pending.getQuoteSnapshotId(),
+                pending.getPurpose().name(),
+                pending.getPurpose() == PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION
+                        ? pending.getReferenceId() : null,
+                pending.getPurpose() == PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION
+                        ? pending.getReferenceId() : null,
                 Timestamp.from(pending.getExpiresAt()),
                 Timestamp.from(now)
         );
@@ -63,7 +70,8 @@ public class JpaPendingTargetPriceStore implements PendingTargetPriceStore {
     ) {
         validateIdentity(telegramUserId, chatId, now);
         List<PendingTargetPrice> found = jdbcTemplate.query("""
-                SELECT telegram_user_id, chat_id, quote_snapshot_id, expires_at
+                SELECT telegram_user_id, chat_id, purpose, quote_snapshot_id,
+                       subscription_id, expires_at
                 FROM telegram_pending_target_prices
                 WHERE telegram_user_id = ?
                 """, this::map, telegramUserId);
@@ -89,21 +97,43 @@ public class JpaPendingTargetPriceStore implements PendingTargetPriceStore {
                         DELETE FROM telegram_pending_target_prices
                         WHERE telegram_user_id = ?
                           AND chat_id = ?
-                          AND quote_snapshot_id = ?
+                          AND purpose = ?
+                          AND COALESCE(quote_snapshot_id, subscription_id) = ?
                           AND expires_at = ?
                         """,
                 pending.getTelegramUserId(),
                 pending.getChatId(),
-                pending.getQuoteSnapshotId(),
+                pending.getPurpose().name(),
+                pending.getReferenceId(),
                 Timestamp.from(pending.getExpiresAt())
         );
     }
 
+    @Override
+    @Transactional
+    public void remove(long telegramUserId, long chatId) {
+        if (telegramUserId <= 0 || chatId <= 0) {
+            throw new IllegalArgumentException("Telegram identifiers must be positive");
+        }
+        jdbcTemplate.update(
+                "DELETE FROM telegram_pending_target_prices WHERE telegram_user_id = ? AND chat_id = ?",
+                telegramUserId,
+                chatId
+        );
+    }
+
     private PendingTargetPrice map(ResultSet resultSet, int rowNumber) throws SQLException {
+        PendingTargetPrice.Purpose purpose = PendingTargetPrice.Purpose.valueOf(
+                resultSet.getString("purpose")
+        );
+        String referenceColumn = purpose == PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION
+                ? "quote_snapshot_id"
+                : "subscription_id";
         return new PendingTargetPrice(
                 resultSet.getLong("telegram_user_id"),
                 resultSet.getLong("chat_id"),
-                resultSet.getObject("quote_snapshot_id", UUID.class),
+                purpose,
+                resultSet.getObject(referenceColumn, UUID.class),
                 resultSet.getTimestamp("expires_at").toInstant()
         );
     }

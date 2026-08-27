@@ -21,6 +21,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 
 class SubscriptionServiceTest {
@@ -256,6 +257,121 @@ class SubscriptionServiceTest {
         verify(subscriptionStore, org.mockito.Mockito.times(2)).end(any());
     }
 
+    @Test
+    void changesAnyDecreaseToTargetInPlaceWithoutResettingIdentityOrTrackingPeriod() {
+        UUID userId = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+        Instant processedAt = createdAt.plusSeconds(120);
+        Subscription current = new Subscription(
+                subscriptionId, userId, UUID.randomUUID(), NotificationMode.ANY_DECREASE,
+                Optional.empty(), Optional.of(RubleAmount.ofMinorUnits(30_000)),
+                Optional.of(processedAt), ThresholdState.NOT_APPLICABLE, Optional.empty(),
+                SubscriptionStatus.ACTIVE, createdAt, Optional.empty(), 4
+        );
+        editable(userId, current, new SubscriptionPriceHistory(
+                Optional.of(RubleAmount.ofMinorUnits(30_000)),
+                Optional.of(RubleAmount.ofMinorUnits(30_000)),
+                Optional.of(processedAt)
+        ));
+
+        SubscriptionConditionChangeResult result = service.changeToTargetPrice(
+                userId, subscriptionId, RubleAmount.ofMinorUnits(35_000),
+                createdAt.plusSeconds(180)
+        );
+
+        Subscription changed = result.getSubscription().orElseThrow();
+        assertThat(result.getStatus()).isEqualTo(SubscriptionConditionChangeResult.Status.CHANGED);
+        assertThat(changed.getId()).isEqualTo(subscriptionId);
+        assertThat(changed.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(changed.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(changed.getNotificationMode()).isEqualTo(NotificationMode.TARGET_PRICE);
+        assertThat(changed.getTargetPrice()).contains(RubleAmount.ofMinorUnits(35_000));
+        assertThat(changed.getThresholdState()).isEqualTo(ThresholdState.ABOVE_TARGET);
+        assertThat(changed.getThresholdObservedAt()).contains(processedAt);
+        assertThat(changed.getLastProcessedPriceObservedAt()).contains(processedAt);
+        verify(subscriptionStore, never()).create(any());
+        verify(subscriptionStore, never()).end(any());
+        verifyNoInteractions(thresholdNotificationEnqueuer);
+    }
+
+    @Test
+    void changesExistingTargetPriceOnTheSameSubscription() {
+        UUID userId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+        Subscription current = targetSubscription(
+                userId, createdAt, RubleAmount.ofMinorUnits(35_000)
+        );
+        editable(userId, current, SubscriptionPriceHistory.empty());
+
+        SubscriptionConditionChangeResult result = service.changeToTargetPrice(
+                userId, current.getId(), RubleAmount.ofMinorUnits(30_000),
+                createdAt.plusSeconds(300)
+        );
+
+        assertThat(result.getSubscription().orElseThrow().getId()).isEqualTo(current.getId());
+        assertThat(result.getSubscription().orElseThrow().getTargetPrice())
+                .contains(RubleAmount.ofMinorUnits(30_000));
+        assertThat(result.getSubscription().orElseThrow().getCreatedAt()).isEqualTo(createdAt);
+        verify(subscriptionStore, never()).create(any());
+    }
+
+    @Test
+    void restoresSubscriptionMinimumWhenChangingTargetBackToAnyDecrease() {
+        UUID userId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+        Instant latestAt = createdAt.plusSeconds(240);
+        Subscription current = targetSubscription(
+                userId, createdAt, RubleAmount.ofMinorUnits(28_000)
+        );
+        editable(userId, current, new SubscriptionPriceHistory(
+                Optional.of(RubleAmount.ofMinorUnits(30_000)),
+                Optional.of(RubleAmount.ofMinorUnits(36_000)),
+                Optional.of(latestAt)
+        ));
+
+        SubscriptionConditionChangeResult result = service.changeToAnyDecrease(
+                userId, current.getId(), createdAt.plusSeconds(300)
+        );
+
+        Subscription changed = result.getSubscription().orElseThrow();
+        assertThat(changed.getId()).isEqualTo(current.getId());
+        assertThat(changed.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(changed.getTargetPrice()).isEmpty();
+        assertThat(changed.getNotificationReferencePrice())
+                .contains(RubleAmount.ofMinorUnits(30_000));
+        assertThat(changed.getLastProcessedPriceObservedAt()).contains(latestAt);
+
+        com.priceradar.notification.application.NotificationDecisionService decisions =
+                new com.priceradar.notification.application.NotificationDecisionService();
+        var aboveMinimum = decisions.evaluate(
+                changed,
+                regularObservation(changed, 32_000, latestAt.plusSeconds(60))
+        );
+        var newMinimum = decisions.evaluate(
+                aboveMinimum.getSubscription(),
+                regularObservation(changed, 29_000, latestAt.plusSeconds(120))
+        );
+        assertThat(aboveMinimum.getNotificationIntent()).isEmpty();
+        assertThat(newMinimum.getNotificationIntent()).isPresent();
+    }
+
+    @Test
+    void rejectsMissingEndedOrForeignSubscriptionAndLeavesStateUntouched() {
+        UUID userId = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        when(userStore.existsAndLockById(userId)).thenReturn(true);
+        when(subscriptionStore.findActiveOwned(userId, subscriptionId)).thenReturn(Optional.empty());
+
+        SubscriptionConditionChangeResult result = service.changeToAnyDecrease(
+                userId, subscriptionId, Instant.parse("2026-01-01T00:10:00Z")
+        );
+
+        assertThat(result.getStatus()).isEqualTo(SubscriptionConditionChangeResult.Status.NOT_FOUND);
+        verify(subscriptionStore, never()).updateConditionIfActive(any());
+        verify(subscriptionStore, never()).findValidPriceHistory(any(), any(), any());
+    }
+
     private void lockedUser(UUID userId) {
         when(userStore.findByIdAndLock(userId)).thenReturn(Optional.of(new UserProfile(
                 userId, 1L, 1L, moscow(), UserPricePreferences.defaults()
@@ -269,6 +385,54 @@ class SubscriptionServiceTest {
                 Optional.of(now.minusSeconds(60)), ThresholdState.NOT_APPLICABLE,
                 Optional.empty(), SubscriptionStatus.ACTIVE, now.minusSeconds(120),
                 Optional.empty(), 0
+        );
+    }
+
+    private void editable(
+            UUID userId,
+            Subscription subscription,
+            SubscriptionPriceHistory history
+    ) {
+        when(userStore.existsAndLockById(userId)).thenReturn(true);
+        when(subscriptionStore.findActiveOwned(userId, subscription.getId()))
+                .thenReturn(Optional.of(subscription));
+        when(subscriptionStore.findValidPriceHistory(
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq(subscription.getId()),
+                any()
+        )).thenReturn(history);
+        when(subscriptionStore.updateConditionIfActive(any()))
+                .thenReturn(NotificationStateUpdateResult.UPDATED);
+    }
+
+    private Subscription targetSubscription(
+            UUID userId,
+            Instant createdAt,
+            RubleAmount targetPrice
+    ) {
+        return new Subscription(
+                UUID.randomUUID(), userId, UUID.randomUUID(), NotificationMode.TARGET_PRICE,
+                Optional.of(targetPrice), Optional.empty(), Optional.of(createdAt.plusSeconds(240)),
+                ThresholdState.ABOVE_TARGET, Optional.of(createdAt.plusSeconds(240)),
+                SubscriptionStatus.ACTIVE, createdAt, Optional.empty(), 3
+        );
+    }
+
+    private com.priceradar.notification.application.NotificationObservation regularObservation(
+            Subscription subscription,
+            long priceMinor,
+            Instant observedAt
+    ) {
+        return new com.priceradar.notification.application.NotificationObservation(
+                UUID.randomUUID(),
+                subscription.getWatchTargetId(),
+                new com.priceradar.pricing.application.InterpretedPrice(
+                        Optional.of(RubleAmount.ofMinorUnits(priceMinor)),
+                        Optional.empty(),
+                        Optional.of(com.priceradar.pricing.domain.PriceSource.PRODUCT),
+                        com.priceradar.pricing.domain.SnapshotStatus.REGULAR_PRICE
+                ),
+                observedAt
         );
     }
 }

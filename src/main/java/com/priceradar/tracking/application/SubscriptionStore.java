@@ -5,6 +5,7 @@ import com.priceradar.tracking.domain.Subscription;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 public interface SubscriptionStore {
 
@@ -29,9 +30,17 @@ public interface SubscriptionStore {
 
     Optional<SubscriptionQuoteObservation> findQuoteObservation(UUID snapshotId);
 
+    SubscriptionPriceHistory findValidPriceHistory(
+            UUID userId,
+            UUID subscriptionId,
+            Instant observedToInclusive
+    );
+
     Subscription create(Subscription subscription);
 
     NotificationStateUpdateResult updateNotificationStateIfActive(Subscription subscription);
+
+    NotificationStateUpdateResult updateConditionIfActive(Subscription subscription);
 
     Subscription end(Subscription subscription);
 }
