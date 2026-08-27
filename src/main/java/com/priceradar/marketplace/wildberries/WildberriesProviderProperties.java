@@ -13,6 +13,7 @@ public final class WildberriesProviderProperties {
             "https://wbx-api-gateway.wildberries.ru/share-basket/api/v1/basket/"
     );
     private URI sharedBasketCardsEndpoint = URI.create("https://card.wb.ru/cards/v4/list");
+    private URI geoEndpoint = URI.create("https://user-geo-data.wildberries.ru/get-geo-info");
     private Duration minRequestDelay = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(10);
     private Duration cacheTtl = Duration.ofMinutes(5);
@@ -23,6 +24,8 @@ public final class WildberriesProviderProperties {
     private Duration maxBackoff = Duration.ofMinutes(1);
     private Duration maxRetryAfter = Duration.ofHours(24);
     private int maxResponseBytes = 2 * 1024 * 1024;
+    private Duration geoTimeout = Duration.ofSeconds(10);
+    private int geoMaxResponseBytes = 256 * 1024;
     private Duration rateLimitCooldown = Duration.ofMinutes(15);
     private Duration accessForbiddenCooldown = Duration.ofMinutes(30);
     private Duration serverErrorCooldown = Duration.ofMinutes(5);
@@ -52,6 +55,13 @@ public final class WildberriesProviderProperties {
     public void setSharedBasketCardsEndpoint(URI sharedBasketCardsEndpoint) {
         this.sharedBasketCardsEndpoint = sharedBasketCardsEndpoint;
     }
+
+    public URI getGeoEndpoint() { return geoEndpoint; }
+    public void setGeoEndpoint(URI geoEndpoint) { this.geoEndpoint = geoEndpoint; }
+    public Duration getGeoTimeout() { return geoTimeout; }
+    public void setGeoTimeout(Duration geoTimeout) { this.geoTimeout = geoTimeout; }
+    public int getGeoMaxResponseBytes() { return geoMaxResponseBytes; }
+    public void setGeoMaxResponseBytes(int geoMaxResponseBytes) { this.geoMaxResponseBytes = geoMaxResponseBytes; }
 
     public Duration getMinRequestDelay() {
         return minRequestDelay;

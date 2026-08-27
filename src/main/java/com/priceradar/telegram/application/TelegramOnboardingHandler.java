@@ -30,8 +30,16 @@ public final class TelegramOnboardingHandler {
         if (profile.isRegionSelected()) {
             return false;
         }
-        regionHandler.showOnboarding(profile);
+        if (TelegramBotCommand.isCommandText(message.getText()) || containsWildberriesLink(message.getText())) {
+            regionHandler.showOnboarding(profile);
+        } else {
+            regionHandler.handleMessage(message);
+        }
         return true;
+    }
+
+    private boolean containsWildberriesLink(String text) {
+        return text != null && text.toLowerCase(java.util.Locale.ROOT).contains("wildberries.ru");
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
@@ -44,9 +52,6 @@ public final class TelegramOnboardingHandler {
         );
         if (profile.isRegionSelected()) {
             return false;
-        }
-        if (regionHandler.supportsCallback(callback)) {
-            return regionHandler.handleCallback(callback);
         }
         regionHandler.showOnboarding(profile);
         return true;

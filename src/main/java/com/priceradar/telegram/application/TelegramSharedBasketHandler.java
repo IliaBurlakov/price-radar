@@ -80,7 +80,7 @@ public class TelegramSharedBasketHandler {
             telegramGateway.sendMessage(expired(callback.getChatId()));
             return true;
         }
-        if (preview.orElseThrow().getRegionCode() != user.getRegion().getCode()) {
+        if (!preview.orElseThrow().getLocationId().equals(user.getLocation().orElseThrow().getId())) {
             telegramGateway.sendMessage(previousRegionImport(callback.getChatId()));
             return true;
         }

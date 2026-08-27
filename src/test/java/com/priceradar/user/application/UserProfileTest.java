@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class UserProfileTest {
@@ -16,9 +15,8 @@ class UserProfileTest {
                 UUID.randomUUID(),
                 7001L,
                 7001L,
-                moscow(),
-                UserPricePreferences.defaults(),
-                false
+                null,
+                UserPricePreferences.defaults()
         );
 
         assertThatThrownBy(profile::getPriceContext)

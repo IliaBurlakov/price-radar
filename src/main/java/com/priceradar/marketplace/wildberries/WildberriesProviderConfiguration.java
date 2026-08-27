@@ -5,6 +5,8 @@ import com.priceradar.marketplace.application.ProviderAccessCoordinator;
 import com.priceradar.marketplace.application.ProviderCooldownStore;
 import com.priceradar.marketplace.domain.Marketplace;
 import com.priceradar.pricing.application.PriceSemanticsService;
+import com.priceradar.region.application.WildberriesGeoProvider;
+import com.priceradar.region.application.GeoLocationLabelFormatter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -115,6 +117,27 @@ public class WildberriesProviderConfiguration {
                 properties.getServerErrorCooldown(),
                 properties.getInvalidResponseCooldown(),
                 providerClock
+        );
+    }
+
+    @Bean
+    public WildberriesGeoProvider wildberriesGeoProvider(
+            HttpClient wildberriesHttpClient,
+            ObjectMapper objectMapper,
+            ProviderAccessCoordinator accessCoordinator,
+            WildberriesProviderProperties properties,
+            Clock providerClock,
+            GeoLocationLabelFormatter locationLabelFormatter
+    ) {
+        return new WildberriesGeoHttpProvider(
+                wildberriesHttpClient,
+                objectMapper,
+                accessCoordinator,
+                properties.getGeoEndpoint(),
+                properties.getGeoTimeout(),
+                properties.getGeoMaxResponseBytes(),
+                providerClock,
+                locationLabelFormatter
         );
     }
 }

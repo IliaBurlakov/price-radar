@@ -1,7 +1,7 @@
 package com.priceradar.user.infrastructure.persistence;
 
-import com.priceradar.region.application.MarketplaceRegionStore;
-import com.priceradar.region.domain.MarketplaceRegion;
+import com.priceradar.region.application.GeoLocationCatalog;
+import com.priceradar.region.domain.ResolvedLocation;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileStore;
 import com.priceradar.user.domain.UserPricePreferences;
@@ -15,14 +15,14 @@ import java.util.UUID;
 public class JpaUserProfileStore implements UserProfileStore {
 
     private final UserProfileJpaRepository profileRepository;
-    private final MarketplaceRegionStore regionStore;
+    private final GeoLocationCatalog locationCatalog;
 
     public JpaUserProfileStore(
             UserProfileJpaRepository profileRepository,
-            MarketplaceRegionStore regionStore
+            GeoLocationCatalog locationCatalog
     ) {
         this.profileRepository = profileRepository;
-        this.regionStore = regionStore;
+        this.locationCatalog = locationCatalog;
     }
 
     @Override
@@ -48,7 +48,6 @@ public class JpaUserProfileStore implements UserProfileStore {
     public UserProfile create(
             long telegramUserId,
             long telegramChatId,
-            MarketplaceRegion region,
             UserPricePreferences pricePreferences,
             Instant createdAt
     ) {
@@ -56,8 +55,6 @@ public class JpaUserProfileStore implements UserProfileStore {
                 UUID.randomUUID(),
                 telegramUserId,
                 telegramChatId,
-                region.getCode().name(),
-                false,
                 pricePreferences.getWalletDiscountPercent(),
                 createdAt,
                 createdAt
@@ -76,10 +73,10 @@ public class JpaUserProfileStore implements UserProfileStore {
     }
 
     @Override
-    public UserProfile updateRegion(UserProfile profile, MarketplaceRegion region, Instant updatedAt) {
+    public UserProfile updateLocation(UserProfile profile, ResolvedLocation location, Instant updatedAt) {
         UserProfileEntity entity = profileRepository.findById(profile.getId())
                 .orElseThrow(() -> new IllegalStateException("User profile no longer exists"));
-        entity.updateRegion(region.getCode(), updatedAt);
+        entity.updateLocation(location.getLocation().getId(), updatedAt);
         return toProfile(entity);
     }
 
@@ -88,10 +85,9 @@ public class JpaUserProfileStore implements UserProfileStore {
                 entity.getId(),
                 entity.getTelegramUserId(),
                 entity.getTelegramChatId(),
-                regionStore.findByCode(entity.getRegionCode())
-                        .orElseThrow(() -> new IllegalStateException("User region no longer exists")),
-                new UserPricePreferences(entity.getWalletDiscountPercent()),
-                entity.isRegionSelected()
+                entity.getLocationId() == null ? null : locationCatalog.findById(entity.getLocationId())
+                        .orElseThrow(() -> new IllegalStateException("User location no longer exists")),
+                new UserPricePreferences(entity.getWalletDiscountPercent())
         );
     }
 }

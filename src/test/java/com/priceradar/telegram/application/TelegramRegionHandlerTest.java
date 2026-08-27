@@ -1,201 +1,183 @@
 package com.priceradar.telegram.application;
 
-import com.priceradar.region.application.RegionChangeResult;
-import com.priceradar.region.application.UserRegionService;
-import com.priceradar.region.domain.MarketplaceRegionCode;
+import com.priceradar.region.application.CitySelectionResult;
+import com.priceradar.region.application.CitySelectionService;
+import com.priceradar.region.application.PendingCitySelection;
+import com.priceradar.region.application.GeoLocationLabelFormatter;
+import com.priceradar.region.domain.GeoCandidate;
+import com.priceradar.region.domain.ResolvedLocation;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
 import com.priceradar.user.domain.UserPricePreferences;
-import com.priceradar.product.application.ResolvedQuoteResult;
-import com.priceradar.product.application.ResolvedQuoteService;
-import com.priceradar.product.application.ProductUrlParser;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import static com.priceradar.testsupport.TestMarketplaceRegions.irkutsk;
-import static com.priceradar.testsupport.TestMarketplaceRegions.bratsk;
 import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TelegramRegionHandlerTest {
 
     private static final long TELEGRAM_ID = 7001L;
-    private static final Instant NOW = Instant.parse("2026-08-25T10:00:00Z");
+    private static final Instant NOW = Instant.parse("2026-08-27T10:00:00Z");
 
     @Test
-    void regionScreenMarksCurrentCityWithoutExposingProviderDestination() {
-        UserProfileService users = mock(UserProfileService.class);
-        UserRegionService regions = mock(UserRegionService.class);
-        TelegramGateway gateway = mock(TelegramGateway.class);
-        UserProfile profile = profile(moscow());
-        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
-        when(regions.listEnabled()).thenReturn(List.of(moscow(), irkutsk()));
-        TelegramRegionHandler handler = handler(users, regions, gateway);
+    void screenRequestsCityTextWithoutExposingProviderContext() {
+        Context context = context(profile(moscow(), true));
 
-        handler.show(TELEGRAM_ID, TELEGRAM_ID);
+        context.handler.show(TELEGRAM_ID, TELEGRAM_ID);
 
-        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
-        verify(gateway).sendMessage(message.capture());
-        assertThat(message.getValue().getText())
-                .contains("Город", "Сейчас выбран: Москва")
-                .doesNotContain("1259570991", "dest");
-        assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
-                .extracting(TelegramInlineButton::getText)
-                .containsExactly("✓ Москва", "Иркутск", "← Назад");
+        OutgoingTelegramMessage message = captured(context.gateway);
+        assertThat(message.getText())
+                .contains("Выберите город", "Введите название", "Сейчас выбран: Москва")
+                .doesNotContain("1259570991", "dest", "spp");
+        verify(context.selection).begin(context.profile, NOW);
     }
 
     @Test
-    void onboardingPickerDoesNotPretendThatMoscowWasSelected() {
-        UserProfileService users = mock(UserProfileService.class);
-        UserRegionService regions = mock(UserRegionService.class);
-        TelegramGateway gateway = mock(TelegramGateway.class);
-        UserProfile profile = profile(moscow(), false);
-        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
-        when(regions.listEnabled()).thenReturn(List.of(moscow(), irkutsk()));
-        TelegramRegionHandler handler = handler(users, regions, gateway);
-
-        handler.show(TELEGRAM_ID, TELEGRAM_ID);
-
-        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
-        verify(gateway).sendMessage(message.capture());
-        assertThat(message.getValue().getText())
-                .contains("Добро пожаловать", "Перед началом выберите город")
-                .doesNotContain("Сейчас выбран");
-        assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
-                .extracting(TelegramInlineButton::getText)
-                .containsExactly("Москва", "Иркутск");
-    }
-
-    @Test
-    void firstRegionSelectionConfirmsCityAndShowsMainNavigation() {
-        UserProfileService users = mock(UserProfileService.class);
-        UserRegionService regions = mock(UserRegionService.class);
-        TelegramGateway gateway = mock(TelegramGateway.class);
-        UserProfile profile = profile(moscow(), false);
-        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
-        when(regions.changeRegion(profile.getId(), MarketplaceRegionCode.BRATSK, NOW))
-                .thenReturn(RegionChangeResult.withRegion(
-                        RegionChangeResult.Status.SELECTED,
-                        bratsk()
-                ));
-        TelegramRegionHandler handler = handler(users, regions, gateway);
-
-        handler.handleCallback(new IncomingTelegramCallback(
-                "callback", TELEGRAM_ID, TELEGRAM_ID, "private",
-                RegionCallbackData.select(MarketplaceRegionCode.BRATSK)
+    void oneResultIsConfirmedAndShowsMainNavigation() {
+        UserProfile profile = profile(null, false);
+        Context context = context(profile);
+        ResolvedLocation selected = moscow();
+        when(context.selection.hasPending(profile, NOW)).thenReturn(true);
+        when(context.selection.pending(profile, NOW)).thenReturn(Optional.of(
+                new PendingCitySelection(UUID.randomUUID(), profile.getId(), List.of(),
+                        NOW.minusSeconds(1), NOW.plusSeconds(60))
         ));
-
-        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
-        verify(gateway).sendMessage(message.capture());
-        assertThat(message.getValue().getText()).contains(
-                "Город выбран: Братск",
-                "Теперь можно добавлять товары и импортировать корзину"
+        when(context.selection.search(profile, "Москва", NOW)).thenReturn(
+                CitySelectionResult.selected(CitySelectionResult.Status.SELECTED, selected)
         );
-        assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
-                .extracting(TelegramInlineButton::getText)
-                .contains("Добавить товар", "Импортировать корзину", "Мои товары");
+
+        assertThat(context.handler.handleMessage(message("Москва"))).isTrue();
+
+        var messages = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(context.gateway, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
+        assertThat(messages.getAllValues().getFirst().getText()).contains("Ищу населённый пункт");
+        assertThat(messages.getAllValues().getLast().getText()).contains("Город выбран: Москва");
+        assertThat(messages.getAllValues().getLast().getInlineKeyboard()).isNotEmpty();
     }
 
     @Test
-    void blockedChangeOffersClearAllAndDoesNotHideTheReason() {
-        UserProfileService users = mock(UserProfileService.class);
-        UserRegionService regions = mock(UserRegionService.class);
-        TelegramGateway gateway = mock(TelegramGateway.class);
-        UserProfile profile = profile(moscow());
-        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
-        when(regions.changeRegion(profile.getId(), MarketplaceRegionCode.IRKUTSK, NOW))
-                .thenReturn(RegionChangeResult.blocked(irkutsk(), 5));
-        TelegramRegionHandler handler = handler(users, regions, gateway);
+    void ambiguousResultUsesShortLabelsAndInvalidNumberKeepsPrompt() {
+        UserProfile profile = profile(null, false);
+        Context context = context(profile);
+        GeoCandidate first = candidate("Киров", "Кировская область", null, 58.60, 49.66);
+        GeoCandidate second = candidate("Киров", "Калужская область", null, 54.08, 34.30);
+        PendingCitySelection pending = new PendingCitySelection(
+                UUID.randomUUID(), profile.getId(), List.of(first, second),
+                NOW.minusSeconds(1), NOW.plusSeconds(60)
+        );
+        when(context.selection.hasPending(profile, NOW)).thenReturn(true);
+        when(context.selection.pending(profile, NOW)).thenReturn(Optional.of(pending));
+        when(context.selection.choose(profile, 7, NOW)).thenReturn(
+                CitySelectionResult.status(CitySelectionResult.Status.INVALID_NUMBER)
+        );
 
-        handler.handleCallback(new IncomingTelegramCallback(
-                "callback", TELEGRAM_ID, TELEGRAM_ID, "private",
-                RegionCallbackData.select(MarketplaceRegionCode.IRKUTSK)
+        context.handler.handleMessage(message("7"));
+
+        assertThat(captured(context.gateway).getText()).isEqualTo("Введите номер от 1 до 2.");
+    }
+
+    @Test
+    void newTextWhileOptionsArePendingStartsFreshSearch() {
+        UserProfile profile = profile(null, false);
+        Context context = context(profile);
+        when(context.selection.hasPending(profile, NOW)).thenReturn(true);
+        when(context.selection.pending(profile, NOW)).thenReturn(Optional.of(
+                new PendingCitySelection(UUID.randomUUID(), profile.getId(),
+                        List.of(candidate("Киров", "Кировская область", null, 58.60, 49.66)),
+                        NOW.minusSeconds(1), NOW.plusSeconds(60))
         ));
-
-        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
-        verify(gateway).sendMessage(message.capture());
-        assertThat(message.getValue().getText()).contains(
-                "нельзя изменить город", "активные отслеживания: 5",
-                "сначала остановите все активные отслеживания"
+        when(context.selection.search(profile, "Томск", NOW)).thenReturn(
+                CitySelectionResult.status(CitySelectionResult.Status.NOT_FOUND)
         );
-        assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
-                .extracting(TelegramInlineButton::getText)
-                .containsExactly("🧹 Очистить все", "Мои товары", "← К городам");
+
+        context.handler.handleMessage(message("Томск"));
+
+        verify(context.selection).search(profile, "Томск", NOW);
     }
 
     @Test
-    void productQuoteUsesTheUsersCurrentRegionContext() {
+    void wildberriesUrlIsNotHandledAsCityAfterPendingSelectionWasCancelled() {
+        UserProfile profile = profile(moscow(), true);
+        Context context = context(profile);
+        when(context.selection.hasPending(profile, NOW)).thenReturn(false);
+        IncomingTelegramMessage productUrl = message(
+                "https://www.wildberries.ru/catalog/123/detail.aspx"
+        );
+
+        assertThat(context.handler.handleMessage(productUrl)).isFalse();
+
+        verify(context.selection, never()).search(profile, productUrl.getText(), NOW);
+    }
+
+    private Context context(UserProfile profile) {
         UserProfileService users = mock(UserProfileService.class);
-        ResolvedQuoteService quotes = mock(ResolvedQuoteService.class);
-        TelegramQuoteMessageFactory messages = mock(TelegramQuoteMessageFactory.class);
+        CitySelectionService selection = mock(CitySelectionService.class);
         TelegramGateway gateway = mock(TelegramGateway.class);
-        UserProfile profile = profile(irkutsk());
-        String url = "https://www.wildberries.ru/catalog/123456/detail.aspx";
-        ResolvedQuoteResult failure = ResolvedQuoteResult.failure(
-                ResolvedQuoteResult.FailureCode.VARIANT_NOT_RESOLVED, "not resolved"
-        );
-        OutgoingTelegramMessage response = new OutgoingTelegramMessage(
-                TELEGRAM_ID, "failure", List.of()
-        );
         when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
-        when(quotes.resolve(url, irkutsk().toPriceContext())).thenReturn(failure);
-        when(messages.createFailureMessage(TELEGRAM_ID, failure)).thenReturn(response);
-
-        new TelegramCurrentQuoteHandler(
-                new WildberriesLinkExtractor(new ProductUrlParser(), new com.priceradar.sharedbasket.application.SharedBasketUrlParser(), 50),
-                users, quotes,
-                mock(com.priceradar.product.application.ResolvedQuoteBatchService.class),
-                messages,
-                new TelegramMultiProductQuoteMessageFactory(
-                        new MultiProductQuoteCallbackCodec("01234567890123456789012345678901"), 50
-                ),
-                new MultiProductQuoteCallbackCodec("01234567890123456789012345678901"),
-                mock(MultiProductQuoteSessionStore.class),
-                mock(com.priceradar.tracking.application.SubscriptionService.class),
-                gateway,
-                Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofMinutes(15), 50
-        ).handle(
-                new IncomingTelegramMessage(TELEGRAM_ID, TELEGRAM_ID, "private", url)
-        );
-
-        verify(quotes).resolve(url, irkutsk().toPriceContext());
-        var sent = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
-        verify(gateway, org.mockito.Mockito.times(2)).sendMessage(sent.capture());
-        assertThat(sent.getAllValues().getFirst().getText())
-                .isEqualTo("⏳ Ваш запрос обрабатывается...");
-        assertThat(sent.getAllValues().getLast()).isEqualTo(response);
-    }
-
-    private TelegramRegionHandler handler(
-            UserProfileService users,
-            UserRegionService regions,
-            TelegramGateway gateway
-    ) {
-        return new TelegramRegionHandler(
-                users, regions, gateway, Clock.fixed(NOW, ZoneOffset.UTC)
+        return new Context(
+                profile, selection, gateway,
+                new TelegramRegionHandler(
+                        users, selection, gateway, Clock.fixed(NOW, ZoneOffset.UTC),
+                        new GeoLocationLabelFormatter()
+                )
         );
     }
 
-    private UserProfile profile(com.priceradar.region.domain.MarketplaceRegion region) {
-        return profile(region, true);
-    }
-
-    private UserProfile profile(
-            com.priceradar.region.domain.MarketplaceRegion region,
-            boolean selected
-    ) {
+    private UserProfile profile(ResolvedLocation location, boolean selected) {
         return new UserProfile(
                 UUID.randomUUID(), TELEGRAM_ID, TELEGRAM_ID,
-                region, UserPricePreferences.defaults(), selected
+                selected ? location : null, UserPricePreferences.defaults()
         );
+    }
+
+    private GeoCandidate candidate(
+            String name, String region, String district, double latitude, double longitude
+    ) {
+        return new GeoCandidate(
+                name, region, district, "Россия", BigDecimal.valueOf(latitude),
+                BigDecimal.valueOf(longitude), "relation", UUID.randomUUID().toString(),
+                "place", "city", 0.8, 16
+        );
+    }
+
+    private IncomingTelegramMessage message(String text) {
+        return new IncomingTelegramMessage(TELEGRAM_ID, TELEGRAM_ID, "private", text);
+    }
+
+    private OutgoingTelegramMessage captured(TelegramGateway gateway) {
+        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(gateway).sendMessage(message.capture());
+        return message.getValue();
+    }
+
+    private static final class Context {
+        private final UserProfile profile;
+        private final CitySelectionService selection;
+        private final TelegramGateway gateway;
+        private final TelegramRegionHandler handler;
+
+        private Context(
+                UserProfile profile,
+                CitySelectionService selection,
+                TelegramGateway gateway,
+                TelegramRegionHandler handler
+        ) {
+            this.profile = profile;
+            this.selection = selection;
+            this.gateway = gateway;
+            this.handler = handler;
+        }
     }
 }

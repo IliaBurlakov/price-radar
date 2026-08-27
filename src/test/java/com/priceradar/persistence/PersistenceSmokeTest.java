@@ -27,7 +27,6 @@ import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.statistics.domain.StatisticsPeriod;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImport;
-import com.priceradar.region.domain.MarketplaceRegionCode;
 import com.priceradar.region.application.RegionChangeResult;
 import com.priceradar.region.application.UserRegionService;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImportStore;
@@ -178,7 +177,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("13");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("15");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -191,8 +190,8 @@ class PersistenceSmokeTest {
         UserProfile created = userProfileService.getOrCreate(telegramId, telegramId);
         assertThat(created.isRegionSelected()).isFalse();
 
-        RegionChangeResult selected = userRegionService.changeRegion(
-                created.getId(), MarketplaceRegionCode.MOSCOW, now
+        RegionChangeResult selected = userRegionService.changeLocation(
+                created.getId(), com.priceradar.testsupport.TestMarketplaceRegions.moscow(), now
         );
         assertThat(selected.getStatus()).isEqualTo(RegionChangeResult.Status.SELECTED);
         assertThat(userProfileService.getOrCreate(telegramId, telegramId).isRegionSelected())
@@ -202,8 +201,6 @@ class PersistenceSmokeTest {
                 UUID.randomUUID(),
                 telegramId,
                 telegramId + 1,
-                MarketplaceRegionCode.MOSCOW.name(),
-                false,
                 3,
                 now.plusSeconds(1),
                 now.plusSeconds(1)
@@ -226,7 +223,7 @@ class PersistenceSmokeTest {
         UserProfile user = userProfileService.getOrCreate(21001L, 21001L);
         UserProfile anotherUser = userProfileService.getOrCreate(21002L, 21002L);
         PendingSharedBasketImport pendingImport = new PendingSharedBasketImport(
-                UUID.randomUUID(), user.getId(), MarketplaceRegionCode.MOSCOW, 3, 2, 0,
+                UUID.randomUUID(), user.getId(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 3, 2, 0,
                 List.of(new PendingUnavailableSharedBasketItem(0, "Unavailable — XXL")),
                 List.of(
                         new PendingSharedBasketItem(
@@ -261,7 +258,7 @@ class PersistenceSmokeTest {
                 .isEmpty();
 
         PendingSharedBasketImport replacement = new PendingSharedBasketImport(
-                UUID.randomUUID(), user.getId(), MarketplaceRegionCode.MOSCOW, 1, 1, 0, List.of(),
+                UUID.randomUUID(), user.getId(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 1, 1, 0, List.of(),
                 List.of(new PendingSharedBasketItem(
                         0, secondQuote.getWatchTargetId(), secondQuote.getSnapshotId(), Optional.of("Replacement")
                 )),
@@ -365,8 +362,8 @@ class PersistenceSmokeTest {
                 .isEqualTo(quote.getSnapshotId());
 
         UserProfile user = userProfileService.getOrCreate(20001L, 20001L);
-        userRegionService.changeRegion(
-                user.getId(), MarketplaceRegionCode.MOSCOW, now
+        userRegionService.changeLocation(
+                user.getId(), com.priceradar.testsupport.TestMarketplaceRegions.moscow(), now
         );
         Subscription subscription = subscriptionService.createFromQuote(
                 user.getId(),
@@ -401,7 +398,9 @@ class PersistenceSmokeTest {
                 quoteCommand(889999L, createdAt.minusSeconds(5))
         );
         UserProfile user = userProfileService.getOrCreate(20002L, 20002L);
-        userRegionService.changeRegion(user.getId(), MarketplaceRegionCode.MOSCOW, createdAt);
+        userRegionService.changeLocation(
+                user.getId(), com.priceradar.testsupport.TestMarketplaceRegions.moscow(), createdAt
+        );
         Subscription original = subscriptionService.createFromQuote(
                 user.getId(), quote.getSnapshotId(), NotificationMode.ANY_DECREASE,
                 Optional.empty(), createdAt

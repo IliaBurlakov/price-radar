@@ -173,7 +173,7 @@ class PriceInsightsMigrationTest {
     }
 
     @Test
-    void regionCatalogBackfillsExistingUsersAndDefaultsNewUsersToMoscow() {
+    void dynamicLocationMigrationBackfillsExistingUsersWithoutDefaultingNewUsers() {
         String schema = "regions_" + UUID.randomUUID().toString().replace("-", "");
         Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
@@ -203,21 +203,27 @@ class PriceInsightsMigrationTest {
                 .migrate();
 
         assertThat(jdbc.queryForObject(
-                "SELECT region_code FROM user_profiles WHERE id = ?", String.class, existingUserId
-        )).isEqualTo("MOSCOW");
+                "SELECT location_id FROM user_profiles WHERE id = ?", UUID.class, existingUserId
+        )).isEqualTo(UUID.fromString("00000000-0000-0000-0000-000000000101"));
         List<Map<String, Object>> catalog = jdbc.queryForList(
-                "SELECT code, wb_destination FROM marketplace_regions ORDER BY sort_order"
+                """
+                        SELECT location.normalized_name AS code, context.dest AS wb_destination
+                        FROM geo_locations location
+                        JOIN wildberries_location_contexts context ON context.location_id = location.id
+                        WHERE location.source = 'LEGACY'
+                        ORDER BY location.id
+                        """
         );
         assertThat(catalog).extracting(row -> row.get("code"), row -> row.get("wb_destination"))
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("MOSCOW", 1259570991L),
-                        org.assertj.core.groups.Tuple.tuple("SAINT_PETERSBURG", -1123299L),
-                        org.assertj.core.groups.Tuple.tuple("EKATERINBURG", 123589409L),
-                        org.assertj.core.groups.Tuple.tuple("NOVOSIBIRSK", -366519L),
-                        org.assertj.core.groups.Tuple.tuple("KRASNOYARSK", -5854093L),
-                        org.assertj.core.groups.Tuple.tuple("IRKUTSK", -5827722L),
-                        org.assertj.core.groups.Tuple.tuple("BRATSK", 123586041L),
-                        org.assertj.core.groups.Tuple.tuple("CHITA", -5551586L)
+                        org.assertj.core.groups.Tuple.tuple("москва", 1259570991L),
+                        org.assertj.core.groups.Tuple.tuple("санкт-петербург", -1123299L),
+                        org.assertj.core.groups.Tuple.tuple("екатеринбург", 123589409L),
+                        org.assertj.core.groups.Tuple.tuple("новосибирск", -366519L),
+                        org.assertj.core.groups.Tuple.tuple("красноярск", -5854093L),
+                        org.assertj.core.groups.Tuple.tuple("иркутск", -5827722L),
+                        org.assertj.core.groups.Tuple.tuple("братск", 123586041L),
+                        org.assertj.core.groups.Tuple.tuple("чита", -5551586L)
                 );
 
         UUID newUserId = UUID.randomUUID();
@@ -231,8 +237,8 @@ class PriceInsightsMigrationTest {
                 newUserId, Timestamp.from(now), Timestamp.from(now)
         );
         assertThat(jdbc.queryForObject(
-                "SELECT region_code FROM user_profiles WHERE id = ?", String.class, newUserId
-        )).isEqualTo("MOSCOW");
+                "SELECT location_id FROM user_profiles WHERE id = ?", UUID.class, newUserId
+        )).isNull();
     }
 
     private JdbcTemplate jdbcTemplate(String schema) {
