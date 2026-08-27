@@ -1,6 +1,11 @@
 package com.priceradar.marketplace.wildberries;
 
+import com.priceradar.marketplace.application.MarketplaceBatchProvider;
+import com.priceradar.marketplace.application.MarketplaceBatchProviderResult;
 import com.priceradar.marketplace.application.MarketplaceProductDetails;
+import com.priceradar.marketplace.application.MarketplaceProviderFailure;
+import com.priceradar.marketplace.application.MarketplaceProviderFailureCode;
+import com.priceradar.marketplace.application.MarketplaceProviderResult;
 import com.priceradar.marketplace.application.ProviderAccessCoordinator;
 import com.priceradar.marketplace.application.ProviderCooldownActiveException;
 import com.priceradar.marketplace.domain.Marketplace;
@@ -37,21 +42,19 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 public final class WildberriesSharedBasketProvider
-        implements SharedBasketProvider, SharedBasketProductResolver {
+        implements SharedBasketProvider, SharedBasketProductResolver, MarketplaceBatchProvider {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WildberriesSharedBasketProvider.class);
     private static final String USER_AGENT = "PriceRadar/0.1";
-    private static final int BATCH_SIZE = 50;
-    private static final Duration RATE_LIMIT_COOLDOWN = Duration.ofMinutes(15);
-    private static final Duration SERVER_ERROR_COOLDOWN = Duration.ofMinutes(5);
-    private static final Duration INVALID_RESPONSE_COOLDOWN = Duration.ofMinutes(15);
 
     private final HttpClient httpClient;
     private final URI basketEndpoint;
@@ -66,6 +69,10 @@ public final class WildberriesSharedBasketProvider
     private final Duration maxRetryAfter;
     private final int maxAttempts;
     private final int maxResponseBytes;
+    private final int batchSize;
+    private final Duration rateLimitCooldown;
+    private final Duration serverErrorCooldown;
+    private final Duration invalidResponseCooldown;
     private final Clock clock;
 
     public WildberriesSharedBasketProvider(
@@ -82,6 +89,10 @@ public final class WildberriesSharedBasketProvider
             Duration maxRetryAfter,
             int maxAttempts,
             int maxResponseBytes,
+            int batchSize,
+            Duration rateLimitCooldown,
+            Duration serverErrorCooldown,
+            Duration invalidResponseCooldown,
             Clock clock
     ) {
         this.httpClient = java.util.Objects.requireNonNull(httpClient, "httpClient must not be null");
@@ -100,8 +111,13 @@ public final class WildberriesSharedBasketProvider
         if (baseBackoff.compareTo(maxBackoff) > 0) throw new IllegalArgumentException("baseBackoff must not exceed maxBackoff");
         if (maxAttempts < 1 || maxAttempts > 10) throw new IllegalArgumentException("maxAttempts must be between 1 and 10");
         if (maxResponseBytes < 1 || maxResponseBytes > 16 * 1024 * 1024) throw new IllegalArgumentException("invalid maxResponseBytes");
+        if (batchSize < 1 || batchSize > 100) throw new IllegalArgumentException("batchSize must be between 1 and 100");
         this.maxAttempts = maxAttempts;
         this.maxResponseBytes = maxResponseBytes;
+        this.batchSize = batchSize;
+        this.rateLimitCooldown = positive(rateLimitCooldown, "rateLimitCooldown");
+        this.serverErrorCooldown = positive(serverErrorCooldown, "serverErrorCooldown");
+        this.invalidResponseCooldown = positive(invalidResponseCooldown, "invalidResponseCooldown");
         this.clock = java.util.Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -121,6 +137,63 @@ public final class WildberriesSharedBasketProvider
     }
 
     @Override
+    public MarketplaceBatchProviderResult resolveProducts(
+            Marketplace marketplace,
+            List<String> externalProductIds,
+            PriceContext priceContext
+    ) {
+        if (marketplace != Marketplace.WILDBERRIES || externalProductIds == null
+                || externalProductIds.isEmpty() || priceContext == null) {
+            throw new IllegalArgumentException("Wildberries batch request is invalid");
+        }
+        List<Long> uniqueNmIds;
+        try {
+            uniqueNmIds = externalProductIds.stream()
+                    .map(Long::parseLong)
+                    .filter(value -> value > 0)
+                    .distinct()
+                    .toList();
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("external product ids must be positive numbers", exception);
+        }
+        if (uniqueNmIds.size() != externalProductIds.stream().distinct().count()) {
+            throw new IllegalArgumentException("external product ids must be unique positive numbers");
+        }
+
+        Map<String, MarketplaceProviderResult> products = new LinkedHashMap<>();
+        for (int start = 0; start < uniqueNmIds.size(); start += batchSize) {
+            List<Long> chunk = uniqueNmIds.subList(start, Math.min(start + batchSize, uniqueNmIds.size()));
+            HttpOutcome outcome = get(buildCardsUri(chunk, priceContext));
+            if (!outcome.isSuccess()) {
+                return MarketplaceBatchProviderResult.failure(
+                        marketplaceFailure(outcome.getFailure().orElseThrow())
+                );
+            }
+            WildberriesBatchMappingResult mapping = cardMapper.mapBatch(
+                    outcome.getBody().orElseThrow(), chunk
+            );
+            if (!mapping.isSuccess()) {
+                return invalidBatchResponse(mapping.getFailure().orElseThrow());
+            }
+            Optional<WildberriesMappingFailure> invalidProduct = mapping.getProducts().values().stream()
+                    .filter(result -> !result.isSuccess())
+                    .map(result -> result.getFailure().orElseThrow())
+                    .filter(this::isInvalidMappingResponse)
+                    .findFirst();
+            if (invalidProduct.isPresent()) {
+                return invalidBatchResponse(invalidProduct.orElseThrow());
+            }
+
+            Instant observedAt = clock.instant();
+            for (Long nmId : chunk) {
+                WildberriesMappingResult result = mapping.getProducts().get(nmId);
+                products.put(String.valueOf(nmId), marketplaceResult(result, observedAt));
+            }
+        }
+        return MarketplaceBatchProviderResult.success(products);
+    }
+
+    @Override
     public SharedBasketProductResolution resolveExact(
             List<SharedBasketItem> items,
             PriceContext priceContext
@@ -133,8 +206,8 @@ public final class WildberriesSharedBasketProvider
         List<UnavailableSharedBasketItem> unavailable = new ArrayList<>();
         List<UnresolvedSharedBasketItem> unresolved = new ArrayList<>();
 
-        for (int start = 0; start < uniqueItems.size(); start += BATCH_SIZE) {
-            List<SharedBasketItem> chunk = uniqueItems.subList(start, Math.min(start + BATCH_SIZE, uniqueItems.size()));
+        for (int start = 0; start < uniqueItems.size(); start += batchSize) {
+            List<SharedBasketItem> chunk = uniqueItems.subList(start, Math.min(start + batchSize, uniqueItems.size()));
             List<Long> nmIds = chunk.stream().map(SharedBasketItem::getNmId).distinct().toList();
             HttpOutcome outcome = get(buildCardsUri(nmIds, priceContext));
             if (!outcome.isSuccess()) return SharedBasketProductResolution.failure(outcome.getFailure().orElseThrow());
@@ -245,6 +318,78 @@ public final class WildberriesSharedBasketProvider
         ));
     }
 
+    private MarketplaceProviderResult marketplaceResult(
+            WildberriesMappingResult mapping,
+            Instant observedAt
+    ) {
+        if (mapping == null) {
+            return MarketplaceProviderResult.failure(new MarketplaceProviderFailure(
+                    MarketplaceProviderFailureCode.PRODUCT_NOT_FOUND,
+                    "Wildberries did not return the requested product",
+                    Optional.empty(), UUID.randomUUID().toString()
+            ));
+        }
+        if (!mapping.isSuccess()) {
+            WildberriesMappingFailure failure = mapping.getFailure().orElseThrow();
+            return MarketplaceProviderResult.failure(new MarketplaceProviderFailure(
+                    marketplaceFailureCode(failure.getCode()),
+                    failure.getMessage(), Optional.empty(), UUID.randomUUID().toString()
+            ));
+        }
+        WildberriesMappedProduct mapped = mapping.getProduct().orElseThrow();
+        MarketplaceProductDetails details = new MarketplaceProductDetails(
+                Marketplace.WILDBERRIES,
+                String.valueOf(mapped.getNmId()),
+                mapped.getTitle(),
+                mapped.getBrand(),
+                mapped.getVariantOptions(),
+                mapped.getPriceFieldsByVariantKey()
+        );
+        return MarketplaceProviderResult.success(details, observedAt);
+    }
+
+    private MarketplaceBatchProviderResult invalidBatchResponse(WildberriesMappingFailure failure) {
+        activateInvalidResponseCooldown();
+        return MarketplaceBatchProviderResult.failure(new MarketplaceProviderFailure(
+                marketplaceFailureCode(failure.getCode()),
+                failure.getMessage(), Optional.empty(), UUID.randomUUID().toString()
+        ));
+    }
+
+    private boolean isInvalidMappingResponse(WildberriesMappingFailure failure) {
+        return failure.getCode() == WildberriesMappingFailureCode.MALFORMED_JSON
+                || failure.getCode() == WildberriesMappingFailureCode.SCHEMA_VIOLATION
+                || failure.getCode() == WildberriesMappingFailureCode.EMPTY_RESPONSE;
+    }
+
+    private MarketplaceProviderFailure marketplaceFailure(SharedBasketFailure failure) {
+        return new MarketplaceProviderFailure(
+                marketplaceFailureCode(failure.getCode()),
+                failure.getMessage(), Optional.empty(), UUID.randomUUID().toString()
+        );
+    }
+
+    private MarketplaceProviderFailureCode marketplaceFailureCode(SharedBasketFailureCode code) {
+        return switch (code) {
+            case NOT_FOUND -> MarketplaceProviderFailureCode.PRODUCT_NOT_FOUND;
+            case RATE_LIMITED -> MarketplaceProviderFailureCode.RATE_LIMITED;
+            case COOLDOWN_ACTIVE -> MarketplaceProviderFailureCode.COOLDOWN_ACTIVE;
+            case TRANSPORT_ERROR -> MarketplaceProviderFailureCode.TRANSPORT_ERROR;
+            case MALFORMED_RESPONSE -> MarketplaceProviderFailureCode.MALFORMED_RESPONSE;
+            case SCHEMA_VIOLATION -> MarketplaceProviderFailureCode.SCHEMA_VIOLATION;
+            case INTERRUPTED -> MarketplaceProviderFailureCode.INTERRUPTED;
+            case TEMPORARILY_UNAVAILABLE -> MarketplaceProviderFailureCode.SERVER_ERROR;
+        };
+    }
+
+    private MarketplaceProviderFailureCode marketplaceFailureCode(WildberriesMappingFailureCode code) {
+        return switch (code) {
+            case PRODUCT_NOT_FOUND -> MarketplaceProviderFailureCode.PRODUCT_NOT_FOUND;
+            case EMPTY_RESPONSE, MALFORMED_JSON -> MarketplaceProviderFailureCode.MALFORMED_RESPONSE;
+            case SCHEMA_VIOLATION -> MarketplaceProviderFailureCode.SCHEMA_VIOLATION;
+        };
+    }
+
     private ExactItemResolution unresolved(
             SharedBasketItem item,
             UnresolvedSharedBasketItem.Reason reason
@@ -290,11 +435,11 @@ public final class WildberriesSharedBasketProvider
                 response.body().close();
                 if (status == 404) return failure(SharedBasketFailureCode.NOT_FOUND, "Shared basket or product data was not found");
                 if (status == 429) {
-                    cooldown = Optional.of(resolveCooldown(response, RATE_LIMIT_COOLDOWN));
+                    cooldown = Optional.of(resolveCooldown(response, rateLimitCooldown));
                     return failure(SharedBasketFailureCode.RATE_LIMITED, "Wildberries rate limit is active");
                 }
                 if (status == 403) {
-                    cooldown = Optional.of(clock.instant().plus(RATE_LIMIT_COOLDOWN));
+                    cooldown = Optional.of(clock.instant().plus(rateLimitCooldown));
                     return failure(SharedBasketFailureCode.TEMPORARILY_UNAVAILABLE, "Wildberries rejected the request");
                 }
                 if (status >= 500 && status <= 599) {
@@ -307,7 +452,7 @@ public final class WildberriesSharedBasketProvider
                         completionDelay = backoff(attempt);
                         continue;
                     }
-                    cooldown = Optional.of(clock.instant().plus(SERVER_ERROR_COOLDOWN));
+                    cooldown = Optional.of(clock.instant().plus(serverErrorCooldown));
                     return failure(SharedBasketFailureCode.TEMPORARILY_UNAVAILABLE, "Wildberries is temporarily unavailable");
                 }
                 return failure(SharedBasketFailureCode.TEMPORARILY_UNAVAILABLE, "Wildberries returned HTTP " + status);
@@ -396,7 +541,7 @@ public final class WildberriesSharedBasketProvider
 
     private Optional<SharedBasketFailure> activateInvalidResponseCooldown() {
         try {
-            if (!accessCoordinator.activateCooldown(clock.instant().plus(INVALID_RESPONSE_COOLDOWN))) {
+            if (!accessCoordinator.activateCooldown(clock.instant().plus(invalidResponseCooldown))) {
                 LOGGER.warn("Could not persist Wildberries cooldown after invalid shared basket response");
             }
             return Optional.empty();

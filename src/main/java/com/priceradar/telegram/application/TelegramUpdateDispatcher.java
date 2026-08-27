@@ -96,6 +96,9 @@ public class TelegramUpdateDispatcher {
             if (sharedBasketHandler.handleCallback(callback)) {
                 return;
             }
+            if (currentQuoteHandler.handleCallback(callback)) {
+                return;
+            }
             if (menuHandler.handleCallback(callback)) {
                 return;
             }

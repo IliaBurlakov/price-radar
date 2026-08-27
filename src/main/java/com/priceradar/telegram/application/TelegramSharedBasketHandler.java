@@ -4,7 +4,6 @@ import com.priceradar.sharedbasket.application.SharedBasketApplyResult;
 import com.priceradar.sharedbasket.application.SharedBasketImportService;
 import com.priceradar.sharedbasket.application.SharedBasketPreview;
 import com.priceradar.sharedbasket.application.SharedBasketPreviewResult;
-import com.priceradar.sharedbasket.application.SharedBasketUrlParser;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
 
@@ -18,36 +17,44 @@ public class TelegramSharedBasketHandler {
     private static final int UNAVAILABLE_DISPLAY_LIMIT = 5;
     private static final String PROCESSING_MESSAGE = "⏳ Ваш запрос обрабатывается...";
 
-    private final SharedBasketUrlParser urlParser;
+    private final WildberriesLinkExtractor linkExtractor;
     private final SharedBasketImportService importService;
     private final SharedBasketCallbackCodec callbackCodec;
     private final UserProfileService userProfileService;
     private final TelegramGateway telegramGateway;
     private final Clock clock;
+    private final int activeSubscriptionLimit;
 
     public TelegramSharedBasketHandler(
-            SharedBasketUrlParser urlParser,
+            WildberriesLinkExtractor linkExtractor,
             SharedBasketImportService importService,
             SharedBasketCallbackCodec callbackCodec,
             UserProfileService userProfileService,
             TelegramGateway telegramGateway,
-            Clock clock
+            Clock clock,
+            int activeSubscriptionLimit
     ) {
-        this.urlParser = java.util.Objects.requireNonNull(urlParser);
+        this.linkExtractor = java.util.Objects.requireNonNull(linkExtractor);
         this.importService = java.util.Objects.requireNonNull(importService);
         this.callbackCodec = java.util.Objects.requireNonNull(callbackCodec);
         this.userProfileService = java.util.Objects.requireNonNull(userProfileService);
         this.telegramGateway = java.util.Objects.requireNonNull(telegramGateway);
         this.clock = java.util.Objects.requireNonNull(clock);
+        if (activeSubscriptionLimit <= 0) {
+            throw new IllegalArgumentException("active subscription limit must be positive");
+        }
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
     }
 
     public boolean handleMessage(IncomingTelegramMessage message) {
-        if (!message.isPrivateChat() || !urlParser.supports(message.getText())) return false;
+        if (!message.isPrivateChat()) return false;
+        Optional<String> basketUrl = linkExtractor.extract(message.getText()).getSharedBasketUrl();
+        if (basketUrl.isEmpty()) return false;
         telegramGateway.sendMessage(OutgoingTelegramMessage.text(
                 message.getChatId(), PROCESSING_MESSAGE
         ));
         UserProfile user = userProfileService.getOrCreate(message.getTelegramUserId(), message.getChatId());
-        SharedBasketPreviewResult result = importService.prepare(message.getText(), user, clock.instant());
+        SharedBasketPreviewResult result = importService.prepare(basketUrl.orElseThrow(), user, clock.instant());
         telegramGateway.sendMessage(preparationMessage(message.getChatId(), message.getTelegramUserId(), result));
         return true;
     }
@@ -209,7 +216,7 @@ public class TelegramSharedBasketHandler {
                     .append("Можно добавить остальные новые товары или повторить импорт позже.");
         }
         if (preview.getSyncSkippedByLimit() > 0) {
-            text.append("\n\n⚠️ Лимит отслеживания — 50 товаров.\n")
+            text.append("\n\n⚠️ Лимит отслеживания — ").append(activeSubscriptionLimit).append(" товаров.\n")
                     .append(items(preview.getSyncSkippedByLimit())).append(" из этой корзины ")
                     .append(isSingularCount(preview.getSyncSkippedByLimit()) ? "не войдёт" : "не войдут")
                     .append(" в отслеживание:\n");
@@ -249,12 +256,14 @@ public class TelegramSharedBasketHandler {
         text.append("\n⚠️ Ещё ").append(count);
         if (isSingularCount(count)) {
             text.append(" отслеживаемый товар есть в корзине,\n")
-                    .append("но находится после первых 50 и поэтому тоже будет удалён из отслеживания:\n");
+                    .append("но находится после первых ").append(activeSubscriptionLimit)
+                    .append(" и поэтому тоже будет удалён из отслеживания:\n");
             appendProductTitles(text, titles);
             return;
         }
         text.append(" отслеживаемых ").append(itemWord(count)).append(" есть в корзине,\n")
-                .append("но находятся после первых 50 и поэтому тоже будут удалены из отслеживания:\n");
+                .append("но находятся после первых ").append(activeSubscriptionLimit)
+                .append(" и поэтому тоже будут удалены из отслеживания:\n");
         appendProductTitles(text, titles);
     }
 

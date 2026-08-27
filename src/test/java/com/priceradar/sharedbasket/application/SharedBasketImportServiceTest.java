@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -45,7 +46,8 @@ class SharedBasketImportServiceTest {
     private final SharedBasketImportService service = new SharedBasketImportService(
             new SharedBasketUrlParser(), mock(SharedBasketProvider.class),
             mock(SharedBasketProductResolver.class), new PriceSemanticsService(),
-            mock(ResolvedQuotePersistenceService.class), pendingStore, userStore, subscriptionStore
+            mock(ResolvedQuotePersistenceService.class), pendingStore, userStore, subscriptionStore,
+            50, Duration.ofMinutes(15)
     );
 
     @Test
@@ -218,7 +220,8 @@ class SharedBasketImportServiceTest {
         SubscriptionStore subscriptions = mock(SubscriptionStore.class);
         SharedBasketImportService importService = new SharedBasketImportService(
                 new SharedBasketUrlParser(), provider, resolver, new PriceSemanticsService(),
-                mock(ResolvedQuotePersistenceService.class), sessions, mock(UserProfileStore.class), subscriptions
+                mock(ResolvedQuotePersistenceService.class), sessions, mock(UserProfileStore.class), subscriptions,
+                50, Duration.ofMinutes(15)
         );
         SharedBasketItem first = new SharedBasketItem(100, 1001, 1);
         SharedBasketItem duplicateWithQuantity = new SharedBasketItem(100, 1001, 3);
@@ -259,7 +262,8 @@ class SharedBasketImportServiceTest {
         SubscriptionStore subscriptions = mock(SubscriptionStore.class);
         SharedBasketImportService importService = new SharedBasketImportService(
                 new SharedBasketUrlParser(), provider, resolver, new PriceSemanticsService(),
-                quotes, sessions, mock(UserProfileStore.class), subscriptions
+                quotes, sessions, mock(UserProfileStore.class), subscriptions,
+                50, Duration.ofMinutes(15)
         );
         SharedBasketItem first = new SharedBasketItem(100, 1001, 1);
         SharedBasketItem second = new SharedBasketItem(100, 1002, 1);
@@ -304,7 +308,8 @@ class SharedBasketImportServiceTest {
         SubscriptionStore subscriptions = mock(SubscriptionStore.class);
         SharedBasketImportService importService = new SharedBasketImportService(
                 new SharedBasketUrlParser(), provider, resolver, new PriceSemanticsService(),
-                mock(ResolvedQuotePersistenceService.class), sessions, users, subscriptions
+                mock(ResolvedQuotePersistenceService.class), sessions, users, subscriptions,
+                50, Duration.ofMinutes(15)
         );
         UserProfile irkutskUser = new UserProfile(
                 userId, 7001L, 7001L, irkutsk(), UserPricePreferences.defaults()

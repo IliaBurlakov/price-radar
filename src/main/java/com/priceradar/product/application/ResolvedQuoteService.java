@@ -16,7 +16,6 @@ import java.util.Optional;
 
 public final class ResolvedQuoteService {
 
-    private static final Duration QUOTE_TTL = Duration.ofMinutes(15);
     private static final String CANONICAL_URL_TEMPLATE =
             "https://www.wildberries.ru/catalog/%d/detail.aspx";
 
@@ -25,16 +24,21 @@ public final class ResolvedQuoteService {
     private final VariantResolutionService variantResolutionService;
     private final PriceSemanticsService priceSemanticsService;
     private final ResolvedQuotePersistenceService persistenceService;
+    private final Duration quoteTtl;
     public ResolvedQuoteService(
             ProductUrlParser productUrlParser,
             MarketplaceProvider marketplaceProvider,
             VariantResolutionService variantResolutionService,
             PriceSemanticsService priceSemanticsService,
-            ResolvedQuotePersistenceService persistenceService
+            ResolvedQuotePersistenceService persistenceService,
+            Duration quoteTtl
     ) {
         if (productUrlParser == null || marketplaceProvider == null || variantResolutionService == null
-                || priceSemanticsService == null || persistenceService == null) {
+                || priceSemanticsService == null || persistenceService == null || quoteTtl == null) {
             throw new IllegalArgumentException("resolved quote service dependencies must not be null");
+        }
+        if (quoteTtl.isZero() || quoteTtl.isNegative()) {
+            throw new IllegalArgumentException("quote TTL must be positive");
         }
 
         this.productUrlParser = productUrlParser;
@@ -42,6 +46,7 @@ public final class ResolvedQuoteService {
         this.variantResolutionService = variantResolutionService;
         this.priceSemanticsService = priceSemanticsService;
         this.persistenceService = persistenceService;
+        this.quoteTtl = quoteTtl;
     }
 
     public ResolvedQuoteResult resolve(String productUrl, PriceContext priceContext) {
@@ -57,6 +62,18 @@ public final class ResolvedQuoteService {
                         priceContext
                 )
         );
+
+        return resolve(parsedUrl, providerResult, priceContext);
+    }
+
+    ResolvedQuoteResult resolve(
+            ParsedProductUrl parsedUrl,
+            MarketplaceProviderResult providerResult,
+            PriceContext priceContext
+    ) {
+        if (parsedUrl == null || providerResult == null || priceContext == null) {
+            throw new IllegalArgumentException("resolved quote input must not be null");
+        }
 
         if (!providerResult.isSuccess()) {
             return ResolvedQuoteResult.providerFailure(
@@ -119,7 +136,7 @@ public final class ResolvedQuoteService {
                 interpretedPrice,
                 priceContext,
                 observedAt,
-                observedAt.plus(QUOTE_TTL)
+                observedAt.plus(quoteTtl)
         ));
     }
 

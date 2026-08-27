@@ -11,6 +11,7 @@ import com.priceradar.user.domain.UserPricePreferences;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.List;
@@ -33,7 +34,9 @@ class SubscriptionServiceTest {
     private final SubscriptionService service = new SubscriptionService(
             userStore,
             subscriptionStore,
-            thresholdNotificationEnqueuer
+            thresholdNotificationEnqueuer,
+            50,
+            Duration.ofMinutes(15)
     );
 
     @Test
@@ -172,7 +175,7 @@ class SubscriptionServiceTest {
                 limitedObservation.getWatchTargetId()
         )).thenReturn(Optional.empty());
         when(subscriptionStore.countActive(limitedUserId))
-                .thenReturn((long) SubscriptionService.ACTIVE_SUBSCRIPTION_LIMIT);
+                .thenReturn(50L);
 
         SubscriptionCreationResult limited = service.createFromQuote(
                 limitedUserId,

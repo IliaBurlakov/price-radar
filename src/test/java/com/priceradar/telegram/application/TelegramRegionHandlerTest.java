@@ -12,6 +12,7 @@ import com.priceradar.product.application.ProductUrlParser;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -150,7 +151,18 @@ class TelegramRegionHandlerTest {
         when(messages.createFailureMessage(TELEGRAM_ID, failure)).thenReturn(response);
 
         new TelegramCurrentQuoteHandler(
-                new ProductUrlParser(), users, quotes, messages, gateway
+                new WildberriesLinkExtractor(new ProductUrlParser(), new com.priceradar.sharedbasket.application.SharedBasketUrlParser(), 50),
+                users, quotes,
+                mock(com.priceradar.product.application.ResolvedQuoteBatchService.class),
+                messages,
+                new TelegramMultiProductQuoteMessageFactory(
+                        new MultiProductQuoteCallbackCodec("01234567890123456789012345678901"), 50
+                ),
+                new MultiProductQuoteCallbackCodec("01234567890123456789012345678901"),
+                mock(MultiProductQuoteSessionStore.class),
+                mock(com.priceradar.tracking.application.SubscriptionService.class),
+                gateway,
+                Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofMinutes(15), 50
         ).handle(
                 new IncomingTelegramMessage(TELEGRAM_ID, TELEGRAM_ID, "private", url)
         );

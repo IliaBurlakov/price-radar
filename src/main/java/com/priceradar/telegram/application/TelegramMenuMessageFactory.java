@@ -2,6 +2,15 @@ package com.priceradar.telegram.application;
 
 public final class TelegramMenuMessageFactory {
 
+    private final int activeSubscriptionLimit;
+
+    public TelegramMenuMessageFactory(int activeSubscriptionLimit) {
+        if (activeSubscriptionLimit <= 0) {
+            throw new IllegalArgumentException("active subscription limit must be positive");
+        }
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
+    }
+
     public OutgoingTelegramMessage welcome(long chatId) {
         String text = """
                 Добро пожаловать в PriceRadar!
@@ -36,7 +45,7 @@ public final class TelegramMenuMessageFactory {
                 PriceRadar следит за ценами товаров Wildberries и уведомляет о новых минимальных или желаемых ценах.
 
                 ➕ Добавить товар
-                Отправьте ссылку на один товар Wildberries.
+                Отправьте ссылку Wildberries, текст из Copy/Share или список с несколькими ссылками.
 
                 🛒 Импортировать корзину
                 Можно добавить сразу несколько товаров из общей корзины Wildberries.
@@ -47,10 +56,10 @@ public final class TelegramMenuMessageFactory {
                 🌍 Город
                 Выберите город, для которого бот будет получать цены и наличие.
 
-                Одновременно можно отслеживать до 50 товаров.
+                Одновременно можно отслеживать до %d товаров.
 
                 Для навигации используйте кнопки под сообщениями или меню команд Telegram.
-                """;
+                """.formatted(activeSubscriptionLimit);
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
@@ -62,9 +71,9 @@ public final class TelegramMenuMessageFactory {
         String text = """
                 ➕ Добавить товар
 
-                Отправьте ссылку на товар Wildberries.
+                🔗 Отправьте одну или несколько ссылок Wildberries в одном сообщении.
 
-                Например:
+                Например, просто вставьте ссылку:
                 https://www.wildberries.ru/catalog/10302970/detail.aspx
                 """;
         return new OutgoingTelegramMessage(
@@ -98,10 +107,10 @@ public final class TelegramMenuMessageFactory {
 
                 ⚠️ Перед удалением бот обязательно попросит подтверждение.
 
-                Одновременно можно отслеживать не более 50 товаров. Если корзина больше, бот заранее предупредит об ограничении.
+                Одновременно можно отслеживать не более %d товаров. Если корзина больше, бот заранее предупредит об ограничении.
 
                 Отправьте ссылку на общую корзину Wildberries.
-                """;
+                """.formatted(activeSubscriptionLimit);
         return new OutgoingTelegramMessage(
                 chatId,
                 text,

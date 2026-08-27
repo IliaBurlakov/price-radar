@@ -18,8 +18,6 @@ import java.util.UUID;
 
 public class TrackedItemsMessageHandler {
 
-    private static final Duration TARGET_INPUT_TTL = Duration.ofMinutes(15);
-
     private final UserProfileService userProfileService;
     private final SubscriptionService subscriptionService;
     private final TrackedItemsMessageFactory messageFactory;
@@ -27,6 +25,7 @@ public class TrackedItemsMessageHandler {
     private final ClearTrackingCallbackCodec clearCallbackCodec;
     private final PendingTargetPriceStore pendingTargetPriceStore;
     private final Clock clock;
+    private final Duration pendingActionTtl;
 
     public TrackedItemsMessageHandler(
             UserProfileService userProfileService,
@@ -35,13 +34,17 @@ public class TrackedItemsMessageHandler {
             ClearTrackingCallbackCodec clearCallbackCodec,
             PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
-            Clock clock
+            Clock clock,
+            Duration pendingActionTtl
     ) {
         if (userProfileService == null || subscriptionService == null || messageFactory == null
                 || clearCallbackCodec == null
                 || pendingTargetPriceStore == null
-                || telegramGateway == null || clock == null) {
+                || telegramGateway == null || clock == null || pendingActionTtl == null) {
             throw new IllegalArgumentException("tracked items handler dependencies must not be null");
+        }
+        if (pendingActionTtl.isZero() || pendingActionTtl.isNegative()) {
+            throw new IllegalArgumentException("pending action TTL must be positive");
         }
         this.userProfileService = userProfileService;
         this.subscriptionService = subscriptionService;
@@ -50,6 +53,7 @@ public class TrackedItemsMessageHandler {
         this.pendingTargetPriceStore = pendingTargetPriceStore;
         this.telegramGateway = telegramGateway;
         this.clock = clock;
+        this.pendingActionTtl = pendingActionTtl;
     }
 
     public boolean handleMessage(IncomingTelegramMessage message) {
@@ -206,7 +210,7 @@ public class TrackedItemsMessageHandler {
                 callback.getChatId(),
                 PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION,
                 subscriptionId,
-                now.plus(TARGET_INPUT_TTL)
+                now.plus(pendingActionTtl)
         ), now);
         telegramGateway.sendMessage(messageFactory.createTargetPriceInput(
                 callback.getChatId(),

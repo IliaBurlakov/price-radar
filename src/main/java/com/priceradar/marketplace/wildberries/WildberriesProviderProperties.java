@@ -17,11 +17,17 @@ public final class WildberriesProviderProperties {
     private Duration requestTimeout = Duration.ofSeconds(10);
     private Duration cacheTtl = Duration.ofMinutes(5);
     private int cacheMaxEntries = 10_000;
+    private int batchSize = 50;
     private int maxAttempts = 3;
     private Duration baseBackoff = Duration.ofSeconds(2);
     private Duration maxBackoff = Duration.ofMinutes(1);
     private Duration maxRetryAfter = Duration.ofHours(24);
     private int maxResponseBytes = 2 * 1024 * 1024;
+    private Duration rateLimitCooldown = Duration.ofMinutes(15);
+    private Duration accessForbiddenCooldown = Duration.ofMinutes(30);
+    private Duration serverErrorCooldown = Duration.ofMinutes(5);
+    private Duration invalidResponseCooldown = Duration.ofMinutes(15);
+    private Duration maxBackoffJitter = Duration.ofSeconds(1);
 
     public URI getEndpoint() {
         return endpoint;
@@ -79,6 +85,14 @@ public final class WildberriesProviderProperties {
         this.cacheMaxEntries = cacheMaxEntries;
     }
 
+    public int getBatchSize() {
+        return batchSize;
+    }
+
+    public void setBatchSize(int batchSize) {
+        this.batchSize = batchSize;
+    }
+
     public int getMaxAttempts() {
         return maxAttempts;
     }
@@ -117,5 +131,45 @@ public final class WildberriesProviderProperties {
 
     public void setMaxResponseBytes(int maxResponseBytes) {
         this.maxResponseBytes = maxResponseBytes;
+    }
+
+    public Duration getRateLimitCooldown() {
+        return rateLimitCooldown;
+    }
+
+    public void setRateLimitCooldown(Duration rateLimitCooldown) {
+        this.rateLimitCooldown = rateLimitCooldown;
+    }
+
+    public Duration getAccessForbiddenCooldown() {
+        return accessForbiddenCooldown;
+    }
+
+    public void setAccessForbiddenCooldown(Duration accessForbiddenCooldown) {
+        this.accessForbiddenCooldown = accessForbiddenCooldown;
+    }
+
+    public Duration getServerErrorCooldown() {
+        return serverErrorCooldown;
+    }
+
+    public void setServerErrorCooldown(Duration serverErrorCooldown) {
+        this.serverErrorCooldown = serverErrorCooldown;
+    }
+
+    public Duration getInvalidResponseCooldown() {
+        return invalidResponseCooldown;
+    }
+
+    public void setInvalidResponseCooldown(Duration invalidResponseCooldown) {
+        this.invalidResponseCooldown = invalidResponseCooldown;
+    }
+
+    public Duration getMaxBackoffJitter() {
+        return maxBackoffJitter;
+    }
+
+    public void setMaxBackoffJitter(Duration maxBackoffJitter) {
+        this.maxBackoffJitter = maxBackoffJitter;
     }
 }

@@ -47,7 +47,7 @@ class ClearTrackingHandlerTest {
                         "test-only-callback-secret-with-more-than-32-bytes"
                 ),
                 mock(PendingTargetPriceStore.class),
-                gateway, Clock.systemUTC()
+                gateway, Clock.systemUTC(), java.time.Duration.ofMinutes(15)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(

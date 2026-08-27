@@ -22,25 +22,31 @@ import java.util.UUID;
 
 public class SubscriptionService {
 
-    public static final int ACTIVE_SUBSCRIPTION_LIMIT = 50;
-    private static final Duration QUOTE_TTL = Duration.ofMinutes(15);
-
     private final UserProfileStore userProfileStore;
     private final SubscriptionStore subscriptionStore;
     private final InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer;
+    private final int activeSubscriptionLimit;
+    private final Duration quoteTtl;
 
     public SubscriptionService(
             UserProfileStore userProfileStore,
             SubscriptionStore subscriptionStore,
-            InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer
+            InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer,
+            int activeSubscriptionLimit,
+            Duration quoteTtl
     ) {
         if (userProfileStore == null || subscriptionStore == null
-                || thresholdNotificationEnqueuer == null) {
+                || thresholdNotificationEnqueuer == null || quoteTtl == null) {
             throw new IllegalArgumentException("subscription service dependencies must not be null");
+        }
+        if (activeSubscriptionLimit <= 0 || quoteTtl.isZero() || quoteTtl.isNegative()) {
+            throw new IllegalArgumentException("subscription policy values must be positive");
         }
         this.userProfileStore = userProfileStore;
         this.subscriptionStore = subscriptionStore;
         this.thresholdNotificationEnqueuer = thresholdNotificationEnqueuer;
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
+        this.quoteTtl = quoteTtl;
     }
 
     @Transactional
@@ -351,7 +357,7 @@ public class SubscriptionService {
             );
         }
         UUID watchTargetId = quoteObservation.get().getWatchTargetId();
-        Instant freshNotBefore = now.minus(QUOTE_TTL);
+        Instant freshNotBefore = now.minus(quoteTtl);
         if (quoteObservation
                 .filter(value -> !value.getObservedAt().isBefore(freshNotBefore))
                 .filter(value -> !value.getObservedAt().isAfter(now))
@@ -364,7 +370,7 @@ public class SubscriptionService {
         if (existing.isPresent()) {
             return SubscriptionPreparationResult.alreadyActive(existing.get());
         }
-        if (subscriptionStore.countActive(userId) >= ACTIVE_SUBSCRIPTION_LIMIT) {
+        if (subscriptionStore.countActive(userId) >= activeSubscriptionLimit) {
             return SubscriptionPreparationResult.failed(
                     SubscriptionPreparationResult.Status.LIMIT_REACHED
             );

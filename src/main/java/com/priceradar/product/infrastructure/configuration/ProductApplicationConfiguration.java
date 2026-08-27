@@ -1,10 +1,13 @@
 package com.priceradar.product.infrastructure.configuration;
 
+import com.priceradar.configuration.PriceRadarPolicyProperties;
 import com.priceradar.marketplace.application.MarketplaceProvider;
+import com.priceradar.marketplace.application.MarketplaceBatchProvider;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.product.application.ProductQuoteStore;
 import com.priceradar.product.application.ProductUrlParser;
 import com.priceradar.product.application.ResolvedQuoteService;
+import com.priceradar.product.application.ResolvedQuoteBatchService;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
 import com.priceradar.product.application.ResolvedQuoteStore;
 import com.priceradar.product.application.VariantResolutionService;
@@ -43,14 +46,24 @@ public class ProductApplicationConfiguration {
             MarketplaceProvider marketplaceProvider,
             VariantResolutionService variantResolutionService,
             PriceSemanticsService priceSemanticsService,
-            ResolvedQuotePersistenceService persistenceService
+            ResolvedQuotePersistenceService persistenceService,
+            PriceRadarPolicyProperties policy
     ) {
         return new ResolvedQuoteService(
                 productUrlParser,
                 marketplaceProvider,
                 variantResolutionService,
                 priceSemanticsService,
-                persistenceService
+                persistenceService,
+                policy.getQuoteTtl()
         );
+    }
+
+    @Bean
+    public ResolvedQuoteBatchService resolvedQuoteBatchService(
+            MarketplaceBatchProvider marketplaceBatchProvider,
+            ResolvedQuoteService resolvedQuoteService
+    ) {
+        return new ResolvedQuoteBatchService(marketplaceBatchProvider, resolvedQuoteService);
     }
 }
