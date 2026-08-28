@@ -12,7 +12,8 @@ public final class MainMenuCallbackData {
         IMPORT_BASKET,
         TRACKED_ITEMS,
         REGION,
-        HELP
+        HELP,
+        FEEDBACK
     }
 
     private MainMenuCallbackData() {

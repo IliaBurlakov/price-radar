@@ -93,6 +93,7 @@ public final class TelegramMenuHandler {
             case HELP -> telegramGateway.sendMessage(
                     messageFactory.help(callback.getChatId())
             );
+            case FEEDBACK -> { return false; }
         }
         return true;
     }

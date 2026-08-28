@@ -17,7 +17,8 @@ public final class TelegramNavigationKeyboard {
                         button("🌍 Город", MainMenuCallbackData.Action.REGION)
                 ),
                 List.of(
-                        button("Помощь", MainMenuCallbackData.Action.HELP)
+                        button("Помощь", MainMenuCallbackData.Action.HELP),
+                        button("💬 Обратная связь", MainMenuCallbackData.Action.FEEDBACK)
                 )
         );
     }

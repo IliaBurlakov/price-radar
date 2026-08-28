@@ -12,6 +12,7 @@ public final class PriceRadarPolicyProperties {
     private Duration quoteTtl;
     private Duration pendingActionTtl;
     private Duration sharedBasketImportTtl;
+    private int feedbackMaxLength;
 
     public int getActiveSubscriptionLimit() {
         return activeSubscriptionLimit;
@@ -51,6 +52,17 @@ public final class PriceRadarPolicyProperties {
 
     public void setSharedBasketImportTtl(Duration sharedBasketImportTtl) {
         this.sharedBasketImportTtl = positive(sharedBasketImportTtl, "shared basket import TTL");
+    }
+
+    public int getFeedbackMaxLength() {
+        return feedbackMaxLength;
+    }
+
+    public void setFeedbackMaxLength(int feedbackMaxLength) {
+        if (feedbackMaxLength > 3000) {
+            throw new IllegalArgumentException("feedback max length must not exceed database limit 3000");
+        }
+        this.feedbackMaxLength = positive(feedbackMaxLength, "feedback max length");
     }
 
     private int positive(int value, String name) {

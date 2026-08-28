@@ -68,6 +68,7 @@ class TelegramOnboardingHandlerTest {
         for (MainMenuCallbackData.Action action : new MainMenuCallbackData.Action[]{
                 MainMenuCallbackData.Action.HOME,
                 MainMenuCallbackData.Action.HELP,
+                MainMenuCallbackData.Action.FEEDBACK,
                 MainMenuCallbackData.Action.REGION
         }) {
             assertThat(handler.handleCallback(callback(
