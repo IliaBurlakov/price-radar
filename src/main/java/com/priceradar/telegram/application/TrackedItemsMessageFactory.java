@@ -31,7 +31,8 @@ public final class TrackedItemsMessageFactory {
     public OutgoingTelegramMessage createList(
             long chatId,
             List<TrackedSubscriptionItem> items,
-            int pageNumber
+            int pageNumber,
+            String cityName
     ) {
         validateItems(items);
         if (pageNumber < 0) {
@@ -48,7 +49,13 @@ public final class TrackedItemsMessageFactory {
 
         int from = pageNumber * ITEMS_PER_PAGE;
         int to = Math.min(from + ITEMS_PER_PAGE, items.size());
-        StringBuilder text = new StringBuilder("Мои товары: ")
+        StringBuilder text = new StringBuilder()
+                .append("📦 Мои товары\n\n")
+                .append("Отслеживаемые товары для города ")
+                .append(cityName)
+                .append(".\n")
+                .append("Нажмите на товар, чтобы посмотреть цену, историю и настройки.\n\n")
+                .append("Всего товаров: ")
                 .append(items.size());
         if (pageCount > 1) {
             text.append("\nСтраница ")
@@ -56,24 +63,12 @@ public final class TrackedItemsMessageFactory {
                     .append(" из ")
                     .append(pageCount);
         }
-        text.append("\n\n");
-        for (int index = from; index < to; index++) {
-            TrackedSubscriptionItem item = items.get(index);
-            text.append(index + 1)
-                    .append(". ")
-                    .append(truncate(
-                            item.getTitle().orElse("Товар Wildberries #" + item.getNmId()),
-                            MAX_DETAIL_LENGTH
-                    ))
-                    .append('\n');
-        }
-        text.append("\nВыберите товар:");
 
         List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
         for (int index = from; index < to; index++) {
             TrackedSubscriptionItem item = items.get(index);
             keyboard.add(List.of(new TelegramInlineButton(
-                    itemButtonText(index + 1),
+                    itemButtonText(item, index + 1),
                     SubscriptionCallbackData.encode(
                             SubscriptionCallbackData.Action.OPEN_ITEM,
                             item.getSubscriptionId()
@@ -132,22 +127,13 @@ public final class TrackedItemsMessageFactory {
         text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         List<List<TelegramInlineButton>> keyboard = List.of(
-                List.of(
-                        new TelegramInlineButton(
-                                "💰 Последняя цена",
-                                SubscriptionCallbackData.encode(
-                                        SubscriptionCallbackData.Action.SHOW_LAST_KNOWN,
-                                        item.getSubscriptionId()
-                                )
-                        ),
-                        new TelegramInlineButton(
-                                "📊 Статистика",
-                                SubscriptionCallbackData.encode(
-                                        SubscriptionCallbackData.Action.SHOW_STATISTICS,
-                                        item.getSubscriptionId()
-                                )
+                List.of(new TelegramInlineButton(
+                        "📊 Статистика",
+                        SubscriptionCallbackData.encode(
+                                SubscriptionCallbackData.Action.SHOW_STATISTICS,
+                                item.getSubscriptionId()
                         )
-                ),
+                )),
                 List.of(new TelegramInlineButton(
                         "🔔 Условие уведомлений",
                         SubscriptionCallbackData.encode(
@@ -392,8 +378,9 @@ public final class TrackedItemsMessageFactory {
         return walletEstimateService.estimateFromRegularPrice(regularPrice, preferences);
     }
 
-    private String itemButtonText(int displayNumber) {
-        return "Открыть товар " + displayNumber;
+    private String itemButtonText(TrackedSubscriptionItem item, int displayNumber) {
+        String title = item.getTitle().orElse("Товар Wildberries #" + item.getNmId());
+        return displayNumber + ". " + truncate(title, MAX_DETAIL_LENGTH);
     }
 
     private String mode(TrackedSubscriptionItem item) {

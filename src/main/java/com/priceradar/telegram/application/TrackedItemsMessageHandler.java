@@ -72,8 +72,9 @@ public class TrackedItemsMessageHandler {
                 telegramUserId,
                 chatId
         );
+        String cityName = profile.getPriceContext().getCityName();
         List<TrackedSubscriptionItem> items = subscriptionService.findActive(profile.getId());
-        telegramGateway.sendMessage(messageFactory.createList(chatId, items, 0));
+        telegramGateway.sendMessage(messageFactory.createList(chatId, items, 0, cityName));
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
@@ -161,7 +162,7 @@ public class TrackedItemsMessageHandler {
             List<TrackedSubscriptionItem> items =
                     subscriptionService.findActive(profile.getId());
             if (requestedPage.isPresent()) {
-                showPage(callback.getChatId(), items, requestedPage.getAsInt());
+                showPage(callback.getChatId(), profile, items, requestedPage.getAsInt());
                 return true;
             }
             UUID requestedItemId = itemId.orElseGet(removeId::orElseThrow);
@@ -281,6 +282,7 @@ public class TrackedItemsMessageHandler {
 
     private void showPage(
             long chatId,
+            UserProfile profile,
             List<TrackedSubscriptionItem> items,
             int requestedPage
     ) {
@@ -288,7 +290,8 @@ public class TrackedItemsMessageHandler {
         telegramGateway.sendMessage(messageFactory.createList(
                 chatId,
                 items,
-                pageNumber
+                pageNumber,
+                profile.getPriceContext().getCityName()
         ));
     }
 

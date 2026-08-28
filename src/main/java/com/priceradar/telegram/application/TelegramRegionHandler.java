@@ -92,8 +92,7 @@ public final class TelegramRegionHandler {
                 .orElse("");
         String text = "📍 Выберите город" + current + "\n\n"
                 + "Введите название населённого пункта, для которого нужно отслеживать цены Wildberries.\n\n"
-                + "Например:\nНовосибирск\nБердск\nТомск\n\n"
-                + "Поиск населённых пунктов: OpenStreetMap.";
+                + "Например:\nМосква\n\n";
         List<List<TelegramInlineButton>> keyboard = profile.isRegionSelected()
                 ? TelegramNavigationKeyboard.home()
                 : List.of();
