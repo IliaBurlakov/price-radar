@@ -123,14 +123,12 @@ class StatisticsCallbackHandlerTest {
                         📌 За период
                         Максимум: 496 ₽
                         Средняя: 439 ₽
-                        Наблюдений: 35
+                        Проверок цены: 35
 
                         🌍 Город: Москва
 
                         ℹ️ WB Кошелёк: оценка со скидкой 3%.
-                        История ведётся с момента добавления товара.
-
-                        ⚠️ Цена может отличаться в приложении Wildberries.""");
+                        История ведётся с момента добавления товара.""");
         assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
         assertThat(messageCaptor.getValue().getInlineKeyboard().stream()
                 .flatMap(java.util.Collection::stream)
@@ -207,16 +205,14 @@ class StatisticsCallbackHandlerTest {
         verify(telegramGateway).sendMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getText())
                 .isEqualTo("""
-                        📊 Статистика за всё время текущей подписки
+                        📊 Статистика за всё время отслеживания
                         🗓 18.07.2026 — 18.07.2026
 
                         За этот период пока недостаточно данных.
 
                         🌍 Город: Москва
 
-                        История ведётся с момента добавления товара.
-
-                        ⚠️ Цена может отличаться в приложении Wildberries.""");
+                        История ведётся с момента добавления товара.""");
         assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
     }
 

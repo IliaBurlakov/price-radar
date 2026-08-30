@@ -12,8 +12,6 @@ import java.util.Optional;
 public final class TelegramDisplayFormatter {
 
     private static final String SIZE_PREFIX = "Size:";
-    private static final String APPROXIMATE_PRICE_WARNING =
-            "⚠️ Цена может отличаться в приложении Wildberries.";
     private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter
             .ofPattern("dd.MM.yyyy HH:mm 'МСК'", Locale.ROOT)
             .withZone(ZoneId.of("Europe/Moscow"));
@@ -56,10 +54,6 @@ public final class TelegramDisplayFormatter {
         return Optional.of(normalized);
     }
 
-    public static String approximatePriceWarning() {
-        return APPROXIMATE_PRICE_WARNING;
-    }
-
     public static String observedAt(Instant instant) {
         if (instant == null) {
             throw new IllegalArgumentException("instant must not be null");
@@ -87,6 +81,12 @@ public final class TelegramDisplayFormatter {
             throw new IllegalArgumentException("estimate must not be null");
         }
         return "≈ " + RublePriceFormatter.format(estimate.getAmount());
+    }
+
+    public static String targetPriceInputPrompt() {
+        return "🎯 Введите желаемую цену в рублях.\n\n"
+                + "Например: 1500\n"
+                + "Ответ можно отправить в течение 15 минут.";
     }
 
     private static boolean startsWithIgnoreCase(String value, String prefix) {

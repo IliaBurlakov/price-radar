@@ -100,7 +100,7 @@ class TelegramItemNavigationTest {
         )).thenReturn(SubscriptionEndResult.notFound());
         clearInvocations(context.telegramGateway);
         context.trackedItemsHandler.handleCallback(callback(
-                button(confirmation, "Да, удалить").getCallbackData()
+                button(confirmation, "Да, остановить").getCallbackData()
         ));
 
         verify(context.subscriptionService).end(

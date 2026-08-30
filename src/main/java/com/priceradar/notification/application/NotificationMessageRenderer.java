@@ -70,7 +70,6 @@ public final class NotificationMessageRenderer {
         text.append("\nПроверено: ")
                 .append(TelegramDisplayFormatter.observedAt(notification.getObservedAt()));
         text.append("\nОткрыть товар:\n").append(notification.getCanonicalUrl());
-        text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         return new OutgoingTelegramMessage(
                 notification.getChatId(),

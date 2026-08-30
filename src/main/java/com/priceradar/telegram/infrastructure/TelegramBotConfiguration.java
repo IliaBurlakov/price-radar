@@ -2,6 +2,8 @@ package com.priceradar.telegram.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.priceradar.configuration.PriceRadarPolicyProperties;
+import com.priceradar.feedback.application.FeedbackService;
+import com.priceradar.feedback.infrastructure.configuration.FeedbackProperties;
 import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.product.application.ProductUrlParser;
 import com.priceradar.product.application.ResolvedQuoteService;
@@ -20,6 +22,7 @@ import com.priceradar.telegram.application.TargetPriceParser;
 import com.priceradar.telegram.application.TelegramBotCommandRegistrar;
 import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
 import com.priceradar.telegram.application.TelegramGateway;
+import com.priceradar.telegram.application.TelegramFeedbackHandler;
 import com.priceradar.telegram.application.TelegramMenuHandler;
 import com.priceradar.telegram.application.TelegramMenuMessageFactory;
 import com.priceradar.telegram.application.TelegramMultiProductQuoteMessageFactory;
@@ -333,6 +336,20 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public TelegramFeedbackHandler telegramFeedbackHandler(
+            UserProfileService userProfileService,
+            FeedbackService feedbackService,
+            TelegramGateway telegramGateway,
+            FeedbackProperties feedbackProperties,
+            Clock providerClock
+    ) {
+        return new TelegramFeedbackHandler(
+                userProfileService, feedbackService, telegramGateway,
+                feedbackProperties, providerClock
+        );
+    }
+
+    @Bean
     public TelegramUpdateDispatcher telegramUpdateDispatcher(
             TelegramOnboardingHandler onboardingHandler,
             TelegramCurrentQuoteHandler currentQuoteHandler,
@@ -343,6 +360,7 @@ public class TelegramBotConfiguration {
             TrackedItemsMessageHandler trackedItemsHandler,
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
+            TelegramFeedbackHandler feedbackHandler,
             TelegramGateway telegramGateway
     ) {
         return new TelegramUpdateDispatcher(
@@ -355,6 +373,7 @@ public class TelegramBotConfiguration {
                 trackedItemsHandler,
                 showLastKnownHandler,
                 statisticsHandler,
+                feedbackHandler,
                 telegramGateway
         );
     }

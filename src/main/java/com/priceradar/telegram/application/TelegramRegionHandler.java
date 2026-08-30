@@ -16,8 +16,8 @@ import java.util.Optional;
 
 public final class TelegramRegionHandler {
 
-    private static final String SEARCHING_MESSAGE = "🔎 Ищу населённый пункт...";
-    private static final String APPLYING_MESSAGE = "⏳ Устанавливаю населённый пункт...";
+    private static final String SEARCHING_MESSAGE = "🔎 Ищу город...";
+    private static final String APPLYING_MESSAGE = "⏳ Устанавливаю город...";
 
     private final UserProfileService userProfileService;
     private final CitySelectionService citySelectionService;
@@ -91,7 +91,7 @@ public final class TelegramRegionHandler {
                         + locationLabelFormatter.format(location.toCandidate()) + '.')
                 .orElse("");
         String text = "📍 Выберите город" + current + "\n\n"
-                + "Введите название населённого пункта, для которого нужно отслеживать цены Wildberries.\n\n"
+                + "Введите название города, для которого нужно отслеживать цены Wildberries.\n\n"
                 + "Например:\nМосква\n\n";
         List<List<TelegramInlineButton>> keyboard = profile.isRegionSelected()
                 ? TelegramNavigationKeyboard.home()
@@ -138,16 +138,16 @@ public final class TelegramRegionHandler {
             case OPTIONS -> options(chatId, result.getCandidates());
             case INVALID_NUMBER -> invalidNumber(chatId, currentProfile, now);
             case NOT_FOUND -> retry(chatId,
-                    "Не удалось найти такой населённый пункт в России. Проверьте название и попробуйте ещё раз.");
+                    "Не удалось найти такой город. Проверьте название и попробуйте ещё раз.");
             case GEOCODING_UNAVAILABLE -> retry(chatId,
-                    "⚠️ Сейчас не удалось выполнить поиск города. Попробуйте ещё раз немного позже.");
+                    "⚠️ Сейчас не удалось найти город. Попробуйте ещё раз немного позже.");
             case WILDBERRIES_UNAVAILABLE -> retry(chatId,
-                    "⚠️ Сейчас не удалось определить город для Wildberries. Попробуйте отправить название ещё раз немного позже.");
+                    "⚠️ Сейчас не удалось подготовить данные для выбранного города. Попробуйте ещё раз немного позже.");
             case ACTIVE_SUBSCRIPTIONS -> blockedChange(chatId, result.getActiveSubscriptions());
             case SESSION_EXPIRED -> retry(chatId,
-                    "Выбор города устарел. Отправьте название населённого пункта ещё раз.");
+                    "Выбор города устарел. Отправьте название города ещё раз.");
             case USER_NOT_FOUND -> new OutgoingTelegramMessage(
-                    chatId, "Не удалось найти профиль. Отправьте /start и попробуйте ещё раз.",
+                    chatId, "Не удалось загрузить ваши данные. Отправьте /start и попробуйте ещё раз.",
                     TelegramNavigationKeyboard.home()
             );
         };
@@ -200,7 +200,7 @@ public final class TelegramRegionHandler {
     private OutgoingTelegramMessage blockedChange(long chatId, long activeSubscriptions) {
         String text = "⚠️ Пока нельзя изменить город.\n\n"
                 + "У вас есть активные отслеживания: " + activeSubscriptions + ". "
-                + "Город влияет на цену и наличие, поэтому существующую историю нельзя переносить.\n\n"
+                + "Чтобы история цен оставалась корректной, город нельзя менять во время отслеживания товаров.\n\n"
                 + "Чтобы выбрать другой город, сначала остановите все активные отслеживания.";
         return new OutgoingTelegramMessage(chatId, text, List.of(
                 List.of(new TelegramInlineButton("🧹 Очистить все", ClearTrackingCallbackData.START)),

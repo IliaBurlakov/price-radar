@@ -124,7 +124,6 @@ public final class TrackedItemsMessageFactory {
                 .append(TelegramDisplayFormatter.observedAt(observedAt)));
         text.append("\n\nГород: ").append(TelegramDisplayFormatter.region(region));
         text.append("\nОткрыть товар:\n").append(item.getCanonicalUrl());
-        text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         List<List<TelegramInlineButton>> keyboard = List.of(
                 List.of(new TelegramInlineButton(
@@ -142,7 +141,7 @@ public final class TrackedItemsMessageFactory {
                         )
                 )),
                 List.of(new TelegramInlineButton(
-                        "❌ Удалить товар",
+                        "❌ Остановить отслеживание",
                         SubscriptionCallbackData.encode(
                                 SubscriptionCallbackData.Action.REMOVE,
                                 item.getSubscriptionId()
@@ -224,8 +223,7 @@ public final class TrackedItemsMessageFactory {
     ) {
         return new OutgoingTelegramMessage(
                 chatId,
-                "🎯 Введите желаемую цену в рублях.\n\nНапример: 350\n"
-                        + "Ответ можно отправить в течение 15 минут.",
+                TelegramDisplayFormatter.targetPriceInputPrompt(),
                 List.of(List.of(new TelegramInlineButton(
                         "← Назад",
                         SubscriptionCallbackData.encode(
@@ -281,7 +279,7 @@ public final class TrackedItemsMessageFactory {
                         + "\n\nИстория текущего периода отслеживания будет завершена.",
                 List.of(
                         List.of(new TelegramInlineButton(
-                                "Да, удалить",
+                                "Да, остановить",
                                 SubscriptionCallbackData.encode(
                                         SubscriptionCallbackData.Action.CONFIRM_REMOVE,
                                         item.getSubscriptionId()
@@ -302,8 +300,8 @@ public final class TrackedItemsMessageFactory {
     private OutgoingTelegramMessage emptyList(long chatId) {
         return new OutgoingTelegramMessage(
                 chatId,
-                "У вас пока нет отслеживаемых товаров.\n\n"
-                        + "Отправьте ссылку Wildberries, чтобы добавить первый товар.",
+                "📦 Мои товары\n\nУ вас пока нет отслеживаемых товаров.\n"
+                        + "Отправьте ссылку Wildberries или нажмите «Добавить товар», чтобы начать отслеживание.",
                 List.of(List.of(
                         TelegramNavigationKeyboard.button(
                                 "Добавить товар",
@@ -365,10 +363,10 @@ public final class TrackedItemsMessageFactory {
             return;
         }
         if (status == SnapshotStatus.UNAVAILABLE) {
-            text.append("\nПоследняя цена: товар недоступен");
+            text.append("\nПоследняя цена: недоступна — товара нет в наличии");
             return;
         }
-        text.append("\nПоследняя цена: цена не найдена");
+        text.append("\nПоследняя цена: пока недоступна");
     }
 
     private Optional<WalletEstimate> estimateWalletPrice(

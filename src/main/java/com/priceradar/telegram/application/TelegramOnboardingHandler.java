@@ -81,6 +81,7 @@ public final class TelegramOnboardingHandler {
         return MainMenuCallbackData.parse(callback.getData())
                 .filter(action -> action == MainMenuCallbackData.Action.HOME
                         || action == MainMenuCallbackData.Action.HELP
+                        || action == MainMenuCallbackData.Action.FEEDBACK
                         || action == MainMenuCallbackData.Action.REGION)
                 .isPresent();
     }

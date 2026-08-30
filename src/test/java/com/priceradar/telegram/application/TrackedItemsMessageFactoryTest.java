@@ -81,7 +81,7 @@ class TrackedItemsMessageFactoryTest {
                 .contains(
                         "📊 Статистика",
                         "🔔 Условие уведомлений",
-                        "❌ Удалить товар",
+                        "❌ Остановить отслеживание",
                         "← Назад"
                 )
                 .doesNotContain("💰 Последняя цена");

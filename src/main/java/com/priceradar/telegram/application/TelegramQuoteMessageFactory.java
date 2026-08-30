@@ -52,7 +52,6 @@ public final class TelegramQuoteMessageFactory {
                         quote.getPriceContext().getCityName()
                 ));
         text.append("\nОткрыть товар:\n").append(quote.getCanonicalUrl());
-        text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
 
         return new OutgoingTelegramMessage(
                 chatId,

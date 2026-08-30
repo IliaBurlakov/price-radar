@@ -16,6 +16,7 @@ public class TelegramUpdateDispatcher {
     private final TrackedItemsMessageHandler trackedItemsHandler;
     private final ShowLastKnownCallbackHandler showLastKnownHandler;
     private final StatisticsCallbackHandler statisticsHandler;
+    private final TelegramFeedbackHandler feedbackHandler;
     private final TelegramGateway telegramGateway;
 
     public TelegramUpdateDispatcher(
@@ -28,6 +29,7 @@ public class TelegramUpdateDispatcher {
             TrackedItemsMessageHandler trackedItemsHandler,
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
+            TelegramFeedbackHandler feedbackHandler,
             TelegramGateway telegramGateway
     ) {
         if (onboardingHandler == null || currentQuoteHandler == null
@@ -35,7 +37,7 @@ public class TelegramUpdateDispatcher {
                 || sharedBasketHandler == null
                 || trackedItemsHandler == null
                 || showLastKnownHandler == null || statisticsHandler == null
-                || telegramGateway == null) {
+                || feedbackHandler == null || telegramGateway == null) {
             throw new IllegalArgumentException("Telegram update dispatcher dependencies must not be null");
         }
         this.onboardingHandler = onboardingHandler;
@@ -47,6 +49,7 @@ public class TelegramUpdateDispatcher {
         this.trackedItemsHandler = trackedItemsHandler;
         this.showLastKnownHandler = showLastKnownHandler;
         this.statisticsHandler = statisticsHandler;
+        this.feedbackHandler = feedbackHandler;
         this.telegramGateway = telegramGateway;
     }
 
@@ -59,6 +62,9 @@ public class TelegramUpdateDispatcher {
             return;
         }
         update.getMessage().ifPresent(message -> {
+            if (feedbackHandler.handlePendingMessage(message)) {
+                return;
+            }
             if (onboardingHandler.handleMessage(message)) {
                 return;
             }
@@ -96,6 +102,10 @@ public class TelegramUpdateDispatcher {
 
     private void dispatchCallback(IncomingTelegramCallback callback) {
         try {
+            boolean opensFeedback = feedbackHandler.supportsCallback(callback);
+            if (!opensFeedback) {
+                feedbackHandler.cancel(callback.getTelegramUserId(), callback.getChatId());
+            }
             if (onboardingHandler.handleCallback(callback)) {
                 return;
             }
@@ -104,6 +114,9 @@ public class TelegramUpdateDispatcher {
                     callback.getTelegramUserId(),
                     callback.getChatId()
             );
+            if (feedbackHandler.handleCallback(callback)) {
+                return;
+            }
             if (sharedBasketHandler.handleCallback(callback)) {
                 return;
             }
