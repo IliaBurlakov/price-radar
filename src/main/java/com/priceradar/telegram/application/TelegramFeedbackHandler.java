@@ -53,7 +53,7 @@ public final class TelegramFeedbackHandler {
         feedbackService.begin(profile);
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(),
-                "💬 Обратная связь\n\nСпасибо, что пользуетесь PriceRadar!\n\nЕсли у вас есть идея, пожелание или вы столкнулись с ошибкой, напишите нам одним сообщением. Ваш отзыв будет передан разработчикам PriceRadar.\n\nОтправьте сообщение в течение %d минут."
+                "💬 Обратная связь\n\nСпасибо, что пользуетесь Price Radar! Здесь вы можете оставить свой отзыв о сервисе и помочь нам стать лучше.\n\nОтправьте сообщение в течение %d минут."
                         .formatted(feedbackService.getPendingTtl().toMinutes()),
                 TelegramNavigationKeyboard.home()
         ));
@@ -110,7 +110,7 @@ public final class TelegramFeedbackHandler {
     private void confirmAndNotify(UserProfile profile, FeedbackMessage feedback) {
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 profile.getTelegramChatId(),
-                "✅ Спасибо за обратную связь!\n\nСообщение получено. Спасибо, что помогаете улучшать PriceRadar.",
+                "✅ Спасибо за обратную связь!\n\nСообщение получено. Ваш отзыв поможет сделать Price Radar лучше.",
                 TelegramNavigationKeyboard.mainMenu()
         ));
         if (properties.getRecipientChatId() == 0) {

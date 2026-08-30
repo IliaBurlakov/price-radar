@@ -63,7 +63,7 @@ class TelegramRegionHandlerTest {
 
         var messages = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(context.gateway, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
-        assertThat(messages.getAllValues().getFirst().getText()).contains("Ищу населённый пункт");
+        assertThat(messages.getAllValues().getFirst().getText()).contains("Ищу город");
         assertThat(messages.getAllValues().getLast().getText()).contains("Город выбран: Москва");
         assertThat(messages.getAllValues().getLast().getInlineKeyboard()).isNotEmpty();
     }
@@ -107,7 +107,7 @@ class TelegramRegionHandlerTest {
         var progress = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         order.verify(context.gateway).sendMessage(progress.capture());
         assertThat(progress.getValue().getText())
-                .isEqualTo("⏳ Устанавливаю населённый пункт...");
+                .isEqualTo("⏳ Устанавливаю город...");
         order.verify(context.selection).choose(profile, 2, NOW);
         var messages = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(context.gateway, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
@@ -134,10 +134,10 @@ class TelegramRegionHandlerTest {
         var messages = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(context.gateway, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
         assertThat(messages.getAllValues().getFirst().getText())
-                .isEqualTo("🔎 Ищу населённый пункт...");
+                .isEqualTo("🔎 Ищу город...");
         assertThat(messages.getAllValues())
                 .extracting(OutgoingTelegramMessage::getText)
-                .noneMatch(text -> text.contains("Устанавливаю населённый пункт"));
+                .noneMatch(text -> text.contains("Устанавливаю город"));
     }
 
     @Test

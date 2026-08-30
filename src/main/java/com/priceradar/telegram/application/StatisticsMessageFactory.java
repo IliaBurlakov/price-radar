@@ -45,7 +45,6 @@ public final class StatisticsMessageFactory {
             text.append("\n\n🌍 Город: ")
                     .append(TelegramDisplayFormatter.region(region));
             text.append("\n\nИстория ведётся с момента добавления товара.");
-            text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
             return withItemNavigation(chatId, text.toString(), statistics.getSubscriptionId());
         }
 
@@ -98,7 +97,7 @@ public final class StatisticsMessageFactory {
         BigDecimal averageMinorUnits = statistics.getAverageMinorUnits().orElseThrow();
         text.append("\nСредняя: ")
                 .append(formatAverage(averageMinorUnits));
-        text.append("\nНаблюдений: ")
+        text.append("\nПроверок цены: ")
                 .append(statistics.getObservationCount());
         text.append("\n\n🌍 Город: ")
                 .append(TelegramDisplayFormatter.region(region));
@@ -106,7 +105,6 @@ public final class StatisticsMessageFactory {
                 .append(preferences.getWalletDiscountPercent())
                 .append("%.");
         text.append("\nИстория ведётся с момента добавления товара.");
-        text.append("\n\n").append(TelegramDisplayFormatter.approximatePriceWarning());
         return withItemNavigation(chatId, text.toString(), statistics.getSubscriptionId());
     }
 
@@ -127,7 +125,7 @@ public final class StatisticsMessageFactory {
             case LAST_7_DAYS -> "за 7 дней";
             case LAST_30_DAYS -> "за 30 дней";
             case LAST_365_DAYS -> "за 365 дней";
-            case ALL_TIME -> "за всё время текущей подписки";
+            case ALL_TIME -> "за всё время отслеживания";
         };
     }
 

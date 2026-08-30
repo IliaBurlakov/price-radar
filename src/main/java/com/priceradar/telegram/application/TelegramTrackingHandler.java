@@ -69,7 +69,7 @@ public class TelegramTrackingHandler {
         if (callbackData.isEmpty()) {
             telegramGateway.sendMessage(new OutgoingTelegramMessage(
                     callback.getChatId(),
-                    "Эта кнопка устарела или пока не поддерживается. Отправьте ссылку товара заново.",
+                    "Эта кнопка устарела. Отправьте ссылку на товар ещё раз.",
                     TelegramNavigationKeyboard.addProductAndHome()
             ));
             return;
@@ -213,8 +213,7 @@ public class TelegramTrackingHandler {
         pendingTargetPriceStore.put(pending, now);
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(),
-                "Введите желаемую цену в рублях, например 1500.\n"
-                        + "Ответ можно отправить в течение 15 минут.",
+                TelegramDisplayFormatter.targetPriceInputPrompt(),
                 targetInputKeyboard(pending, callback.getTelegramUserId())
         ));
     }
@@ -327,7 +326,7 @@ public class TelegramTrackingHandler {
                         : "уведомлять о новой минимальной цене";
                 yield withTrackedButton(
                         chatId,
-                        "Отслеживание включено.\n\nРежим: " + mode
+                        "✅ Отслеживание включено.\n\nРежим: " + mode
                                 + "\nГород: " + region
                 );
             }
@@ -338,7 +337,7 @@ public class TelegramTrackingHandler {
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
                     "Можно отслеживать не больше " + activeSubscriptionLimit + " товаров. "
-                            + "Удалите один из списка, чтобы добавить новый."
+                            + "Остановите отслеживание одного из товаров, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
             case REGION_MISMATCH -> previousRegionQuoteMessage(chatId);
@@ -365,7 +364,7 @@ public class TelegramTrackingHandler {
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
                     "Можно отслеживать не больше " + activeSubscriptionLimit + " товаров. "
-                            + "Удалите один из списка, чтобы добавить новый."
+                            + "Остановите отслеживание одного из товаров, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
             case REGION_MISMATCH -> previousRegionQuoteMessage(chatId);
@@ -380,7 +379,7 @@ public class TelegramTrackingHandler {
     private OutgoingTelegramMessage expiredQuoteMessage(long chatId) {
         return withAddButton(
                 chatId,
-                "Эта карточка цены устарела. Отправьте ссылку на товар ещё раз."
+                "Данные о цене устарели. Отправьте ссылку на товар ещё раз."
         );
     }
 

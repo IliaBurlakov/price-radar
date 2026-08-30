@@ -54,7 +54,6 @@ public final class LatestSnapshotMessageFactory {
         appendPrice(text, price, profile);
         appendRegionAndLink(text, snapshot);
         text.append("\n\nПоказана последняя сохранённая цена.");
-        text.append("\n").append(TelegramDisplayFormatter.approximatePriceWarning());
         return withItemNavigation(chatId, text.toString(), snapshot.getSubscriptionId());
     }
 

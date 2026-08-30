@@ -209,11 +209,11 @@ class TelegramUpdateDispatcherTest {
                 "Отправьте одну или несколько ссылок", "в одном сообщении"
         );
         assertThat(messages.help(7001L).getText()).contains(
-                "текст из Copy/Share", "список с несколькими ссылками", "Обратная связь"
-        ).doesNotContain("ссылку на один товар");
+                "одну или несколько ссылок", "Обратная связь", "Price Radar"
+        ).doesNotContain("Copy/Share");
         assertThat(TelegramNavigationKeyboard.mainMenu().getLast())
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("Помощь", "💬 Обратная связь");
+                .containsExactly("❓ Помощь", "💬 Обратная связь");
         assertThat(messages.addProduct(7001L).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
@@ -330,7 +330,7 @@ class TelegramUpdateDispatcherTest {
         assertThat(mainMenu.getInlineKeyboard().stream()
                 .flatMap(List::stream)
                 .map(TelegramInlineButton::getText)
-                .toList()).contains("Добавить товар", "Импортировать корзину");
+                .toList()).contains("➕ Добавить товар", "🛒 Импортировать корзину");
 
         menuHandler.handleCallback(new IncomingTelegramCallback(
                 "basket-help", 7001L, 7001L, "private",
@@ -343,7 +343,7 @@ class TelegramUpdateDispatcherTest {
                 "Поделиться корзиной",
                 "Добавить новые",
                 "Синхронизировать",
-                "не более 50 товаров",
+                "до 50 товаров",
                 "Отправьте ссылку на общую корзину"
         );
         assertThat(explanation.getValue().getInlineKeyboard().stream()

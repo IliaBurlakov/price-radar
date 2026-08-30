@@ -371,7 +371,7 @@ public class TrackedItemsMessageHandler {
     ) {
         int count = plan.getSubscriptionCount();
         String text = "⚠️ Остановить все отслеживания?\n\nСейчас отслеживается "
-                + itemCount(count) + ".\n\nВсе текущие подписки будут завершены.\n\n"
+                + itemCount(count) + ".\n\nВсе текущие отслеживания будут остановлены.\n\n"
                 + "Некоторые товары могли отслеживаться долгое время.\n"
                 + "При повторном добавлении начнётся новый период отслеживания и статистики.";
         return new OutgoingTelegramMessage(chatId, text, List.of(
@@ -409,7 +409,7 @@ public class TrackedItemsMessageHandler {
         String text = switch (result.getStatus()) {
             case ENDED -> "Отслеживание остановлено. Уведомления по этому товару "
                     + "больше не придут.";
-            case NOT_FOUND -> "Этот товар уже удалён из списка отслеживания.";
+            case NOT_FOUND -> "Этот товар уже не отслеживается.";
         };
         return new OutgoingTelegramMessage(
                 chatId,

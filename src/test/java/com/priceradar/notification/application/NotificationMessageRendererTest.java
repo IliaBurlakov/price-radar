@@ -42,7 +42,7 @@ class NotificationMessageRendererTest {
                 .contains("Новая цена с WB Кошельком: ≈ 97 ₽")
                 .contains("Город: Москва")
                 .contains("https://www.wildberries.ru/catalog/123456/detail.aspx")
-                .contains("Цена может отличаться");
+                .doesNotContain("Цена может отличаться");
         assertThat(message.getInlineKeyboard()).isNotEmpty();
         assertThat(renderer.render(reachedTarget).getText())
                 .contains("Целевая цена достигнута")
