@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static com.priceradar.testsupport.TestMarketplaceRegions.irkutsk;
+import static com.priceradar.testsupport.TestMarketplaceRegions.bratsk;
 import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -49,6 +50,58 @@ class TelegramRegionHandlerTest {
         assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
                 .containsExactly("✓ Москва", "Иркутск", "← Назад");
+    }
+
+    @Test
+    void onboardingPickerDoesNotPretendThatMoscowWasSelected() {
+        UserProfileService users = mock(UserProfileService.class);
+        UserRegionService regions = mock(UserRegionService.class);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        UserProfile profile = profile(moscow(), false);
+        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
+        when(regions.listEnabled()).thenReturn(List.of(moscow(), irkutsk()));
+        TelegramRegionHandler handler = handler(users, regions, gateway);
+
+        handler.show(TELEGRAM_ID, TELEGRAM_ID);
+
+        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(gateway).sendMessage(message.capture());
+        assertThat(message.getValue().getText())
+                .contains("Добро пожаловать", "Перед началом выберите город")
+                .doesNotContain("Сейчас выбран");
+        assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
+                .extracting(TelegramInlineButton::getText)
+                .containsExactly("Москва", "Иркутск");
+    }
+
+    @Test
+    void firstRegionSelectionConfirmsCityAndShowsMainNavigation() {
+        UserProfileService users = mock(UserProfileService.class);
+        UserRegionService regions = mock(UserRegionService.class);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        UserProfile profile = profile(moscow(), false);
+        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
+        when(regions.changeRegion(profile.getId(), MarketplaceRegionCode.BRATSK, NOW))
+                .thenReturn(RegionChangeResult.withRegion(
+                        RegionChangeResult.Status.SELECTED,
+                        bratsk()
+                ));
+        TelegramRegionHandler handler = handler(users, regions, gateway);
+
+        handler.handleCallback(new IncomingTelegramCallback(
+                "callback", TELEGRAM_ID, TELEGRAM_ID, "private",
+                RegionCallbackData.select(MarketplaceRegionCode.BRATSK)
+        ));
+
+        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(gateway).sendMessage(message.capture());
+        assertThat(message.getValue().getText()).contains(
+                "Город выбран: Братск",
+                "Теперь можно добавлять товары и импортировать корзину"
+        );
+        assertThat(message.getValue().getInlineKeyboard()).flatExtracting(row -> row)
+                .extracting(TelegramInlineButton::getText)
+                .contains("Добавить товар", "Импортировать корзину", "Мои товары");
     }
 
     @Test
@@ -121,9 +174,16 @@ class TelegramRegionHandlerTest {
     }
 
     private UserProfile profile(com.priceradar.region.domain.MarketplaceRegion region) {
+        return profile(region, true);
+    }
+
+    private UserProfile profile(
+            com.priceradar.region.domain.MarketplaceRegion region,
+            boolean selected
+    ) {
         return new UserProfile(
                 UUID.randomUUID(), TELEGRAM_ID, TELEGRAM_ID,
-                region, UserPricePreferences.defaults()
+                region, UserPricePreferences.defaults(), selected
         );
     }
 }

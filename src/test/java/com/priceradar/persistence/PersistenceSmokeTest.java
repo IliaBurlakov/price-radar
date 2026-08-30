@@ -28,6 +28,8 @@ import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.statistics.domain.StatisticsPeriod;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImport;
 import com.priceradar.region.domain.MarketplaceRegionCode;
+import com.priceradar.region.application.RegionChangeResult;
+import com.priceradar.region.application.UserRegionService;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImportStore;
 import com.priceradar.sharedbasket.application.PendingSharedBasketItem;
 import com.priceradar.sharedbasket.application.PendingUnavailableSharedBasketItem;
@@ -41,6 +43,7 @@ import com.priceradar.telegram.application.PendingTargetPrice;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
+import com.priceradar.user.infrastructure.persistence.UserProfileJpaRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +55,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -114,6 +118,12 @@ class PersistenceSmokeTest {
     private UserProfileService userProfileService;
 
     @Autowired
+    private UserRegionService userRegionService;
+
+    @Autowired
+    private UserProfileJpaRepository userProfileRepository;
+
+    @Autowired
     private SubscriptionService subscriptionService;
 
     @Autowired
@@ -166,9 +176,40 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("11");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("12");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
+    }
+
+    @Test
+    @Transactional
+    void persistsInitialRegionSelectionAndDoesNotResetItOnUpsert() {
+        long telegramId = 22001L;
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UserProfile created = userProfileService.getOrCreate(telegramId, telegramId);
+        assertThat(created.isRegionSelected()).isFalse();
+
+        RegionChangeResult selected = userRegionService.changeRegion(
+                created.getId(), MarketplaceRegionCode.MOSCOW, now
+        );
+        assertThat(selected.getStatus()).isEqualTo(RegionChangeResult.Status.SELECTED);
+        assertThat(userProfileService.getOrCreate(telegramId, telegramId).isRegionSelected())
+                .isTrue();
+
+        userProfileRepository.upsert(
+                UUID.randomUUID(),
+                telegramId,
+                telegramId + 1,
+                MarketplaceRegionCode.MOSCOW.name(),
+                false,
+                3,
+                now.plusSeconds(1),
+                now.plusSeconds(1)
+        );
+
+        UserProfile afterUpsert = userProfileService.getOrCreate(telegramId, telegramId + 1);
+        assertThat(afterUpsert.isRegionSelected()).isTrue();
+        assertThat(afterUpsert.getTelegramChatId()).isEqualTo(telegramId + 1);
     }
 
     @Test

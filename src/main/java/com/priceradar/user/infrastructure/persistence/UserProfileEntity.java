@@ -42,6 +42,9 @@ public class UserProfileEntity {
     @Column(name = "version", nullable = false)
     private long version;
 
+    @Column(name = "region_selected", nullable = false)
+    private boolean regionSelected;
+
     protected UserProfileEntity() {
     }
 
@@ -52,7 +55,8 @@ public class UserProfileEntity {
             MarketplaceRegionCode regionCode,
             int walletDiscountPercent,
             Instant createdAt,
-            Instant updatedAt
+            Instant updatedAt,
+            boolean regionSelected
     ) {
         this.id = id;
         this.telegramUserId = telegramUserId;
@@ -61,6 +65,7 @@ public class UserProfileEntity {
         this.walletDiscountPercent = walletDiscountPercent;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.regionSelected = regionSelected;
     }
 
     public UUID getId() {
@@ -95,6 +100,10 @@ public class UserProfileEntity {
         return version;
     }
 
+    public boolean isRegionSelected() {
+        return regionSelected;
+    }
+
     public void updateTelegramChatId(long telegramChatId, Instant updatedAt) {
         if (telegramChatId <= 0) {
             throw new IllegalArgumentException("telegramChatId must be positive");
@@ -111,6 +120,7 @@ public class UserProfileEntity {
             throw new IllegalArgumentException("region update fields must not be null");
         }
         this.regionCode = regionCode;
+        this.regionSelected = true;
         this.updatedAt = updatedAt;
     }
 }

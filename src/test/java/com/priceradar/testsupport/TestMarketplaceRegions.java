@@ -19,4 +19,10 @@ public final class TestMarketplaceRegions {
                 MarketplaceRegionCode.IRKUTSK, "Иркутск", -5827722L, 30, true, 6
         );
     }
+
+    public static MarketplaceRegion bratsk() {
+        return new MarketplaceRegion(
+                MarketplaceRegionCode.BRATSK, "Братск", 123586041L, 30, true, 7
+        );
+    }
 }
