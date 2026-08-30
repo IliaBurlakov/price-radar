@@ -1,5 +1,6 @@
 package com.priceradar.sharedbasket.infrastructure.configuration;
 
+import com.priceradar.configuration.PriceRadarPolicyProperties;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
 import com.priceradar.sharedbasket.application.PendingSharedBasketImportStore;
@@ -29,11 +30,13 @@ public class SharedBasketConfiguration {
             ResolvedQuotePersistenceService quotePersistenceService,
             PendingSharedBasketImportStore pendingStore,
             UserProfileStore userProfileStore,
-            SubscriptionStore subscriptionStore
+            SubscriptionStore subscriptionStore,
+            PriceRadarPolicyProperties policy
     ) {
         return new SharedBasketImportService(
                 urlParser, basketProvider, productResolver, priceSemanticsService,
-                quotePersistenceService, pendingStore, userProfileStore, subscriptionStore
+                quotePersistenceService, pendingStore, userProfileStore, subscriptionStore,
+                policy.getActiveSubscriptionLimit(), policy.getSharedBasketImportTtl()
         );
     }
 }

@@ -18,7 +18,6 @@ public final class TrackedItemsMessageFactory {
 
     public static final int ITEMS_PER_PAGE = 8;
 
-    private static final int MAX_BUTTON_TITLE_LENGTH = 48;
     private static final int MAX_DETAIL_LENGTH = 60;
     private final WalletEstimateService walletEstimateService;
 
@@ -57,13 +56,24 @@ public final class TrackedItemsMessageFactory {
                     .append(" из ")
                     .append(pageCount);
         }
-        text.append("\n\nВыберите товар:");
+        text.append("\n\n");
+        for (int index = from; index < to; index++) {
+            TrackedSubscriptionItem item = items.get(index);
+            text.append(index + 1)
+                    .append(". ")
+                    .append(truncate(
+                            item.getTitle().orElse("Товар Wildberries #" + item.getNmId()),
+                            MAX_DETAIL_LENGTH
+                    ))
+                    .append('\n');
+        }
+        text.append("\nВыберите товар:");
 
         List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
         for (int index = from; index < to; index++) {
             TrackedSubscriptionItem item = items.get(index);
             keyboard.add(List.of(new TelegramInlineButton(
-                    itemButtonText(item, index + 1),
+                    itemButtonText(index + 1),
                     SubscriptionCallbackData.encode(
                             SubscriptionCallbackData.Action.OPEN_ITEM,
                             item.getSubscriptionId()
@@ -382,9 +392,8 @@ public final class TrackedItemsMessageFactory {
         return walletEstimateService.estimateFromRegularPrice(regularPrice, preferences);
     }
 
-    private String itemButtonText(TrackedSubscriptionItem item, int displayNumber) {
-        String title = item.getTitle().orElse("Товар Wildberries #" + item.getNmId());
-        return displayNumber + ". " + truncate(title, MAX_BUTTON_TITLE_LENGTH);
+    private String itemButtonText(int displayNumber) {
+        return "Открыть товар " + displayNumber;
     }
 
     private String mode(TrackedSubscriptionItem item) {

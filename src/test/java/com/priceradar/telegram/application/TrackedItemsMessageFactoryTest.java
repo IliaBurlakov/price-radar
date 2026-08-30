@@ -33,7 +33,8 @@ class TrackedItemsMessageFactoryTest {
 
         assertThat(firstPage.getText())
                 .contains("Мои товары: 9")
-                .contains("Страница 1 из 2");
+                .contains("Страница 1 из 2")
+                .contains("1. Товар 1", "8. Товар 8");
         assertThat(firstPage.getInlineKeyboard())
                 .filteredOn(row -> row.size() == 1
                         && row.getFirst().getCallbackData().startsWith("TRACKED_ITEM:"))
@@ -43,7 +44,7 @@ class TrackedItemsMessageFactoryTest {
                         && row.getFirst().getCallbackData().startsWith("TRACKED_ITEM:"))
                 .singleElement()
                 .satisfies(row -> assertThat(row.getFirst().getText())
-                        .startsWith("9. Товар 9"));
+                        .isEqualTo("Открыть товар 9"));
     }
 
     @Test

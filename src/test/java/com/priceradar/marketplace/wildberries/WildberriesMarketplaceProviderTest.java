@@ -210,6 +210,11 @@ class WildberriesMarketplaceProviderTest {
                 100,
                 Duration.ofHours(24),
                 2 * 1024 * 1024,
+                Duration.ofMinutes(15),
+                Duration.ofMinutes(30),
+                Duration.ofMinutes(5),
+                Duration.ofMinutes(15),
+                Duration.ofSeconds(1),
                 clock
         );
     }

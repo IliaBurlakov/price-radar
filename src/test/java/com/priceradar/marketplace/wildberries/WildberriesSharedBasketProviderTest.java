@@ -22,6 +22,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +31,29 @@ class WildberriesSharedBasketProviderTest {
 
     private static final Instant NOW = Instant.parse("2026-08-24T10:00:00Z");
     private static final String SHARE_ID = "abc123def4";
+
+    @Test
+    void resolvesEightAndFiftyProductsWithOneCardsRequestPerBatch() {
+        for (int count : List.of(8, 50)) {
+            try (LocalHttpStub stub = LocalHttpStub.start()) {
+                String products = LongStream.rangeClosed(1, count)
+                        .mapToObj(id -> "{\"id\":" + id + ",\"name\":\"Product " + id
+                                + "\",\"price\":{\"product\":10000}}")
+                        .collect(Collectors.joining(","));
+                stub.stub("/cards/v4/list", 200, "{\"products\":[" + products + "]}");
+
+                var result = provider(stub, 1).resolveProducts(
+                        Marketplace.WILDBERRIES,
+                        LongStream.rangeClosed(1, count).mapToObj(String::valueOf).toList(),
+                        new PriceContext("Moscow", 1259570991L, 30)
+                );
+
+                assertThat(result.isSuccess()).isTrue();
+                assertThat(result.getProducts()).hasSize(count);
+                assertThat(stub.requestCount()).as("cards requests for " + count + " products").isOne();
+            }
+        }
+    }
 
     @Test
     void fetchesBasketAndResolvesOnlyExactChrtVariantsInOneBatch() {
@@ -209,7 +234,8 @@ class WildberriesSharedBasketProviderTest {
                 new WildberriesSharedBasketMapper(new ObjectMapper()),
                 new WildberriesCardMapper(), new PriceSemanticsService(), coordinator,
                 Duration.ofSeconds(2), Duration.ofMillis(1), Duration.ofMillis(2),
-                Duration.ofHours(1), maxAttempts, 2 * 1024 * 1024, clock
+                Duration.ofHours(1), maxAttempts, 2 * 1024 * 1024, 50,
+                Duration.ofMinutes(15), Duration.ofMinutes(5), Duration.ofMinutes(15), clock
         );
     }
 

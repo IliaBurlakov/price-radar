@@ -39,7 +39,9 @@ class TelegramUpdateDispatcherTest {
                 "/start",
                 "/add",
                 "/import",
-                "https://www.wildberries.ru/catalog/123456/detail.aspx"
+                "https://www.wildberries.ru/catalog/123456/detail.aspx",
+                "Список:\nhttps://www.wildberries.ru/catalog/111/detail.aspx\n"
+                        + "https://www.wildberries.ru/catalog/222/detail.aspx"
         )) {
             IncomingTelegramMessage message = message(text);
             when(onboarding.handleMessage(message)).thenReturn(true);
@@ -48,6 +50,25 @@ class TelegramUpdateDispatcherTest {
         }
 
         verifyNoInteractions(quotes, menu, tracking, baskets, tracked);
+    }
+
+    @Test
+    void sharedBasketKeepsRoutingPriorityWhenMessageAlsoContainsAProduct() {
+        TelegramSharedBasketHandler baskets = mock(TelegramSharedBasketHandler.class);
+        TelegramCurrentQuoteHandler quotes = mock(TelegramCurrentQuoteHandler.class);
+        IncomingTelegramMessage message = message(
+                "Моя корзина: https://www.wildberries.ru/basket?shareId=abc123def4\n"
+                        + "Товар: https://www.wildberries.ru/catalog/123/detail.aspx"
+        );
+        when(baskets.handleMessage(message)).thenReturn(true);
+        TelegramUpdateDispatcher dispatcher = dispatcher(
+                quotes, mock(TelegramMenuHandler.class), baskets, mock(TelegramGateway.class)
+        );
+
+        dispatcher.dispatch(new TelegramUpdate(6L, Optional.of(message)));
+
+        verify(baskets).handleMessage(message);
+        verifyNoInteractions(quotes);
     }
 
     @Test
@@ -90,7 +111,13 @@ class TelegramUpdateDispatcherTest {
 
     @Test
     void backAndMainMenuNeverDuplicateTheSameDestination() {
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
+        assertThat(messages.addProduct(7001L).getText()).contains(
+                "Отправьте одну или несколько ссылок", "в одном сообщении"
+        );
+        assertThat(messages.help(7001L).getText()).contains(
+                "текст из Copy/Share", "список с несколькими ссылками"
+        ).doesNotContain("ссылку на один товар");
         assertThat(messages.addProduct(7001L).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
@@ -126,7 +153,7 @@ class TelegramUpdateDispatcherTest {
     void globalCommandsReuseExistingMenuAndTrackedItemsFlows() {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TrackedItemsMessageHandler trackedItems = mock(TrackedItemsMessageHandler.class);
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
         TelegramMenuHandler handler = new TelegramMenuHandler(
                 messages, trackedItems, mock(TelegramRegionHandler.class), gateway
         );
@@ -159,7 +186,7 @@ class TelegramUpdateDispatcherTest {
     @Test
     void unknownCommandGetsHintAndUnsupportedTextShowsTheFullHelpMessage() {
         TelegramGateway gateway = mock(TelegramGateway.class);
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
                 messages, mock(TrackedItemsMessageHandler.class),
                 mock(TelegramRegionHandler.class), gateway
@@ -197,7 +224,7 @@ class TelegramUpdateDispatcherTest {
     @Test
     void mainNavigationExplainsBasketImportAndDispatcherAcceptsTheFollowingSharedLink() {
         TelegramGateway gateway = mock(TelegramGateway.class);
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
                 messages, mock(TrackedItemsMessageHandler.class),
                 mock(TelegramRegionHandler.class), gateway

@@ -18,8 +18,6 @@ import java.util.UUID;
 
 public class TelegramTrackingHandler {
 
-    private static final Duration TARGET_INPUT_TTL = Duration.ofMinutes(15);
-
     private final UserProfileService userProfileService;
     private final SubscriptionService subscriptionService;
     private final TargetPriceParser targetPriceParser;
@@ -27,6 +25,8 @@ public class TelegramTrackingHandler {
     private final PendingTargetPriceStore pendingTargetPriceStore;
     private final TelegramGateway telegramGateway;
     private final Clock clock;
+    private final Duration pendingActionTtl;
+    private final int activeSubscriptionLimit;
 
     public TelegramTrackingHandler(
             UserProfileService userProfileService,
@@ -35,12 +35,17 @@ public class TelegramTrackingHandler {
             TrackingCallbackCodec trackingCallbackCodec,
             PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
-            Clock clock
+            Clock clock,
+            Duration pendingActionTtl,
+            int activeSubscriptionLimit
     ) {
         if (userProfileService == null || subscriptionService == null || targetPriceParser == null
                 || trackingCallbackCodec == null || pendingTargetPriceStore == null
-                || telegramGateway == null || clock == null) {
+                || telegramGateway == null || clock == null || pendingActionTtl == null) {
             throw new IllegalArgumentException("Telegram tracking handler dependencies must not be null");
+        }
+        if (pendingActionTtl.isZero() || pendingActionTtl.isNegative() || activeSubscriptionLimit <= 0) {
+            throw new IllegalArgumentException("Telegram tracking policy values must be positive");
         }
         this.userProfileService = userProfileService;
         this.subscriptionService = subscriptionService;
@@ -49,6 +54,8 @@ public class TelegramTrackingHandler {
         this.pendingTargetPriceStore = pendingTargetPriceStore;
         this.telegramGateway = telegramGateway;
         this.clock = clock;
+        this.pendingActionTtl = pendingActionTtl;
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
     }
 
     public void handleCallback(IncomingTelegramCallback callback) {
@@ -201,7 +208,7 @@ public class TelegramTrackingHandler {
                 callback.getChatId(),
                 PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION,
                 callbackData.getQuoteSnapshotId(),
-                now.plus(TARGET_INPUT_TTL)
+                now.plus(pendingActionTtl)
         );
         pendingTargetPriceStore.put(pending, now);
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
@@ -330,7 +337,7 @@ public class TelegramTrackingHandler {
             );
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
-                    "Можно отслеживать не больше 50 товаров. "
+                    "Можно отслеживать не больше " + activeSubscriptionLimit + " товаров. "
                             + "Удалите один из списка, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
@@ -357,7 +364,7 @@ public class TelegramTrackingHandler {
             );
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
-                    "Можно отслеживать не больше 50 товаров. "
+                    "Можно отслеживать не больше " + activeSubscriptionLimit + " товаров. "
                             + "Удалите один из списка, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);

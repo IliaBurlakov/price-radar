@@ -128,7 +128,7 @@ class TelegramItemNavigationTest {
                 new ClearTrackingCallbackCodec("test-only-callback-secret-with-more-than-32-bytes"),
                 mock(PendingTargetPriceStore.class),
                 gateway,
-                Clock.systemUTC()
+                Clock.systemUTC(), java.time.Duration.ofMinutes(15)
         );
         ShowLastKnownCallbackHandler lastKnown = new ShowLastKnownCallbackHandler(
                 users,

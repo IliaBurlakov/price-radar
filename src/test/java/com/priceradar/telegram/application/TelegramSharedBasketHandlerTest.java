@@ -1,6 +1,7 @@
 package com.priceradar.telegram.application;
 
 import com.priceradar.region.domain.MarketplaceRegionCode;
+import com.priceradar.product.application.ProductUrlParser;
 import com.priceradar.sharedbasket.application.SharedBasketApplyResult;
 import com.priceradar.sharedbasket.application.SharedBasketImportService;
 import com.priceradar.sharedbasket.application.SharedBasketPreview;
@@ -30,14 +31,15 @@ class TelegramSharedBasketHandlerTest {
     @Test
     void sharedBasketLinkShowsProcessingFeedbackBeforePreparingTheImport() {
         TestContext context = context();
+        String basketUrl = "https://www.wildberries.ru/basket?shareId=abc123def4";
         IncomingTelegramMessage message = new IncomingTelegramMessage(
                 context.telegramUserId,
                 context.telegramUserId,
                 "private",
-                "https://www.wildberries.ru/basket?shareId=abc123def4"
+                "Моя корзина:\n" + basketUrl + ",\nпосмотри"
         );
         when(context.service.prepare(
-                org.mockito.ArgumentMatchers.eq(message.getText()),
+                org.mockito.ArgumentMatchers.eq(basketUrl),
                 org.mockito.ArgumentMatchers.any(UserProfile.class),
                 org.mockito.ArgumentMatchers.eq(context.now)
         ))
@@ -52,7 +54,7 @@ class TelegramSharedBasketHandlerTest {
                 outgoing.getText().equals("⏳ Ваш запрос обрабатывается...")
         ));
         order.verify(context.service).prepare(
-                org.mockito.ArgumentMatchers.eq(message.getText()),
+                org.mockito.ArgumentMatchers.eq(basketUrl),
                 org.mockito.ArgumentMatchers.any(UserProfile.class),
                 org.mockito.ArgumentMatchers.eq(context.now)
         );
@@ -85,8 +87,8 @@ class TelegramSharedBasketHandlerTest {
         when(users.getOrCreate(telegramUserId, telegramUserId)).thenReturn(profile);
         when(service.findPreview(importId, userId, now)).thenReturn(Optional.of(preview));
         TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
-                new SharedBasketUrlParser(), service, codec, users, gateway,
-                Clock.fixed(now, ZoneOffset.UTC)
+                linkExtractor(), service, codec, users, gateway,
+                Clock.fixed(now, ZoneOffset.UTC), 50
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -149,8 +151,8 @@ class TelegramSharedBasketHandlerTest {
         ));
         when(service.findPreview(importId, userId, now)).thenReturn(Optional.empty());
         TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
-                new SharedBasketUrlParser(), service, codec, users, gateway,
-                Clock.fixed(now, ZoneOffset.UTC)
+                linkExtractor(), service, codec, users, gateway,
+                Clock.fixed(now, ZoneOffset.UTC), 50
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -198,8 +200,8 @@ class TelegramSharedBasketHandlerTest {
                 )
         ));
         TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
-                new SharedBasketUrlParser(), service, codec, users, gateway,
-                Clock.fixed(now, ZoneOffset.UTC)
+                linkExtractor(), service, codec, users, gateway,
+                Clock.fixed(now, ZoneOffset.UTC), 50
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -499,10 +501,14 @@ class TelegramSharedBasketHandlerTest {
         return new TestContext(
                 now, userId, importId, telegramUserId, service, gateway, codec,
                 new TelegramSharedBasketHandler(
-                        new SharedBasketUrlParser(), service, codec, users, gateway,
-                        Clock.fixed(now, ZoneOffset.UTC)
+                        linkExtractor(), service, codec, users, gateway,
+                        Clock.fixed(now, ZoneOffset.UTC), 50
                 )
         );
+    }
+
+    private WildberriesLinkExtractor linkExtractor() {
+        return new WildberriesLinkExtractor(new ProductUrlParser(), new SharedBasketUrlParser(), 50);
     }
 
     private List<String> titles(String prefix, int count) {

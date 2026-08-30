@@ -1,5 +1,6 @@
 package com.priceradar.tracking.infrastructure.configuration;
 
+import com.priceradar.configuration.PriceRadarPolicyProperties;
 import com.priceradar.tracking.application.LatestSnapshotQueryService;
 import com.priceradar.tracking.application.InitialThresholdNotificationEnqueuer;
 import com.priceradar.tracking.application.SubscriptionService;
@@ -15,12 +16,15 @@ public class TrackingApplicationConfiguration {
     public SubscriptionService subscriptionService(
             UserProfileStore userProfileStore,
             SubscriptionStore subscriptionStore,
-            InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer
+            InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer,
+            PriceRadarPolicyProperties policy
     ) {
         return new SubscriptionService(
                 userProfileStore,
                 subscriptionStore,
-                thresholdNotificationEnqueuer
+                thresholdNotificationEnqueuer,
+                policy.getActiveSubscriptionLimit(),
+                policy.getQuoteTtl()
         );
     }
 

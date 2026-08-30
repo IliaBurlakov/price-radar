@@ -40,11 +40,6 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WildberriesMarketplaceProvider.class);
     private static final String USER_AGENT = "PriceRadar/0.1";
-    private static final Duration RATE_LIMIT_COOLDOWN = Duration.ofMinutes(15);
-    private static final Duration ACCESS_FORBIDDEN_COOLDOWN = Duration.ofMinutes(30);
-    private static final Duration SERVER_ERROR_COOLDOWN = Duration.ofMinutes(5);
-    private static final Duration INVALID_RESPONSE_COOLDOWN = Duration.ofMinutes(15);
-    private static final Duration MAX_BACKOFF_JITTER = Duration.ofSeconds(1);
 
     private final HttpClient httpClient;
     private final WildberriesCardDetailUrlBuilder urlBuilder;
@@ -59,6 +54,11 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
     private final Clock clock;
     private final Duration cacheTtl;
     private final Map<RequestCacheKey, CachedProduct> cache;
+    private final Duration rateLimitCooldown;
+    private final Duration accessForbiddenCooldown;
+    private final Duration serverErrorCooldown;
+    private final Duration invalidResponseCooldown;
+    private final Duration maxBackoffJitter;
 
     public WildberriesMarketplaceProvider(
             HttpClient httpClient,
@@ -73,6 +73,11 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
             int cacheMaxEntries,
             Duration maxRetryAfter,
             int maxResponseBytes,
+            Duration rateLimitCooldown,
+            Duration accessForbiddenCooldown,
+            Duration serverErrorCooldown,
+            Duration invalidResponseCooldown,
+            Duration maxBackoffJitter,
             Clock clock
     ) {
         if (httpClient == null)
@@ -109,6 +114,10 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
             throw new IllegalArgumentException("maxResponseBytes must be between 1 and 16777216");
         if (clock == null)
             throw new IllegalArgumentException("clock must not be null");
+        validateSafetyDurations(
+                rateLimitCooldown, accessForbiddenCooldown, serverErrorCooldown,
+                invalidResponseCooldown, maxBackoffJitter
+        );
 
         this.httpClient = httpClient;
         this.urlBuilder = urlBuilder;
@@ -123,6 +132,11 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
         this.maxResponseBytes = maxResponseBytes;
         this.clock = clock;
         this.cache = createCache(cacheMaxEntries);
+        this.rateLimitCooldown = rateLimitCooldown;
+        this.accessForbiddenCooldown = accessForbiddenCooldown;
+        this.serverErrorCooldown = serverErrorCooldown;
+        this.invalidResponseCooldown = invalidResponseCooldown;
+        this.maxBackoffJitter = maxBackoffJitter;
     }
 
     @Override
@@ -295,7 +309,7 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                     );
 
                 if (statusCode == 403) {
-                    providerCooldownUntil = Optional.of(clock.instant().plus(ACCESS_FORBIDDEN_COOLDOWN));
+                    providerCooldownUntil = Optional.of(clock.instant().plus(accessForbiddenCooldown));
                     return failure(
                             MarketplaceProviderFailureCode.ACCESS_FORBIDDEN,
                             "Wildberries temporarily rejected provider access",
@@ -332,7 +346,7 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                         continue;
                     }
 
-                    providerCooldownUntil = Optional.of(clock.instant().plus(SERVER_ERROR_COOLDOWN));
+                    providerCooldownUntil = Optional.of(clock.instant().plus(serverErrorCooldown));
                     return failure(
                             MarketplaceProviderFailureCode.SERVER_ERROR,
                             "Wildberries is temporarily unavailable",
@@ -440,7 +454,7 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
 
         Optional<Instant> retryNotBefore = switch (failureCode) {
             case MALFORMED_RESPONSE, SCHEMA_VIOLATION -> Optional.of(
-                    clock.instant().plus(INVALID_RESPONSE_COOLDOWN)
+                    clock.instant().plus(invalidResponseCooldown)
             );
             default -> Optional.empty();
         };
@@ -491,7 +505,7 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
         if (exponentialBackoff.compareTo(maxBackoff) >= 0) {
             return maxBackoff;
         }
-        long maxJitterMillis = MAX_BACKOFF_JITTER.toMillis();
+        long maxJitterMillis = maxBackoffJitter.toMillis();
         long jitterMillis = ThreadLocalRandom.current().nextLong(maxJitterMillis + 1);
         Duration withJitter = exponentialBackoff.plusMillis(jitterMillis);
         return withJitter.compareTo(maxBackoff) > 0 ? maxBackoff : withJitter;
@@ -508,7 +522,7 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
     }
 
     private Instant resolveRateLimitCooldown(HttpResponse<?> response) {
-        Instant minimumCooldownUntil = clock.instant().plus(RATE_LIMIT_COOLDOWN);
+        Instant minimumCooldownUntil = clock.instant().plus(rateLimitCooldown);
         Optional<Instant> retryAfter = findRetryAfter(response);
 
         if (retryAfter.isPresent() && retryAfter.get().isAfter(minimumCooldownUntil))
@@ -605,6 +619,14 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                 retryNotBefore,
                 correlationId
         ));
+    }
+
+    private void validateSafetyDurations(Duration... durations) {
+        for (Duration duration : durations) {
+            if (duration == null || duration.isNegative() || duration.isZero()) {
+                throw new IllegalArgumentException("provider safety durations must be positive");
+            }
+        }
     }
 
     private String newCorrelationId() {

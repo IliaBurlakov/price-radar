@@ -35,8 +35,6 @@ public class SharedBasketImportService {
 
     public enum ApplyMode { ADD_NEW, SYNCHRONIZE }
 
-    private static final int ACTIVE_LIMIT = 50;
-    private static final Duration IMPORT_TTL = Duration.ofMinutes(15);
     private static final String CANONICAL_URL = "https://www.wildberries.ru/catalog/%d/detail.aspx";
 
     private final SharedBasketUrlParser urlParser;
@@ -47,6 +45,8 @@ public class SharedBasketImportService {
     private final PendingSharedBasketImportStore pendingStore;
     private final UserProfileStore userProfileStore;
     private final SubscriptionStore subscriptionStore;
+    private final int activeSubscriptionLimit;
+    private final Duration importTtl;
 
     public SharedBasketImportService(
             SharedBasketUrlParser urlParser,
@@ -56,7 +56,9 @@ public class SharedBasketImportService {
             ResolvedQuotePersistenceService quotePersistenceService,
             PendingSharedBasketImportStore pendingStore,
             UserProfileStore userProfileStore,
-            SubscriptionStore subscriptionStore
+            SubscriptionStore subscriptionStore,
+            int activeSubscriptionLimit,
+            Duration importTtl
     ) {
         this.urlParser = java.util.Objects.requireNonNull(urlParser);
         this.basketProvider = java.util.Objects.requireNonNull(basketProvider);
@@ -66,6 +68,11 @@ public class SharedBasketImportService {
         this.pendingStore = java.util.Objects.requireNonNull(pendingStore);
         this.userProfileStore = java.util.Objects.requireNonNull(userProfileStore);
         this.subscriptionStore = java.util.Objects.requireNonNull(subscriptionStore);
+        if (activeSubscriptionLimit <= 0 || importTtl == null || importTtl.isZero() || importTtl.isNegative()) {
+            throw new IllegalArgumentException("shared basket policy values must be positive");
+        }
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
+        this.importTtl = importTtl;
     }
 
     public SharedBasketPreviewResult prepare(String rawUrl, UserProfile user, Instant now) {
@@ -117,7 +124,7 @@ public class SharedBasketImportService {
                 unavailableItems,
                 pendingItems,
                 now,
-                now.plus(IMPORT_TTL)
+                now.plus(importTtl)
         );
         pendingStore.save(pendingImport, now);
         return SharedBasketPreviewResult.ready(buildPreview(pendingImport, user.getId()));
@@ -172,7 +179,7 @@ public class SharedBasketImportService {
         active.forEach(subscription -> activeByTarget.put(subscription.getWatchTargetId(), subscription));
 
         List<PendingSharedBasketItem> targetItems = mode == ApplyMode.SYNCHRONIZE
-                ? pending.orElseThrow().getItems().stream().limit(ACTIVE_LIMIT).toList()
+                ? pending.orElseThrow().getItems().stream().limit(activeSubscriptionLimit).toList()
                 : pending.orElseThrow().getItems();
         Set<UUID> targetIds = targetItems.stream()
                 .map(PendingSharedBasketItem::getWatchTargetId)
@@ -196,7 +203,7 @@ public class SharedBasketImportService {
         }
 
         int kept = (int) targetIds.stream().filter(activeByTarget::containsKey).count();
-        int freeSlots = ACTIVE_LIMIT - activeByTarget.size();
+        int freeSlots = activeSubscriptionLimit - activeByTarget.size();
         int added = 0;
         List<String> skippedByLimitTitles = new ArrayList<>();
         for (PendingSharedBasketItem item : targetItems) {
@@ -219,7 +226,7 @@ public class SharedBasketImportService {
 
         if (mode == ApplyMode.SYNCHRONIZE) {
             skippedByLimitTitles = pending.orElseThrow().getItems().stream()
-                    .skip(ACTIVE_LIMIT)
+                    .skip(activeSubscriptionLimit)
                     .map(this::displayName)
                     .toList();
         }
@@ -265,7 +272,7 @@ public class SharedBasketImportService {
                 .map(PendingSharedBasketItem::getWatchTargetId)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         Set<UUID> syncTargets = pending.getItems().stream()
-                .limit(ACTIVE_LIMIT)
+                .limit(activeSubscriptionLimit)
                 .map(PendingSharedBasketItem::getWatchTargetId)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         int overlap = (int) basketTargets.stream().filter(activeTargets::contains).count();
@@ -273,13 +280,13 @@ public class SharedBasketImportService {
                 .filter(item -> !activeTargets.contains(item.getWatchTargetId()))
                 .toList();
         int newItems = newPendingItems.size();
-        int freeSlots = Math.max(0, ACTIVE_LIMIT - activeTargets.size());
+        int freeSlots = Math.max(0, activeSubscriptionLimit - activeTargets.size());
         List<String> addSkippedTitles = newPendingItems.stream()
                 .skip(freeSlots)
                 .map(this::displayName)
                 .toList();
         List<String> syncSkippedTitles = pending.getItems().stream()
-                .skip(ACTIVE_LIMIT)
+                .skip(activeSubscriptionLimit)
                 .map(this::displayName)
                 .toList();
         List<TrackedSubscriptionItem> trackedItems = subscriptionStore.findActiveByUserId(userId);
@@ -307,7 +314,7 @@ public class SharedBasketImportService {
                         .map(PendingUnavailableSharedBasketItem::getDisplayName)
                         .toList(),
                 overlap, newItems, absentTitles.size(), excludedByLimitTitles.size(), freeSlots,
-                Math.min(newItems, freeSlots), Math.min(pending.getItems().size(), ACTIVE_LIMIT),
+                Math.min(newItems, freeSlots), Math.min(pending.getItems().size(), activeSubscriptionLimit),
                 addSkippedTitles, syncSkippedTitles, absentTitles, excludedByLimitTitles,
                 destructivePlanFingerprint(destructivePlan)
         );

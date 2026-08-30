@@ -1,13 +1,17 @@
 package com.priceradar.telegram.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.priceradar.configuration.PriceRadarPolicyProperties;
 import com.priceradar.pricing.application.WalletEstimateService;
 import com.priceradar.product.application.ProductUrlParser;
 import com.priceradar.product.application.ResolvedQuoteService;
+import com.priceradar.product.application.ResolvedQuoteBatchService;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
 import com.priceradar.telegram.application.LatestSnapshotMessageFactory;
 import com.priceradar.telegram.application.ClearTrackingCallbackCodec;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
+import com.priceradar.telegram.application.MultiProductQuoteCallbackCodec;
+import com.priceradar.telegram.application.MultiProductQuoteSessionStore;
 import com.priceradar.telegram.application.SharedBasketCallbackCodec;
 import com.priceradar.telegram.application.ShowLastKnownCallbackHandler;
 import com.priceradar.telegram.application.StatisticsCallbackHandler;
@@ -18,6 +22,7 @@ import com.priceradar.telegram.application.TelegramCurrentQuoteHandler;
 import com.priceradar.telegram.application.TelegramGateway;
 import com.priceradar.telegram.application.TelegramMenuHandler;
 import com.priceradar.telegram.application.TelegramMenuMessageFactory;
+import com.priceradar.telegram.application.TelegramMultiProductQuoteMessageFactory;
 import com.priceradar.telegram.application.TelegramOnboardingHandler;
 import com.priceradar.telegram.application.TelegramPollingStateStore;
 import com.priceradar.telegram.application.TelegramQuoteMessageFactory;
@@ -28,6 +33,7 @@ import com.priceradar.telegram.application.TrackingCallbackCodec;
 import com.priceradar.telegram.application.TelegramUpdateDispatcher;
 import com.priceradar.telegram.application.TrackedItemsMessageFactory;
 import com.priceradar.telegram.application.TrackedItemsMessageHandler;
+import com.priceradar.telegram.application.WildberriesLinkExtractor;
 import com.priceradar.sharedbasket.application.SharedBasketImportService;
 import com.priceradar.sharedbasket.application.SharedBasketUrlParser;
 import com.priceradar.region.application.UserRegionService;
@@ -100,16 +106,46 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public WildberriesLinkExtractor wildberriesLinkExtractor(
+            ProductUrlParser productUrlParser,
+            SharedBasketUrlParser sharedBasketUrlParser,
+            PriceRadarPolicyProperties policy
+    ) {
+        return new WildberriesLinkExtractor(
+                productUrlParser, sharedBasketUrlParser, policy.getMaxProductLinksPerMessage()
+        );
+    }
+
+    @Bean
+    public MultiProductQuoteCallbackCodec multiProductQuoteCallbackCodec(
+            @Value("${TELEGRAM_CALLBACK_SECRET}") String callbackSecret
+    ) {
+        return new MultiProductQuoteCallbackCodec(callbackSecret);
+    }
+
+    @Bean
+    public TelegramMultiProductQuoteMessageFactory telegramMultiProductQuoteMessageFactory(
+            MultiProductQuoteCallbackCodec callbackCodec,
+            PriceRadarPolicyProperties policy
+    ) {
+        return new TelegramMultiProductQuoteMessageFactory(
+                callbackCodec, policy.getMaxProductLinksPerMessage()
+        );
+    }
+
+    @Bean
     public TelegramSharedBasketHandler telegramSharedBasketHandler(
-            SharedBasketUrlParser urlParser,
+            WildberriesLinkExtractor linkExtractor,
             SharedBasketImportService importService,
             SharedBasketCallbackCodec callbackCodec,
             UserProfileService userProfileService,
             TelegramGateway telegramGateway,
-            Clock providerClock
+            Clock providerClock,
+            PriceRadarPolicyProperties policy
     ) {
         return new TelegramSharedBasketHandler(
-                urlParser, importService, callbackCodec, userProfileService, telegramGateway, providerClock
+                linkExtractor, importService, callbackCodec, userProfileService, telegramGateway, providerClock,
+                policy.getActiveSubscriptionLimit()
         );
     }
 
@@ -125,18 +161,33 @@ public class TelegramBotConfiguration {
 
     @Bean
     public TelegramCurrentQuoteHandler telegramCurrentQuoteHandler(
-            ProductUrlParser productUrlParser,
+            WildberriesLinkExtractor linkExtractor,
             UserProfileService userProfileService,
             ResolvedQuoteService resolvedQuoteService,
+            ResolvedQuoteBatchService batchService,
             TelegramQuoteMessageFactory messageFactory,
-            TelegramGateway telegramGateway
+            TelegramMultiProductQuoteMessageFactory multiProductMessageFactory,
+            MultiProductQuoteCallbackCodec multiProductCallbackCodec,
+            MultiProductQuoteSessionStore sessionStore,
+            SubscriptionService subscriptionService,
+            TelegramGateway telegramGateway,
+            Clock providerClock,
+            PriceRadarPolicyProperties policy
     ) {
         return new TelegramCurrentQuoteHandler(
-                productUrlParser,
+                linkExtractor,
                 userProfileService,
                 resolvedQuoteService,
+                batchService,
                 messageFactory,
-                telegramGateway
+                multiProductMessageFactory,
+                multiProductCallbackCodec,
+                sessionStore,
+                subscriptionService,
+                telegramGateway,
+                providerClock,
+                policy.getPendingActionTtl(),
+                policy.getMaxProductLinksPerMessage()
         );
     }
 
@@ -153,7 +204,8 @@ public class TelegramBotConfiguration {
             TrackingCallbackCodec trackingCallbackCodec,
             PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
-            Clock providerClock
+            Clock providerClock,
+            PriceRadarPolicyProperties policy
     ) {
         return new TelegramTrackingHandler(
                 userProfileService,
@@ -162,7 +214,9 @@ public class TelegramBotConfiguration {
                 trackingCallbackCodec,
                 pendingTargetPriceStore,
                 telegramGateway,
-                providerClock
+                providerClock,
+                policy.getPendingActionTtl(),
+                policy.getActiveSubscriptionLimit()
         );
     }
 
@@ -179,7 +233,8 @@ public class TelegramBotConfiguration {
             ClearTrackingCallbackCodec clearTrackingCallbackCodec,
             PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
-            Clock providerClock
+            Clock providerClock,
+            PriceRadarPolicyProperties policy
     ) {
         return new TrackedItemsMessageHandler(
                 userProfileService,
@@ -188,7 +243,8 @@ public class TelegramBotConfiguration {
                 clearTrackingCallbackCodec,
                 pendingTargetPriceStore,
                 telegramGateway,
-                providerClock
+                providerClock,
+                policy.getPendingActionTtl()
         );
     }
 
@@ -205,8 +261,8 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
-    public TelegramMenuMessageFactory telegramMenuMessageFactory() {
-        return new TelegramMenuMessageFactory();
+    public TelegramMenuMessageFactory telegramMenuMessageFactory(PriceRadarPolicyProperties policy) {
+        return new TelegramMenuMessageFactory(policy.getActiveSubscriptionLimit());
     }
 
     @Bean

@@ -101,7 +101,7 @@ class TelegramNotificationConditionTest {
                 new TrackingCallbackCodec("test-only-callback-secret-with-more-than-32-bytes"),
                 pendingStore,
                 gateway,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15), 50
         );
 
         boolean handled = handler.handleTargetPriceInput(new IncomingTelegramMessage(
@@ -144,7 +144,7 @@ class TelegramNotificationConditionTest {
                 ),
                 pendingStore,
                 gateway,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -191,7 +191,7 @@ class TelegramNotificationConditionTest {
                 new TrackingCallbackCodec("test-only-callback-secret-with-more-than-32-bytes"),
                 pendingStore,
                 gateway,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15), 50
         );
 
         boolean handled = handler.handleTargetPriceInput(new IncomingTelegramMessage(
@@ -234,7 +234,7 @@ class TelegramNotificationConditionTest {
                 ),
                 mock(PendingTargetPriceStore.class),
                 gateway,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(

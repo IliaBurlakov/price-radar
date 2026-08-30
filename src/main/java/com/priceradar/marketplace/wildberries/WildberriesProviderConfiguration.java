@@ -77,6 +77,11 @@ public class WildberriesProviderConfiguration {
                 properties.getCacheMaxEntries(),
                 properties.getMaxRetryAfter(),
                 properties.getMaxResponseBytes(),
+                properties.getRateLimitCooldown(),
+                properties.getAccessForbiddenCooldown(),
+                properties.getServerErrorCooldown(),
+                properties.getInvalidResponseCooldown(),
+                properties.getMaxBackoffJitter(),
                 providerClock
         );
     }
@@ -105,6 +110,10 @@ public class WildberriesProviderConfiguration {
                 properties.getMaxRetryAfter(),
                 properties.getMaxAttempts(),
                 properties.getMaxResponseBytes(),
+                properties.getBatchSize(),
+                properties.getRateLimitCooldown(),
+                properties.getServerErrorCooldown(),
+                properties.getInvalidResponseCooldown(),
                 providerClock
         );
     }
