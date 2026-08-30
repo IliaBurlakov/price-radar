@@ -46,6 +46,7 @@ class ClearTrackingHandlerTest {
                 new ClearTrackingCallbackCodec(
                         "test-only-callback-secret-with-more-than-32-bytes"
                 ),
+                mock(PendingTargetPriceStore.class),
                 gateway, Clock.systemUTC()
         );
 

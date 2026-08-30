@@ -12,6 +12,7 @@ import com.priceradar.user.domain.UserPricePreferences;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public final class TrackedItemsMessageFactory {
 
@@ -138,6 +139,13 @@ public final class TrackedItemsMessageFactory {
                         )
                 ),
                 List.of(new TelegramInlineButton(
+                        "🔔 Условие уведомлений",
+                        SubscriptionCallbackData.encode(
+                                SubscriptionCallbackData.Action.SHOW_NOTIFICATION_CONDITION,
+                                item.getSubscriptionId()
+                        )
+                )),
+                List.of(new TelegramInlineButton(
                         "❌ Удалить товар",
                         SubscriptionCallbackData.encode(
                                 SubscriptionCallbackData.Action.REMOVE,
@@ -156,6 +164,111 @@ public final class TrackedItemsMessageFactory {
                 )
         );
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
+    }
+
+    public OutgoingTelegramMessage createNotificationCondition(
+            long chatId,
+            TrackedSubscriptionItem item
+    ) {
+        if (item == null) {
+            throw new IllegalArgumentException("tracked item must not be null");
+        }
+        String currentCondition = item.getNotificationMode() == NotificationMode.ANY_DECREASE
+                ? "📉 Новая минимальная цена"
+                : "🎯 Цена не выше " + format(item.getTargetPrice().orElseThrow());
+        List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
+        if (item.getNotificationMode() == NotificationMode.ANY_DECREASE) {
+            keyboard.add(List.of(new TelegramInlineButton(
+                    "✓ 📉 Новая минимальная цена",
+                    SubscriptionCallbackData.encode(
+                            SubscriptionCallbackData.Action.SHOW_NOTIFICATION_CONDITION,
+                            item.getSubscriptionId()
+                    )
+            )));
+            keyboard.add(List.of(new TelegramInlineButton(
+                    "🎯 Установить целевую цену",
+                    SubscriptionCallbackData.encode(
+                            SubscriptionCallbackData.Action.EDIT_TARGET_PRICE,
+                            item.getSubscriptionId()
+                    )
+            )));
+        } else {
+            keyboard.add(List.of(new TelegramInlineButton(
+                    "📉 Новая минимальная цена",
+                    SubscriptionCallbackData.encode(
+                            SubscriptionCallbackData.Action.SET_ANY_DECREASE,
+                            item.getSubscriptionId()
+                    )
+            )));
+            keyboard.add(List.of(new TelegramInlineButton(
+                    "🎯 Изменить целевую цену",
+                    SubscriptionCallbackData.encode(
+                            SubscriptionCallbackData.Action.EDIT_TARGET_PRICE,
+                            item.getSubscriptionId()
+                    )
+            )));
+        }
+        keyboard.add(List.of(new TelegramInlineButton(
+                "← Назад",
+                SubscriptionCallbackData.encode(
+                        SubscriptionCallbackData.Action.OPEN_ITEM,
+                        item.getSubscriptionId()
+                )
+        )));
+        return new OutgoingTelegramMessage(
+                chatId,
+                "🔔 Условие уведомлений\n\nТекущее условие:\n" + currentCondition,
+                keyboard
+        );
+    }
+
+    public OutgoingTelegramMessage createTargetPriceInput(
+            long chatId,
+            UUID subscriptionId
+    ) {
+        return new OutgoingTelegramMessage(
+                chatId,
+                "🎯 Введите желаемую цену в рублях.\n\nНапример: 350\n"
+                        + "Ответ можно отправить в течение 15 минут.",
+                List.of(List.of(new TelegramInlineButton(
+                        "← Назад",
+                        SubscriptionCallbackData.encode(
+                                SubscriptionCallbackData.Action.CANCEL_CONDITION_EDIT,
+                                subscriptionId
+                        )
+                )))
+        );
+    }
+
+    public OutgoingTelegramMessage createConditionChanged(
+            long chatId,
+            UUID subscriptionId,
+            NotificationMode mode,
+            Optional<RubleAmount> targetPrice,
+            boolean changed
+    ) {
+        String text;
+        if (!changed && mode == NotificationMode.TARGET_PRICE) {
+            text = "Целевая цена уже установлена на " + format(targetPrice.orElseThrow()) + ".";
+        } else if (!changed) {
+            text = "Уведомления о новой минимальной цене уже включены.";
+        } else if (mode == NotificationMode.ANY_DECREASE) {
+            text = "✅ Условие уведомлений изменено.\n\n"
+                    + "📉 Сообщу о новой минимальной цене.";
+        } else {
+            text = "✅ Условие уведомлений изменено.\n\n"
+                    + "🎯 Сообщу, когда цена будет не выше "
+                    + format(targetPrice.orElseThrow()) + ".";
+        }
+        return new OutgoingTelegramMessage(chatId, text, List.of(List.of(
+                new TelegramInlineButton(
+                        "← К товару",
+                        SubscriptionCallbackData.encode(
+                                SubscriptionCallbackData.Action.OPEN_ITEM,
+                                subscriptionId
+                        )
+                )
+        )));
     }
 
     public OutgoingTelegramMessage createRemovalConfirmation(

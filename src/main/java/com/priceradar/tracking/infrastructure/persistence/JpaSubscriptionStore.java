@@ -8,6 +8,7 @@ import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.tracking.application.LatestSnapshotView;
 import com.priceradar.tracking.application.NotificationStateUpdateResult;
 import com.priceradar.tracking.application.SubscriptionQuoteObservation;
+import com.priceradar.tracking.application.SubscriptionPriceHistory;
 import com.priceradar.tracking.application.SubscriptionStore;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
 import com.priceradar.tracking.domain.NotificationMode;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 @Repository
 public class JpaSubscriptionStore implements SubscriptionStore {
@@ -117,6 +119,26 @@ public class JpaSubscriptionStore implements SubscriptionStore {
     }
 
     @Override
+    public SubscriptionPriceHistory findValidPriceHistory(
+            UUID userId,
+            UUID subscriptionId,
+            Instant observedToInclusive
+    ) {
+        return subscriptionRepository.findValidPriceHistory(
+                        userId,
+                        subscriptionId,
+                        observedToInclusive
+                )
+                .filter(projection -> projection.getMinimumPriceMinor() != null)
+                .map(projection -> new SubscriptionPriceHistory(
+                        optionalAmount(projection.getMinimumPriceMinor()),
+                        optionalAmount(projection.getLatestPriceMinor()),
+                        Optional.of(projection.getLatestObservedAt())
+                ))
+                .orElseGet(SubscriptionPriceHistory::empty);
+    }
+
+    @Override
     public Subscription create(Subscription subscription) {
         SubscriptionEntity entity = new SubscriptionEntity(
                 subscription.getId(),
@@ -144,6 +166,29 @@ public class JpaSubscriptionStore implements SubscriptionStore {
         }
         int updated = subscriptionRepository.updateNotificationStateIfActive(
                 subscription.getId(),
+                subscription.getNotificationReferencePrice()
+                        .map(RubleAmount::getMinorUnits)
+                        .orElse(null),
+                subscription.getLastProcessedPriceObservedAt().orElse(null),
+                subscription.getThresholdState(),
+                subscription.getThresholdObservedAt().orElse(null),
+                SubscriptionStatus.ACTIVE,
+                subscription.getVersion()
+        );
+        return updated == 1
+                ? NotificationStateUpdateResult.UPDATED
+                : NotificationStateUpdateResult.CONFLICT;
+    }
+
+    @Override
+    public NotificationStateUpdateResult updateConditionIfActive(Subscription subscription) {
+        if (subscription == null) {
+            throw new IllegalArgumentException("subscription must not be null");
+        }
+        int updated = subscriptionRepository.updateConditionIfActive(
+                subscription.getId(),
+                subscription.getNotificationMode(),
+                subscription.getTargetPrice().map(RubleAmount::getMinorUnits).orElse(null),
                 subscription.getNotificationReferencePrice()
                         .map(RubleAmount::getMinorUnits)
                         .orElse(null),

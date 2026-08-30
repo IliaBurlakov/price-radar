@@ -281,6 +281,31 @@ class TelegramUpdateDispatcherTest {
 
         verify(menuHandler).handleCallback(callback);
         verify(gateway).answerCallbackQuery("callback-1");
+        verify(trackingHandler).clearPendingInput(7001L, 7001L);
+    }
+
+    @Test
+    void commandNavigationClearsOldPendingTargetInput() {
+        TelegramTrackingHandler trackingHandler = mock(TelegramTrackingHandler.class);
+        TelegramMenuHandler menuHandler = mock(TelegramMenuHandler.class);
+        IncomingTelegramMessage command = message("/help");
+        when(menuHandler.handleMessage(command)).thenReturn(true);
+        TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
+                mock(TelegramOnboardingHandler.class),
+                mock(TelegramCurrentQuoteHandler.class),
+                menuHandler,
+                trackingHandler,
+                mock(TelegramSharedBasketHandler.class),
+                mock(TrackedItemsMessageHandler.class),
+                mock(ShowLastKnownCallbackHandler.class),
+                mock(StatisticsCallbackHandler.class),
+                mock(TelegramGateway.class)
+        );
+
+        dispatcher.dispatch(new TelegramUpdate(5L, Optional.of(command)));
+
+        verify(trackingHandler).clearPendingInput(7001L, 7001L);
+        verify(trackingHandler, never()).handleTargetPriceInput(command);
     }
 
     private void assertSentMessage(

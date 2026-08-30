@@ -4,10 +4,13 @@ import com.priceradar.tracking.application.SubscriptionEndResult;
 import com.priceradar.tracking.application.ClearSubscriptionsPlan;
 import com.priceradar.tracking.application.ClearSubscriptionsResult;
 import com.priceradar.tracking.application.SubscriptionService;
+import com.priceradar.tracking.application.SubscriptionConditionChangeResult;
 import com.priceradar.tracking.application.TrackedSubscriptionItem;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -15,11 +18,14 @@ import java.util.UUID;
 
 public class TrackedItemsMessageHandler {
 
+    private static final Duration TARGET_INPUT_TTL = Duration.ofMinutes(15);
+
     private final UserProfileService userProfileService;
     private final SubscriptionService subscriptionService;
     private final TrackedItemsMessageFactory messageFactory;
     private final TelegramGateway telegramGateway;
     private final ClearTrackingCallbackCodec clearCallbackCodec;
+    private final PendingTargetPriceStore pendingTargetPriceStore;
     private final Clock clock;
 
     public TrackedItemsMessageHandler(
@@ -27,11 +33,13 @@ public class TrackedItemsMessageHandler {
             SubscriptionService subscriptionService,
             TrackedItemsMessageFactory messageFactory,
             ClearTrackingCallbackCodec clearCallbackCodec,
+            PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
             Clock clock
     ) {
         if (userProfileService == null || subscriptionService == null || messageFactory == null
                 || clearCallbackCodec == null
+                || pendingTargetPriceStore == null
                 || telegramGateway == null || clock == null) {
             throw new IllegalArgumentException("tracked items handler dependencies must not be null");
         }
@@ -39,6 +47,7 @@ public class TrackedItemsMessageHandler {
         this.subscriptionService = subscriptionService;
         this.messageFactory = messageFactory;
         this.clearCallbackCodec = clearCallbackCodec;
+        this.pendingTargetPriceStore = pendingTargetPriceStore;
         this.telegramGateway = telegramGateway;
         this.clock = clock;
     }
@@ -80,10 +89,28 @@ public class TrackedItemsMessageHandler {
                 SubscriptionCallbackData.Action.OPEN_ITEM,
                 callback.getData()
         );
+        Optional<UUID> conditionId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.SHOW_NOTIFICATION_CONDITION,
+                callback.getData()
+        );
+        Optional<UUID> setAnyId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.SET_ANY_DECREASE,
+                callback.getData()
+        );
+        Optional<UUID> editTargetId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.EDIT_TARGET_PRICE,
+                callback.getData()
+        );
+        Optional<UUID> cancelConditionId = SubscriptionCallbackData.parse(
+                SubscriptionCallbackData.Action.CANCEL_CONDITION_EDIT,
+                callback.getData()
+        );
         OptionalInt requestedPage = TrackedItemsPageCallbackData.parse(callback.getData());
         if (!clearStart && clearFingerprint.isEmpty()
                 && removeId.isEmpty() && confirmRemoveId.isEmpty()
-                && itemId.isEmpty() && requestedPage.isEmpty()) {
+                && itemId.isEmpty() && requestedPage.isEmpty()
+                && conditionId.isEmpty() && setAnyId.isEmpty()
+                && editTargetId.isEmpty() && cancelConditionId.isEmpty()) {
             return false;
         }
 
@@ -100,6 +127,30 @@ public class TrackedItemsMessageHandler {
         }
         if (clearFingerprint.isPresent()) {
             applyClearAll(callback, profile, clearFingerprint.orElseThrow());
+            return true;
+        }
+        if (conditionId.isPresent()) {
+            showNotificationCondition(callback.getChatId(), profile, conditionId.orElseThrow());
+            return true;
+        }
+        if (editTargetId.isPresent()) {
+            beginTargetPriceEdit(callback, profile, editTargetId.orElseThrow());
+            return true;
+        }
+        if (cancelConditionId.isPresent()) {
+            pendingTargetPriceStore.remove(
+                    callback.getTelegramUserId(),
+                    callback.getChatId()
+            );
+            showNotificationCondition(
+                    callback.getChatId(),
+                    profile,
+                    cancelConditionId.orElseThrow()
+            );
+            return true;
+        }
+        if (setAnyId.isPresent()) {
+            changeToAnyDecrease(callback.getChatId(), profile, setAnyId.orElseThrow());
             return true;
         }
         if (requestedPage.isPresent() || itemId.isPresent() || removeId.isPresent()) {
@@ -124,6 +175,90 @@ public class TrackedItemsMessageHandler {
         );
         telegramGateway.sendMessage(removalMessage(callback.getChatId(), result));
         return true;
+    }
+
+    private void showNotificationCondition(
+            long chatId,
+            UserProfile profile,
+            UUID subscriptionId
+    ) {
+        findTrackedItem(profile.getId(), subscriptionId)
+                .ifPresentOrElse(
+                        item -> telegramGateway.sendMessage(
+                                messageFactory.createNotificationCondition(chatId, item)
+                        ),
+                        () -> telegramGateway.sendMessage(itemNotFoundMessage(chatId))
+                );
+    }
+
+    private void beginTargetPriceEdit(
+            IncomingTelegramCallback callback,
+            UserProfile profile,
+            UUID subscriptionId
+    ) {
+        if (findTrackedItem(profile.getId(), subscriptionId).isEmpty()) {
+            telegramGateway.sendMessage(itemNotFoundMessage(callback.getChatId()));
+            return;
+        }
+        Instant now = clock.instant();
+        pendingTargetPriceStore.put(new PendingTargetPrice(
+                callback.getTelegramUserId(),
+                callback.getChatId(),
+                PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION,
+                subscriptionId,
+                now.plus(TARGET_INPUT_TTL)
+        ), now);
+        telegramGateway.sendMessage(messageFactory.createTargetPriceInput(
+                callback.getChatId(),
+                subscriptionId
+        ));
+    }
+
+    private void changeToAnyDecrease(
+            long chatId,
+            UserProfile profile,
+            UUID subscriptionId
+    ) {
+        SubscriptionConditionChangeResult result = subscriptionService.changeToAnyDecrease(
+                profile.getId(),
+                subscriptionId,
+                clock.instant()
+        );
+        if (result.getStatus() == SubscriptionConditionChangeResult.Status.NOT_FOUND) {
+            telegramGateway.sendMessage(itemNotFoundMessage(chatId));
+            return;
+        }
+        if (result.getStatus() == SubscriptionConditionChangeResult.Status.CONFLICT) {
+            telegramGateway.sendMessage(conditionConflictMessage(chatId, subscriptionId));
+            return;
+        }
+        telegramGateway.sendMessage(messageFactory.createConditionChanged(
+                chatId,
+                subscriptionId,
+                result.getSubscription().orElseThrow().getNotificationMode(),
+                result.getSubscription().orElseThrow().getTargetPrice(),
+                result.getStatus() == SubscriptionConditionChangeResult.Status.CHANGED
+        ));
+    }
+
+    private Optional<TrackedSubscriptionItem> findTrackedItem(UUID userId, UUID subscriptionId) {
+        return subscriptionService.findActive(userId).stream()
+                .filter(item -> item.getSubscriptionId().equals(subscriptionId))
+                .findFirst();
+    }
+
+    private OutgoingTelegramMessage conditionConflictMessage(long chatId, UUID subscriptionId) {
+        return new OutgoingTelegramMessage(
+                chatId,
+                "Условие уведомлений уже изменилось. Откройте его ещё раз.",
+                List.of(List.of(new TelegramInlineButton(
+                        "Открыть условие",
+                        SubscriptionCallbackData.encode(
+                                SubscriptionCallbackData.Action.SHOW_NOTIFICATION_CONDITION,
+                                subscriptionId
+                        )
+                )))
+        );
     }
 
     private void showRemovalConfirmation(

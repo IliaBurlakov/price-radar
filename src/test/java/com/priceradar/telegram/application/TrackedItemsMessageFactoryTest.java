@@ -74,6 +74,7 @@ class TrackedItemsMessageFactoryTest {
                 .contains(
                         "💰 Последняя цена",
                         "📊 Статистика",
+                        "🔔 Условие уведомлений",
                         "❌ Удалить товар",
                         "← Назад"
                 );

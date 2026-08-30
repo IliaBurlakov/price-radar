@@ -3,6 +3,7 @@ package com.priceradar.telegram.application;
 import com.priceradar.pricing.application.RublePriceFormatter;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.tracking.application.SubscriptionCreationResult;
+import com.priceradar.tracking.application.SubscriptionConditionChangeResult;
 import com.priceradar.tracking.application.SubscriptionPreparationResult;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.tracking.domain.NotificationMode;
@@ -98,7 +99,10 @@ public class TelegramTrackingHandler {
         }
         if (pending.get().isExpired(now)) {
             pendingTargetPriceStore.remove(pending.get());
-            telegramGateway.sendMessage(expiredQuoteMessage(message.getChatId()));
+            telegramGateway.sendMessage(expiredPendingMessage(
+                    message.getChatId(),
+                    pending.orElseThrow()
+            ));
             return true;
         }
         if (message.getText().startsWith("http://") || message.getText().startsWith("https://")) {
@@ -111,10 +115,7 @@ public class TelegramTrackingHandler {
             telegramGateway.sendMessage(new OutgoingTelegramMessage(
                     message.getChatId(),
                     "Введите цену в рублях, например 1500.",
-                    targetInputKeyboard(
-                            pending.get().getQuoteSnapshotId(),
-                            message.getTelegramUserId()
-                    )
+                    targetInputKeyboard(pending.orElseThrow(), message.getTelegramUserId())
             ));
             return true;
         }
@@ -123,19 +124,34 @@ public class TelegramTrackingHandler {
                 message.getTelegramUserId(),
                 message.getChatId()
         );
-        SubscriptionCreationResult result = subscriptionService.createFromQuote(
-                profile.getId(),
-                pending.get().getQuoteSnapshotId(),
-                NotificationMode.TARGET_PRICE,
-                targetPrice,
-                now
-        );
-        telegramGateway.sendMessage(creationMessage(
-                message.getChatId(),
-                result,
-                profile,
-                targetPrice
-        ));
+        if (pending.get().getPurpose() == PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION) {
+            SubscriptionConditionChangeResult result = subscriptionService.changeToTargetPrice(
+                    profile.getId(),
+                    pending.get().requireSubscriptionId(),
+                    targetPrice.orElseThrow(),
+                    now
+            );
+            telegramGateway.sendMessage(conditionChangeMessage(
+                    message.getChatId(),
+                    pending.get().requireSubscriptionId(),
+                    targetPrice.orElseThrow(),
+                    result
+            ));
+        } else {
+            SubscriptionCreationResult result = subscriptionService.createFromQuote(
+                    profile.getId(),
+                    pending.get().requireQuoteSnapshotId(),
+                    NotificationMode.TARGET_PRICE,
+                    targetPrice,
+                    now
+            );
+            telegramGateway.sendMessage(creationMessage(
+                    message.getChatId(),
+                    result,
+                    profile,
+                    targetPrice
+            ));
+        }
         pendingTargetPriceStore.remove(pending.get());
         return true;
     }
@@ -180,32 +196,40 @@ public class TelegramTrackingHandler {
             return;
         }
 
-        pendingTargetPriceStore.put(new PendingTargetPrice(
+        PendingTargetPrice pending = new PendingTargetPrice(
                 callback.getTelegramUserId(),
                 callback.getChatId(),
+                PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION,
                 callbackData.getQuoteSnapshotId(),
                 now.plus(TARGET_INPUT_TTL)
-        ), now);
+        );
+        pendingTargetPriceStore.put(pending, now);
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(),
                 "Введите желаемую цену в рублях, например 1500.\n"
                         + "Ответ можно отправить в течение 15 минут.",
-                targetInputKeyboard(
-                        callbackData.getQuoteSnapshotId(),
-                        callback.getTelegramUserId()
-                )
+                targetInputKeyboard(pending, callback.getTelegramUserId())
         ));
     }
 
     private List<List<TelegramInlineButton>> targetInputKeyboard(
-            UUID quoteSnapshotId,
+            PendingTargetPrice pending,
             long telegramUserId
     ) {
+        if (pending.getPurpose() == PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION) {
+            return List.of(List.of(new TelegramInlineButton(
+                    "← Назад",
+                    SubscriptionCallbackData.encode(
+                            SubscriptionCallbackData.Action.CANCEL_CONDITION_EDIT,
+                            pending.requireSubscriptionId()
+                    )
+            )));
+        }
         return List.of(List.of(new TelegramInlineButton(
                 "Отмена",
                 trackingCallbackCodec.encode(
                         TrackingCallbackData.Action.CANCEL_TARGET,
-                        quoteSnapshotId,
+                        pending.requireQuoteSnapshotId(),
                         telegramUserId
                 )
         )));
@@ -221,15 +245,63 @@ public class TelegramTrackingHandler {
                         callback.getChatId(),
                         now
                 )
-                .filter(pending -> pending.getQuoteSnapshotId().equals(
-                        callbackData.getQuoteSnapshotId()
-                ))
+                .filter(pending -> pending.getPurpose()
+                                == PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION
+                        && pending.requireQuoteSnapshotId().equals(
+                                callbackData.getQuoteSnapshotId()
+                        ))
                 .ifPresent(pendingTargetPriceStore::remove);
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(),
                 "Ввод желаемой цены отменён.",
                 TelegramNavigationKeyboard.addProductAndHome()
         ));
+    }
+
+    public void clearPendingInput(long telegramUserId, long chatId) {
+        pendingTargetPriceStore.remove(telegramUserId, chatId);
+    }
+
+    private OutgoingTelegramMessage conditionChangeMessage(
+            long chatId,
+            UUID subscriptionId,
+            RubleAmount targetPrice,
+            SubscriptionConditionChangeResult result
+    ) {
+        String text = switch (result.getStatus()) {
+            case CHANGED -> "✅ Условие уведомлений изменено.\n\n🎯 Сообщу, когда цена будет не выше "
+                    + format(targetPrice) + ".";
+            case UNCHANGED -> "Целевая цена уже установлена на " + format(targetPrice) + ".";
+            case NOT_FOUND -> "Этот товар больше не отслеживается.";
+            case CONFLICT -> "Условие уведомлений уже изменилось. Откройте товар и повторите попытку.";
+        };
+        return new OutgoingTelegramMessage(
+                chatId,
+                text,
+                result.getStatus() == SubscriptionConditionChangeResult.Status.NOT_FOUND
+                        ? TelegramNavigationKeyboard.trackedItemsAndHome()
+                        : List.of(List.of(new TelegramInlineButton(
+                                "← К товару",
+                                SubscriptionCallbackData.encode(
+                                        SubscriptionCallbackData.Action.OPEN_ITEM,
+                                        subscriptionId
+                                )
+                        )))
+        );
+    }
+
+    private OutgoingTelegramMessage expiredPendingMessage(
+            long chatId,
+            PendingTargetPrice pending
+    ) {
+        if (pending.getPurpose() == PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION) {
+            return expiredQuoteMessage(chatId);
+        }
+        return new OutgoingTelegramMessage(
+                chatId,
+                "Время ввода цены истекло. Откройте товар и попробуйте ещё раз.",
+                TelegramNavigationKeyboard.trackedItemsAndHome()
+        );
     }
 
     private OutgoingTelegramMessage creationMessage(

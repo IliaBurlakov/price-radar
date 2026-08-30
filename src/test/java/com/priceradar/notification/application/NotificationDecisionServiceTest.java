@@ -169,6 +169,100 @@ class NotificationDecisionServiceTest {
         assertThat(reachedAgain.getNotificationIntent()).isPresent();
     }
 
+    @Test
+    void editedTargetIsArmedAfterLatestObservationAndNotifiesOnNextReachedPrice() {
+        Instant latestAt = createdAt.plusSeconds(120);
+        Subscription edited = anyDecreaseSubscription(30_000, latestAt)
+                .changeToTargetPrice(
+                        RubleAmount.ofMinorUnits(35_000),
+                        Optional.of(RubleAmount.ofMinorUnits(30_000)),
+                        Optional.of(latestAt)
+                );
+
+        NotificationDecisionResult sameOldObservation = service.evaluate(
+                edited,
+                observation(30_000, latestAt)
+        );
+        NotificationDecisionResult olderObservation = service.evaluate(
+                edited,
+                observation(29_000, latestAt.minusSeconds(60))
+        );
+        NotificationDecisionResult nextObservation = service.evaluate(
+                edited,
+                observation(31_000, latestAt.plusSeconds(60))
+        );
+
+        assertThat(edited.getThresholdState()).isEqualTo(ThresholdState.ABOVE_TARGET);
+        assertThat(edited.getThresholdObservedAt()).contains(latestAt);
+        assertThat(sameOldObservation.isStateChanged()).isFalse();
+        assertThat(sameOldObservation.getNotificationIntent()).isEmpty();
+        assertThat(olderObservation.isStateChanged()).isFalse();
+        assertThat(olderObservation.getNotificationIntent()).isEmpty();
+        assertThat(nextObservation.getNotificationIntent()).isPresent();
+        assertThat(nextObservation.getSubscription().getThresholdState())
+                .isEqualTo(ThresholdState.REACHED_NOTIFIED);
+    }
+
+    @Test
+    void editedTargetWaitsForCrossingWhenNextPriceRemainsAboveTarget() {
+        Instant latestAt = createdAt.plusSeconds(120);
+        Subscription edited = anyDecreaseSubscription(40_000, latestAt)
+                .changeToTargetPrice(
+                        RubleAmount.ofMinorUnits(35_000),
+                        Optional.of(RubleAmount.ofMinorUnits(40_000)),
+                        Optional.of(latestAt)
+                );
+
+        NotificationDecisionResult stillAbove = service.evaluate(
+                edited,
+                observation(39_000, latestAt.plusSeconds(60))
+        );
+        NotificationDecisionResult reached = service.evaluate(
+                stillAbove.getSubscription(),
+                observation(34_000, latestAt.plusSeconds(120))
+        );
+
+        assertThat(stillAbove.getNotificationIntent()).isEmpty();
+        assertThat(stillAbove.getSubscription().getThresholdState())
+                .isEqualTo(ThresholdState.ABOVE_TARGET);
+        assertThat(reached.getNotificationIntent()).isPresent();
+    }
+
+    @Test
+    void editedTargetWithoutHistoryNotifiesOnFirstValidReachedPrice() {
+        Subscription withoutHistory = new Subscription(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                watchTargetId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                ThresholdState.NOT_APPLICABLE,
+                Optional.empty(),
+                SubscriptionStatus.ACTIVE,
+                createdAt,
+                Optional.empty(),
+                0
+        );
+        Subscription edited = withoutHistory.changeToTargetPrice(
+                RubleAmount.ofMinorUnits(35_000),
+                Optional.empty(),
+                Optional.empty()
+        );
+
+        NotificationDecisionResult firstObservation = service.evaluate(
+                edited,
+                observation(34_000, createdAt.plusSeconds(60))
+        );
+
+        assertThat(edited.getThresholdState()).isEqualTo(ThresholdState.UNKNOWN);
+        assertThat(edited.getThresholdObservedAt()).isEmpty();
+        assertThat(firstObservation.getNotificationIntent()).isPresent();
+        assertThat(firstObservation.getSubscription().getThresholdState())
+                .isEqualTo(ThresholdState.REACHED_NOTIFIED);
+    }
+
     private Subscription anyDecreaseSubscription(long referencePrice, Instant observedAt) {
         return new Subscription(
                 UUID.randomUUID(),

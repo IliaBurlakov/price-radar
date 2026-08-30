@@ -146,9 +146,71 @@ public final class Subscription {
                 notificationMode,
                 targetPrice,
                 notificationReferencePrice,
-                lastProcessedPriceObservedAt,
+                Optional.of(observedAt),
                 newState,
                 Optional.of(observedAt),
+                status,
+                createdAt,
+                endedAt,
+                version
+        );
+    }
+
+    public Subscription changeToTargetPrice(
+            RubleAmount newTargetPrice,
+            Optional<RubleAmount> latestRegularPrice,
+            Optional<Instant> latestRegularPriceObservedAt
+    ) {
+        if (status != SubscriptionStatus.ACTIVE) {
+            throw new IllegalStateException("only active subscription condition can be changed");
+        }
+        if (newTargetPrice == null || newTargetPrice.getMinorUnits() == 0) {
+            throw new IllegalArgumentException("target price must be positive");
+        }
+        validateObservationPair(latestRegularPrice, latestRegularPriceObservedAt);
+
+        ThresholdState newThresholdState = latestRegularPrice.isPresent()
+                ? ThresholdState.ABOVE_TARGET
+                : ThresholdState.UNKNOWN;
+        Optional<Instant> processedAt = latestInstant(
+                lastProcessedPriceObservedAt,
+                latestRegularPriceObservedAt
+        );
+        return new Subscription(
+                id,
+                userId,
+                watchTargetId,
+                NotificationMode.TARGET_PRICE,
+                Optional.of(newTargetPrice),
+                Optional.empty(),
+                processedAt,
+                newThresholdState,
+                latestRegularPriceObservedAt,
+                status,
+                createdAt,
+                endedAt,
+                version
+        );
+    }
+
+    public Subscription changeToAnyDecrease(
+            Optional<RubleAmount> historicalMinimum,
+            Optional<Instant> latestRegularPriceObservedAt
+    ) {
+        if (status != SubscriptionStatus.ACTIVE) {
+            throw new IllegalStateException("only active subscription condition can be changed");
+        }
+        validateObservationPair(historicalMinimum, latestRegularPriceObservedAt);
+        return new Subscription(
+                id,
+                userId,
+                watchTargetId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                historicalMinimum,
+                latestRegularPriceObservedAt,
+                ThresholdState.NOT_APPLICABLE,
+                Optional.empty(),
                 status,
                 createdAt,
                 endedAt,
@@ -216,9 +278,9 @@ public final class Subscription {
             ThresholdState thresholdState,
             Optional<Instant> thresholdObservedAt
     ) {
-        if (notificationReferencePrice.isPresent() != lastProcessedPriceObservedAt.isPresent()) {
+        if (notificationReferencePrice.isPresent() && lastProcessedPriceObservedAt.isEmpty()) {
             throw new IllegalArgumentException(
-                    "notification reference and processed observation time must be set together"
+                    "notification reference requires processed observation time"
             );
         }
         if (notificationReferencePrice.filter(price -> price.getMinorUnits() == 0).isPresent()) {
@@ -226,7 +288,8 @@ public final class Subscription {
         }
 
         if (mode == NotificationMode.ANY_DECREASE) {
-            if (targetPrice.isPresent() || thresholdState != ThresholdState.NOT_APPLICABLE
+            if (notificationReferencePrice.isPresent() != lastProcessedPriceObservedAt.isPresent()
+                    || targetPrice.isPresent() || thresholdState != ThresholdState.NOT_APPLICABLE
                     || thresholdObservedAt.isPresent()) {
                 throw new IllegalArgumentException("ANY_DECREASE must not have target threshold state");
             }
@@ -246,6 +309,31 @@ public final class Subscription {
         if (thresholdState != ThresholdState.UNKNOWN && thresholdObservedAt.isEmpty()) {
             throw new IllegalArgumentException("resolved threshold state requires observation time");
         }
+    }
+
+    private void validateObservationPair(
+            Optional<RubleAmount> price,
+            Optional<Instant> observedAt
+    ) {
+        if (price == null || observedAt == null || price.isPresent() != observedAt.isPresent()) {
+            throw new IllegalArgumentException("price and observation time must be set together");
+        }
+        if (price.filter(value -> value.getMinorUnits() == 0).isPresent()) {
+            throw new IllegalArgumentException("observed price must be positive");
+        }
+        if (observedAt.filter(value -> value.isBefore(createdAt)).isPresent()) {
+            throw new IllegalArgumentException("observation must belong to subscription statistics period");
+        }
+    }
+
+    private Optional<Instant> latestInstant(Optional<Instant> first, Optional<Instant> second) {
+        if (first.isEmpty()) {
+            return second;
+        }
+        if (second.isEmpty() || first.orElseThrow().isAfter(second.orElseThrow())) {
+            return first;
+        }
+        return second;
     }
 
     private void validateLifecycle(
