@@ -1,6 +1,6 @@
 package com.priceradar.user.application;
 
-import com.priceradar.region.domain.MarketplaceRegion;
+import com.priceradar.region.domain.ResolvedLocation;
 import com.priceradar.user.domain.UserPricePreferences;
 
 import java.time.Instant;
@@ -18,12 +18,11 @@ public interface UserProfileStore {
     UserProfile create(
             long telegramUserId,
             long telegramChatId,
-            MarketplaceRegion region,
             UserPricePreferences pricePreferences,
             Instant createdAt
     );
 
     UserProfile updateTelegramChat(UserProfile profile, long telegramChatId, Instant updatedAt);
 
-    UserProfile updateRegion(UserProfile profile, MarketplaceRegion region, Instant updatedAt);
+    UserProfile updateLocation(UserProfile profile, ResolvedLocation location, Instant updatedAt);
 }

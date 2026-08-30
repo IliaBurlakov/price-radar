@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,70 +21,93 @@ class TelegramOnboardingHandlerTest {
     private static final long TELEGRAM_ID = 7001L;
 
     @Test
-    void unconfiguredUserIsRedirectedForCommandsAndProductUrl() {
+    void unconfiguredUserCanUseStartHelpAndMainMenuButBusinessCommandsRequireCity() {
         UserProfileService users = mock(UserProfileService.class);
         TelegramRegionHandler regions = mock(TelegramRegionHandler.class);
         UserProfile profile = profile(false);
         when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
         TelegramOnboardingHandler handler = new TelegramOnboardingHandler(users, regions);
 
-        for (String text : new String[]{
-                "/start",
-                "/add",
-                "/import",
-                "https://www.wildberries.ru/catalog/123456/detail.aspx"
-        }) {
+        for (String text : new String[]{"/start", "/help", "/menu"}) {
+            clearInvocations(regions);
+
+            assertThat(handler.handleMessage(message(text))).isFalse();
+
+            verify(regions, never()).showOnboarding(profile);
+        }
+
+        for (String text : new String[]{"/add", "/import",
+                "https://www.wildberries.ru/catalog/123456/detail.aspx"}) {
             clearInvocations(regions);
 
             assertThat(handler.handleMessage(message(text))).isTrue();
 
             verify(regions).showOnboarding(profile);
         }
+
+        IncomingTelegramMessage city = message("Томск");
+        assertThat(handler.handleMessage(city)).isTrue();
+        verify(regions).handleMessage(city);
     }
 
     @Test
-    void unconfiguredUserCanUseRegionSelectionCallback() {
+    void unconfiguredUserCanOpenPublicNavigationCallbacks() {
         UserProfileService users = mock(UserProfileService.class);
         TelegramRegionHandler regions = mock(TelegramRegionHandler.class);
         UserProfile profile = profile(false);
-        IncomingTelegramCallback callback = callback(
-                RegionCallbackData.select(com.priceradar.region.domain.MarketplaceRegionCode.BRATSK)
-        );
+        IncomingTelegramCallback callback = callback(RegionCallbackData.OPEN);
         when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
-        when(regions.supportsCallback(callback)).thenReturn(true);
-        when(regions.handleCallback(callback)).thenReturn(true);
         TelegramOnboardingHandler handler = new TelegramOnboardingHandler(users, regions);
 
-        assertThat(handler.handleCallback(callback)).isTrue();
+        when(regions.supportsCallback(callback)).thenReturn(true);
 
-        verify(regions).handleCallback(callback);
+        assertThat(handler.handleCallback(callback)).isFalse();
+
         verify(regions, never()).showOnboarding(profile);
+
+        for (MainMenuCallbackData.Action action : new MainMenuCallbackData.Action[]{
+                MainMenuCallbackData.Action.HOME,
+                MainMenuCallbackData.Action.HELP,
+                MainMenuCallbackData.Action.REGION
+        }) {
+            assertThat(handler.handleCallback(callback(
+                    MainMenuCallbackData.encode(action)
+            ))).isFalse();
+        }
     }
 
     @Test
     void unrelatedOldCallbackRedirectsToPickerAndConfiguredUserPassesThrough() {
         UserProfileService users = mock(UserProfileService.class);
         TelegramRegionHandler regions = mock(TelegramRegionHandler.class);
-        IncomingTelegramCallback callback = callback(
-                MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
-        );
         UserProfile unconfigured = profile(false);
         UserProfile configured = profile(true);
         when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID))
-                .thenReturn(unconfigured)
+                .thenReturn(unconfigured, unconfigured, unconfigured)
                 .thenReturn(configured);
         TelegramOnboardingHandler handler = new TelegramOnboardingHandler(users, regions);
 
-        assertThat(handler.handleCallback(callback)).isTrue();
-        verify(regions).showOnboarding(unconfigured);
+        for (MainMenuCallbackData.Action action : new MainMenuCallbackData.Action[]{
+                MainMenuCallbackData.Action.TRACKED_ITEMS,
+                MainMenuCallbackData.Action.ADD_PRODUCT,
+                MainMenuCallbackData.Action.IMPORT_BASKET
+        }) {
+            assertThat(handler.handleCallback(callback(
+                    MainMenuCallbackData.encode(action)
+            ))).isTrue();
+        }
+        verify(regions, times(3)).showOnboarding(unconfigured);
 
+        IncomingTelegramCallback callback = callback(
+                MainMenuCallbackData.encode(MainMenuCallbackData.Action.TRACKED_ITEMS)
+        );
         assertThat(handler.handleCallback(callback)).isFalse();
     }
 
     private UserProfile profile(boolean selected) {
         return new UserProfile(
                 UUID.randomUUID(), TELEGRAM_ID, TELEGRAM_ID,
-                moscow(), UserPricePreferences.defaults(), selected
+                selected ? moscow() : null, UserPricePreferences.defaults()
         );
     }
 

@@ -29,7 +29,7 @@ class RegionSelectionMigrationTest {
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .schemas(schema)
                 .defaultSchema(schema)
-                .target(MigrationVersion.fromVersion("11"))
+                .target(MigrationVersion.fromVersion("14"))
                 .load()
                 .migrate();
         JdbcTemplate jdbc = jdbcTemplate(schema);
@@ -43,15 +43,15 @@ class RegionSelectionMigrationTest {
                 .migrate();
 
         assertThat(jdbc.queryForObject(
-                "SELECT region_selected FROM user_profiles WHERE telegram_user_id = 7001",
-                Boolean.class
-        )).isTrue();
+                "SELECT location_id FROM user_profiles WHERE telegram_user_id = 7001",
+                UUID.class
+        )).isEqualTo(UUID.fromString("00000000-0000-0000-0000-000000000101"));
 
-        insertUser(jdbc, 7002L);
+        insertUnconfiguredUser(jdbc, 7002L);
         assertThat(jdbc.queryForObject(
-                "SELECT region_selected FROM user_profiles WHERE telegram_user_id = 7002",
-                Boolean.class
-        )).isFalse();
+                "SELECT location_id FROM user_profiles WHERE telegram_user_id = 7002",
+                UUID.class
+        )).isNull();
     }
 
     private void insertUser(JdbcTemplate jdbc, long telegramId) {
@@ -60,14 +60,28 @@ class RegionSelectionMigrationTest {
                 """
                         INSERT INTO user_profiles (
                             id, telegram_user_id, telegram_chat_id, region_code,
-                            wallet_discount_percent, created_at, updated_at, version
-                        ) VALUES (?, ?, ?, 'MOSCOW', 3, ?, ?, 0)
+                            region_selected, wallet_discount_percent, created_at, updated_at, version
+                        ) VALUES (?, ?, ?, 'MOSCOW', TRUE, 3, ?, ?, 0)
                         """,
                 UUID.randomUUID(),
                 telegramId,
                 telegramId,
                 Timestamp.from(now),
                 Timestamp.from(now)
+        );
+    }
+
+    private void insertUnconfiguredUser(JdbcTemplate jdbc, long telegramId) {
+        Instant now = Instant.parse("2026-08-26T00:00:00Z");
+        jdbc.update(
+                """
+                        INSERT INTO user_profiles (
+                            id, telegram_user_id, telegram_chat_id, location_id,
+                            wallet_discount_percent, created_at, updated_at, version
+                        ) VALUES (?, ?, ?, NULL, 3, ?, ?, 0)
+                        """,
+                UUID.randomUUID(), telegramId, telegramId,
+                Timestamp.from(now), Timestamp.from(now)
         );
     }
 

@@ -36,7 +36,7 @@ import com.priceradar.telegram.application.TrackedItemsMessageHandler;
 import com.priceradar.telegram.application.WildberriesLinkExtractor;
 import com.priceradar.sharedbasket.application.SharedBasketImportService;
 import com.priceradar.sharedbasket.application.SharedBasketUrlParser;
-import com.priceradar.region.application.UserRegionService;
+import com.priceradar.region.application.CitySelectionService;
 import com.priceradar.tracking.application.LatestSnapshotQueryService;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.user.application.UserProfileService;
@@ -251,12 +251,14 @@ public class TelegramBotConfiguration {
     @Bean
     public TelegramRegionHandler telegramRegionHandler(
             UserProfileService userProfileService,
-            UserRegionService userRegionService,
+            CitySelectionService citySelectionService,
             TelegramGateway telegramGateway,
-            Clock providerClock
+            Clock providerClock,
+            com.priceradar.region.application.GeoLocationLabelFormatter locationLabelFormatter
     ) {
         return new TelegramRegionHandler(
-                userProfileService, userRegionService, telegramGateway, providerClock
+                userProfileService, citySelectionService, telegramGateway, providerClock,
+                locationLabelFormatter
         );
     }
 
@@ -335,6 +337,7 @@ public class TelegramBotConfiguration {
             TelegramOnboardingHandler onboardingHandler,
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramMenuHandler menuHandler,
+            TelegramRegionHandler regionHandler,
             TelegramTrackingHandler trackingHandler,
             TelegramSharedBasketHandler sharedBasketHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
@@ -346,6 +349,7 @@ public class TelegramBotConfiguration {
                 onboardingHandler,
                 currentQuoteHandler,
                 menuHandler,
+                regionHandler,
                 trackingHandler,
                 sharedBasketHandler,
                 trackedItemsHandler,

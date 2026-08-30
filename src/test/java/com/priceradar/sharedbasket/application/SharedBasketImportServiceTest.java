@@ -5,7 +5,6 @@ import com.priceradar.marketplace.domain.Marketplace;
 import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.domain.RubleAmount;
-import com.priceradar.region.domain.MarketplaceRegionCode;
 import com.priceradar.product.application.PersistedResolvedQuote;
 import com.priceradar.product.application.ResolvedVariant;
 import com.priceradar.product.application.ResolvedQuotePersistenceService;
@@ -92,7 +91,7 @@ class SharedBasketImportServiceTest {
         }
         for (int index = 15; index < 30; index++) items.add(item(index, UUID.randomUUID()));
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, MarketplaceRegionCode.MOSCOW, 30, 30, 0, List.of(), items,
+                UUID.randomUUID(), userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 30, 30, 0, List.of(), items,
                 NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
@@ -122,7 +121,7 @@ class SharedBasketImportServiceTest {
     void expiredImportCannotAcquireLockOrChangeSubscriptions() {
         UUID userId = UUID.randomUUID();
         PendingSharedBasketImport expired = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, MarketplaceRegionCode.MOSCOW, 0, 0, 0, List.of(), List.of(),
+                UUID.randomUUID(), userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 0, 0, 0, List.of(), List.of(),
                 NOW.minusSeconds(900), NOW
         );
         when(pendingStore.findOwned(expired.getId(), userId)).thenReturn(Optional.of(expired));
@@ -142,7 +141,7 @@ class SharedBasketImportServiceTest {
         UUID userId = UUID.randomUUID();
         Subscription active = subscriptions(userId, 1).getFirst();
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, MarketplaceRegionCode.MOSCOW, 1, 0, 1, List.of(), List.of(),
+                UUID.randomUUID(), userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 1, 0, 1, List.of(), List.of(),
                 NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
@@ -163,7 +162,7 @@ class SharedBasketImportServiceTest {
     void unavailableBasketItemCannotBeAddedAndBlocksForgedSynchronization() {
         UUID userId = UUID.randomUUID();
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, MarketplaceRegionCode.MOSCOW, 1, 0, 0,
+                UUID.randomUUID(), userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 1, 0, 0,
                 List.of(new PendingUnavailableSharedBasketItem(0, "Unavailable product")),
                 List.of(), NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
@@ -354,7 +353,7 @@ class SharedBasketImportServiceTest {
                 Optional.empty(), SubscriptionStatus.ACTIVE, NOW.minusSeconds(300), Optional.empty(), 0
         );
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, MarketplaceRegionCode.MOSCOW, 73, 73, 0, List.of(), items,
+                UUID.randomUUID(), userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 73, 73, 0, List.of(), items,
                 NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
@@ -388,7 +387,7 @@ class SharedBasketImportServiceTest {
                 Optional.empty(), SubscriptionStatus.ACTIVE, NOW.minusSeconds(300), Optional.empty(), 0
         );
         PendingSharedBasketImport pending = new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, MarketplaceRegionCode.MOSCOW, 73, 73, 0, List.of(), items,
+                UUID.randomUUID(), userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID, 73, 73, 0, List.of(), items,
                 NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
@@ -422,7 +421,7 @@ class SharedBasketImportServiceTest {
         List<PendingSharedBasketItem> items = new ArrayList<>();
         for (int index = 0; index < count; index++) items.add(item(index, UUID.randomUUID()));
         return new PendingSharedBasketImport(
-                UUID.randomUUID(), userId, MarketplaceRegionCode.MOSCOW,
+                UUID.randomUUID(), userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 count, count, 0, List.of(), items,
                 NOW.minusSeconds(30), NOW.plusSeconds(600)
         );

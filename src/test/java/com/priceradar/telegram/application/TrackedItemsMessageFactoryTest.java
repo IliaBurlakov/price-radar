@@ -28,23 +28,29 @@ class TrackedItemsMessageFactoryTest {
             items.add(item("Товар " + index, 1000L + index, Optional.empty()));
         }
 
-        OutgoingTelegramMessage firstPage = factory.createList(7001L, items, 0);
-        OutgoingTelegramMessage secondPage = factory.createList(7001L, items, 1);
+        OutgoingTelegramMessage firstPage = factory.createList(7001L, items, 0, "Москва");
+        OutgoingTelegramMessage secondPage = factory.createList(7001L, items, 1, "Москва");
 
         assertThat(firstPage.getText())
-                .contains("Мои товары: 9")
+                .contains("📦 Мои товары")
+                .contains("Отслеживаемые товары для города Москва.")
+                .contains("Всего товаров: 9")
                 .contains("Страница 1 из 2")
-                .contains("1. Товар 1", "8. Товар 8");
+                .doesNotContain("1. Товар 1", "Выберите товар:");
         assertThat(firstPage.getInlineKeyboard())
                 .filteredOn(row -> row.size() == 1
                         && row.getFirst().getCallbackData().startsWith("TRACKED_ITEM:"))
-                .hasSize(8);
+                .extracting(row -> row.getFirst().getText())
+                .containsExactly(
+                        "1. Товар 1", "2. Товар 2", "3. Товар 3", "4. Товар 4",
+                        "5. Товар 5", "6. Товар 6", "7. Товар 7", "8. Товар 8"
+                );
         assertThat(secondPage.getInlineKeyboard())
                 .filteredOn(row -> row.size() == 1
                         && row.getFirst().getCallbackData().startsWith("TRACKED_ITEM:"))
                 .singleElement()
                 .satisfies(row -> assertThat(row.getFirst().getText())
-                        .isEqualTo("Открыть товар 9"));
+                        .isEqualTo("9. Товар 9"));
     }
 
     @Test
@@ -73,12 +79,12 @@ class TrackedItemsMessageFactoryTest {
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
                 .contains(
-                        "💰 Последняя цена",
                         "📊 Статистика",
                         "🔔 Условие уведомлений",
                         "❌ Удалить товар",
                         "← Назад"
-                );
+                )
+                .doesNotContain("💰 Последняя цена");
     }
 
     private TrackedSubscriptionItem item(

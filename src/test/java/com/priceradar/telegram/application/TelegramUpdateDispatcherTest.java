@@ -1,10 +1,15 @@
 package com.priceradar.telegram.application;
 
+import com.priceradar.user.application.UserProfile;
+import com.priceradar.user.application.UserProfileService;
+import com.priceradar.user.domain.UserPricePreferences;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
+import static com.priceradar.testsupport.TestMarketplaceRegions.moscow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
@@ -16,7 +21,7 @@ import static org.mockito.Mockito.when;
 class TelegramUpdateDispatcherTest {
 
     @Test
-    void onboardingGateStopsCommandsAndUrlsBeforeBusinessHandlers() {
+    void onboardingGateStopsBusinessCommandsAndUrlsBeforeBusinessHandlers() {
         TelegramOnboardingHandler onboarding = mock(TelegramOnboardingHandler.class);
         TelegramCurrentQuoteHandler quotes = mock(TelegramCurrentQuoteHandler.class);
         TelegramMenuHandler menu = mock(TelegramMenuHandler.class);
@@ -27,6 +32,7 @@ class TelegramUpdateDispatcherTest {
                 onboarding,
                 quotes,
                 menu,
+                mock(TelegramRegionHandler.class),
                 tracking,
                 baskets,
                 tracked,
@@ -36,7 +42,6 @@ class TelegramUpdateDispatcherTest {
         );
 
         for (String text : List.of(
-                "/start",
                 "/add",
                 "/import",
                 "https://www.wildberries.ru/catalog/123456/detail.aspx",
@@ -50,6 +55,44 @@ class TelegramUpdateDispatcherTest {
         }
 
         verifyNoInteractions(quotes, menu, tracking, baskets, tracked);
+    }
+
+    @Test
+    void startAndHelpReachOrdinaryMenuFlowWithoutSelectedCity() {
+        UserProfileService users = mock(UserProfileService.class);
+        TelegramRegionHandler regions = mock(TelegramRegionHandler.class);
+        UserProfile unconfigured = new UserProfile(
+                UUID.randomUUID(), 7001L, 7001L, null, UserPricePreferences.defaults()
+        );
+        UserProfile configured = new UserProfile(
+                UUID.randomUUID(), 7001L, 7001L, moscow(), UserPricePreferences.defaults()
+        );
+        when(users.getOrCreate(7001L, 7001L))
+                .thenReturn(unconfigured, configured, unconfigured);
+        TelegramOnboardingHandler onboarding = new TelegramOnboardingHandler(users, regions);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
+        TelegramMenuHandler menu = new TelegramMenuHandler(
+                messages, mock(TrackedItemsMessageHandler.class), regions, gateway
+        );
+        TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
+                onboarding, mock(TelegramCurrentQuoteHandler.class), menu, regions,
+                mock(TelegramTrackingHandler.class), mock(TelegramSharedBasketHandler.class),
+                mock(TrackedItemsMessageHandler.class), mock(ShowLastKnownCallbackHandler.class),
+                mock(StatisticsCallbackHandler.class), gateway
+        );
+
+        assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
+                1L, Optional.of(message("/start"))
+        )), messages.welcome(7001L));
+        assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
+                2L, Optional.of(message("/start"))
+        )), messages.welcome(7001L));
+        assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
+                3L, Optional.of(message("/help"))
+        )), messages.help(7001L));
+
+        verify(regions, never()).showOnboarding(unconfigured);
     }
 
     @Test
@@ -90,6 +133,7 @@ class TelegramUpdateDispatcherTest {
                 onboarding,
                 mock(TelegramCurrentQuoteHandler.class),
                 menu,
+                mock(TelegramRegionHandler.class),
                 tracking,
                 baskets,
                 mock(TrackedItemsMessageHandler.class),
@@ -279,11 +323,13 @@ class TelegramUpdateDispatcherTest {
         TrackedItemsMessageHandler trackedItemsHandler = mock(TrackedItemsMessageHandler.class);
         ShowLastKnownCallbackHandler showLastKnownHandler = mock(ShowLastKnownCallbackHandler.class);
         StatisticsCallbackHandler statisticsHandler = mock(StatisticsCallbackHandler.class);
+        TelegramRegionHandler regionHandler = mock(TelegramRegionHandler.class);
         TelegramGateway gateway = mock(TelegramGateway.class);
         TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
                 mock(TelegramOnboardingHandler.class),
                 currentQuoteHandler,
                 menuHandler,
+                regionHandler,
                 trackingHandler,
                 sharedBasketHandler,
                 trackedItemsHandler,
@@ -309,11 +355,92 @@ class TelegramUpdateDispatcherTest {
         verify(menuHandler).handleCallback(callback);
         verify(gateway).answerCallbackQuery("callback-1");
         verify(trackingHandler).clearPendingInput(7001L, 7001L);
+        verify(regionHandler).clearPendingInput(7001L, 7001L);
+    }
+
+    @Test
+    void openingRegionScreenDoesNotCancelItsOwnPendingSelection() {
+        TelegramRegionHandler regionHandler = mock(TelegramRegionHandler.class);
+        TelegramMenuHandler menuHandler = mock(TelegramMenuHandler.class);
+        IncomingTelegramCallback callback = new IncomingTelegramCallback(
+                "callback-region", 7001L, 7001L, "private",
+                MainMenuCallbackData.encode(MainMenuCallbackData.Action.REGION)
+        );
+        when(menuHandler.handleCallback(callback)).thenReturn(true);
+        TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
+                mock(TelegramOnboardingHandler.class),
+                mock(TelegramCurrentQuoteHandler.class),
+                menuHandler,
+                regionHandler,
+                mock(TelegramTrackingHandler.class),
+                mock(TelegramSharedBasketHandler.class),
+                mock(TrackedItemsMessageHandler.class),
+                mock(ShowLastKnownCallbackHandler.class),
+                mock(StatisticsCallbackHandler.class),
+                mock(TelegramGateway.class)
+        );
+
+        dispatcher.dispatch(new TelegramUpdate(1L, Optional.empty(), Optional.of(callback)));
+
+        verify(regionHandler, never()).clearPendingInput(7001L, 7001L);
+    }
+
+    @Test
+    void directRegionCallbackDoesNotCancelCitySelectionFlow() {
+        TelegramRegionHandler regionHandler = mock(TelegramRegionHandler.class);
+        IncomingTelegramCallback callback = new IncomingTelegramCallback(
+                "callback-region-direct", 7001L, 7001L, "private", RegionCallbackData.OPEN
+        );
+        when(regionHandler.supportsCallback(callback)).thenReturn(true);
+        TelegramMenuHandler menuHandler = mock(TelegramMenuHandler.class);
+        when(menuHandler.handleCallback(callback)).thenReturn(true);
+        TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
+                mock(TelegramOnboardingHandler.class), mock(TelegramCurrentQuoteHandler.class),
+                menuHandler, regionHandler, mock(TelegramTrackingHandler.class),
+                mock(TelegramSharedBasketHandler.class), mock(TrackedItemsMessageHandler.class),
+                mock(ShowLastKnownCallbackHandler.class), mock(StatisticsCallbackHandler.class),
+                mock(TelegramGateway.class)
+        );
+
+        dispatcher.dispatch(new TelegramUpdate(1L, Optional.empty(), Optional.of(callback)));
+
+        verify(regionHandler, never()).clearPendingInput(7001L, 7001L);
+    }
+
+    @Test
+    void unrelatedTrackedCallbackCancelsCityFlowBeforeNextProductUrl() {
+        TelegramRegionHandler regionHandler = mock(TelegramRegionHandler.class);
+        TrackedItemsMessageHandler trackedItemsHandler = mock(TrackedItemsMessageHandler.class);
+        TelegramCurrentQuoteHandler currentQuoteHandler = mock(TelegramCurrentQuoteHandler.class);
+        IncomingTelegramCallback back = new IncomingTelegramCallback(
+                "callback-back", 7001L, 7001L, "private",
+                TrackedItemsPageCallbackData.encode(0)
+        );
+        when(trackedItemsHandler.handleCallback(back)).thenReturn(true);
+        TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
+                mock(TelegramOnboardingHandler.class), currentQuoteHandler,
+                mock(TelegramMenuHandler.class), regionHandler,
+                mock(TelegramTrackingHandler.class), mock(TelegramSharedBasketHandler.class),
+                trackedItemsHandler, mock(ShowLastKnownCallbackHandler.class),
+                mock(StatisticsCallbackHandler.class), mock(TelegramGateway.class)
+        );
+
+        dispatcher.dispatch(new TelegramUpdate(1L, Optional.empty(), Optional.of(back)));
+        IncomingTelegramMessage productUrl = message(
+                "https://www.wildberries.ru/catalog/123/detail.aspx"
+        );
+        when(currentQuoteHandler.handle(productUrl)).thenReturn(true);
+        dispatcher.dispatch(new TelegramUpdate(2L, Optional.of(productUrl)));
+
+        verify(regionHandler).clearPendingInput(7001L, 7001L);
+        verify(regionHandler).handleMessage(productUrl);
+        verify(currentQuoteHandler).handle(productUrl);
     }
 
     @Test
     void commandNavigationClearsOldPendingTargetInput() {
         TelegramTrackingHandler trackingHandler = mock(TelegramTrackingHandler.class);
+        TelegramRegionHandler regionHandler = mock(TelegramRegionHandler.class);
         TelegramMenuHandler menuHandler = mock(TelegramMenuHandler.class);
         IncomingTelegramMessage command = message("/help");
         when(menuHandler.handleMessage(command)).thenReturn(true);
@@ -321,6 +448,7 @@ class TelegramUpdateDispatcherTest {
                 mock(TelegramOnboardingHandler.class),
                 mock(TelegramCurrentQuoteHandler.class),
                 menuHandler,
+                regionHandler,
                 trackingHandler,
                 mock(TelegramSharedBasketHandler.class),
                 mock(TrackedItemsMessageHandler.class),
@@ -332,6 +460,7 @@ class TelegramUpdateDispatcherTest {
         dispatcher.dispatch(new TelegramUpdate(5L, Optional.of(command)));
 
         verify(trackingHandler).clearPendingInput(7001L, 7001L);
+        verify(regionHandler).clearPendingInput(7001L, 7001L);
         verify(trackingHandler, never()).handleTargetPriceInput(command);
     }
 
@@ -361,6 +490,7 @@ class TelegramUpdateDispatcherTest {
                 mock(TelegramOnboardingHandler.class),
                 currentQuoteHandler,
                 menuHandler,
+                mock(TelegramRegionHandler.class),
                 mock(TelegramTrackingHandler.class),
                 sharedBasketHandler,
                 mock(TrackedItemsMessageHandler.class),

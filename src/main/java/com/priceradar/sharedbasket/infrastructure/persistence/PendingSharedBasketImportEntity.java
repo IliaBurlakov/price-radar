@@ -1,10 +1,7 @@
 package com.priceradar.sharedbasket.infrastructure.persistence;
 
-import com.priceradar.region.domain.MarketplaceRegionCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -20,9 +17,8 @@ public class PendingSharedBasketImportEntity {
 
     @Column(name = "user_id", nullable = false)
     private UUID userId;
-    @Enumerated(EnumType.STRING)
-    @Column(name = "region_code", nullable = false, length = 32)
-    private MarketplaceRegionCode regionCode;
+    @Column(name = "location_id", nullable = false)
+    private UUID locationId;
     @Column(name = "found_items", nullable = false)
     private int foundItems;
 
@@ -42,13 +38,13 @@ public class PendingSharedBasketImportEntity {
     }
 
     public PendingSharedBasketImportEntity(
-            UUID id, UUID userId, MarketplaceRegionCode regionCode,
+            UUID id, UUID userId, UUID locationId,
             int foundItems, int availableItems, int unresolvedItems,
             Instant createdAt, Instant expiresAt
     ) {
         this.id = id;
         this.userId = userId;
-        this.regionCode = regionCode;
+        this.locationId = locationId;
         this.foundItems = foundItems;
         this.availableItems = availableItems;
         this.unresolvedItems = unresolvedItems;
@@ -64,8 +60,8 @@ public class PendingSharedBasketImportEntity {
         return userId;
     }
 
-    public MarketplaceRegionCode getRegionCode() {
-        return regionCode;
+    public UUID getLocationId() {
+        return locationId;
     }
 
     public int getFoundItems() {

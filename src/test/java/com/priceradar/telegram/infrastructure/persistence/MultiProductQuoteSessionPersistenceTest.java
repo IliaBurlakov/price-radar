@@ -44,10 +44,11 @@ class MultiProductQuoteSessionPersistenceTest {
         Instant now = Instant.parse("2026-08-27T08:00:00Z");
         jdbc.update("""
                 INSERT INTO user_profiles (
-                    id, telegram_user_id, telegram_chat_id, region_code, region_selected,
+                    id, telegram_user_id, telegram_chat_id, location_id,
                     wallet_discount_percent, created_at, updated_at, version
-                ) VALUES (?, 7001, 7001, 'MOSCOW', TRUE, 3, ?, ?, 0)
-                """, userId, Timestamp.from(now), Timestamp.from(now));
+                ) VALUES (?, 7001, 7001, ?, 3, ?, ?, 0)
+                """, userId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
+                Timestamp.from(now), Timestamp.from(now));
         JdbcMultiProductQuoteSessionStore store = new JdbcMultiProductQuoteSessionStore(
                 jdbc, new ObjectMapper()
         );

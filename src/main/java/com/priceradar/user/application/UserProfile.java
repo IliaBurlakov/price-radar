@@ -1,9 +1,11 @@
 package com.priceradar.user.application;
 
 import com.priceradar.pricing.domain.PriceContext;
-import com.priceradar.region.domain.MarketplaceRegion;
+import com.priceradar.region.domain.GeoLocation;
+import com.priceradar.region.domain.ResolvedLocation;
 import com.priceradar.user.domain.UserPricePreferences;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public final class UserProfile {
@@ -11,29 +13,17 @@ public final class UserProfile {
     private final UUID id;
     private final long telegramUserId;
     private final long telegramChatId;
-    private final MarketplaceRegion region;
+    private final ResolvedLocation selectedLocation;
     private final UserPricePreferences pricePreferences;
-    private final boolean regionSelected;
 
     public UserProfile(
             UUID id,
             long telegramUserId,
             long telegramChatId,
-            MarketplaceRegion region,
+            ResolvedLocation selectedLocation,
             UserPricePreferences pricePreferences
     ) {
-        this(id, telegramUserId, telegramChatId, region, pricePreferences, true);
-    }
-
-    public UserProfile(
-            UUID id,
-            long telegramUserId,
-            long telegramChatId,
-            MarketplaceRegion region,
-            UserPricePreferences pricePreferences,
-            boolean regionSelected
-    ) {
-        if (id == null || region == null || pricePreferences == null) {
+        if (id == null || pricePreferences == null) {
             throw new IllegalArgumentException("user profile fields must not be null");
         }
         if (telegramUserId <= 0 || telegramChatId <= 0) {
@@ -42,9 +32,8 @@ public final class UserProfile {
         this.id = id;
         this.telegramUserId = telegramUserId;
         this.telegramChatId = telegramChatId;
-        this.region = region;
+        this.selectedLocation = selectedLocation;
         this.pricePreferences = pricePreferences;
-        this.regionSelected = regionSelected;
     }
 
     public UUID getId() {
@@ -60,16 +49,22 @@ public final class UserProfile {
     }
 
     public PriceContext getPriceContext() {
-        if (!regionSelected) {
+        if (selectedLocation == null) {
             throw new IllegalStateException(
                     "Price context cannot be used before region selection"
             );
         }
-        return region.toPriceContext();
+        return selectedLocation.toPriceContext();
     }
 
-    public MarketplaceRegion getRegion() {
-        return region;
+    public Optional<GeoLocation> getLocation() {
+        return selectedLocation == null
+                ? Optional.empty()
+                : Optional.of(selectedLocation.getLocation());
+    }
+
+    public Optional<ResolvedLocation> getResolvedLocation() {
+        return Optional.ofNullable(selectedLocation);
     }
 
     public UserPricePreferences getPricePreferences() {
@@ -77,6 +72,6 @@ public final class UserProfile {
     }
 
     public boolean isRegionSelected() {
-        return regionSelected;
+        return selectedLocation != null;
     }
 }

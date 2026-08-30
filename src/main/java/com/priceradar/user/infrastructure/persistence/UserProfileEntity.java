@@ -1,10 +1,7 @@
 package com.priceradar.user.infrastructure.persistence;
 
-import com.priceradar.region.domain.MarketplaceRegionCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
@@ -25,9 +22,8 @@ public class UserProfileEntity {
     @Column(name = "telegram_chat_id", nullable = false)
     private long telegramChatId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "region_code", nullable = false, length = 32)
-    private MarketplaceRegionCode regionCode;
+    @Column(name = "location_id")
+    private UUID locationId;
 
     @Column(name = "wallet_discount_percent", nullable = false)
     private int walletDiscountPercent;
@@ -42,9 +38,6 @@ public class UserProfileEntity {
     @Column(name = "version", nullable = false)
     private long version;
 
-    @Column(name = "region_selected", nullable = false)
-    private boolean regionSelected;
-
     protected UserProfileEntity() {
     }
 
@@ -52,20 +45,18 @@ public class UserProfileEntity {
             UUID id,
             long telegramUserId,
             long telegramChatId,
-            MarketplaceRegionCode regionCode,
+            UUID locationId,
             int walletDiscountPercent,
             Instant createdAt,
-            Instant updatedAt,
-            boolean regionSelected
+            Instant updatedAt
     ) {
         this.id = id;
         this.telegramUserId = telegramUserId;
         this.telegramChatId = telegramChatId;
-        this.regionCode = regionCode;
+        this.locationId = locationId;
         this.walletDiscountPercent = walletDiscountPercent;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
-        this.regionSelected = regionSelected;
     }
 
     public UUID getId() {
@@ -80,8 +71,8 @@ public class UserProfileEntity {
         return telegramChatId;
     }
 
-    public MarketplaceRegionCode getRegionCode() {
-        return regionCode;
+    public UUID getLocationId() {
+        return locationId;
     }
 
     public int getWalletDiscountPercent() {
@@ -100,10 +91,6 @@ public class UserProfileEntity {
         return version;
     }
 
-    public boolean isRegionSelected() {
-        return regionSelected;
-    }
-
     public void updateTelegramChatId(long telegramChatId, Instant updatedAt) {
         if (telegramChatId <= 0) {
             throw new IllegalArgumentException("telegramChatId must be positive");
@@ -115,12 +102,11 @@ public class UserProfileEntity {
         this.updatedAt = updatedAt;
     }
 
-    public void updateRegion(MarketplaceRegionCode regionCode, Instant updatedAt) {
-        if (regionCode == null || updatedAt == null) {
-            throw new IllegalArgumentException("region update fields must not be null");
+    public void updateLocation(UUID locationId, Instant updatedAt) {
+        if (locationId == null || updatedAt == null) {
+            throw new IllegalArgumentException("location update fields must not be null");
         }
-        this.regionCode = regionCode;
-        this.regionSelected = true;
+        this.locationId = locationId;
         this.updatedAt = updatedAt;
     }
 }

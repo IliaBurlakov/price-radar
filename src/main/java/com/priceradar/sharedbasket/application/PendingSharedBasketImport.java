@@ -3,13 +3,12 @@ package com.priceradar.sharedbasket.application;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import com.priceradar.region.domain.MarketplaceRegionCode;
 
 public final class PendingSharedBasketImport {
 
     private final UUID id;
     private final UUID userId;
-    private final MarketplaceRegionCode regionCode;
+    private final UUID locationId;
     private final int foundItems;
     private final int availableItems;
     private final int unresolvedItems;
@@ -21,7 +20,7 @@ public final class PendingSharedBasketImport {
     public PendingSharedBasketImport(
             UUID id,
             UUID userId,
-            MarketplaceRegionCode regionCode,
+            UUID locationId,
             int foundItems,
             int availableItems,
             int unresolvedItems,
@@ -30,7 +29,7 @@ public final class PendingSharedBasketImport {
             Instant createdAt,
             Instant expiresAt
     ) {
-        if (id == null || userId == null || regionCode == null
+        if (id == null || userId == null || locationId == null
                 || unavailableItems == null || items == null
                 || createdAt == null || expiresAt == null
                 || foundItems < 0 || availableItems < 0 || unresolvedItems < 0
@@ -43,7 +42,7 @@ public final class PendingSharedBasketImport {
         }
         this.id = id;
         this.userId = userId;
-        this.regionCode = regionCode;
+        this.locationId = locationId;
         this.foundItems = foundItems;
         this.availableItems = availableItems;
         this.unresolvedItems = unresolvedItems;
@@ -55,7 +54,7 @@ public final class PendingSharedBasketImport {
 
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
-    public MarketplaceRegionCode getRegionCode() { return regionCode; }
+    public UUID getLocationId() { return locationId; }
     public int getFoundItems() { return foundItems; }
     public int getAvailableItems() { return availableItems; }
     public int getUnresolvedItems() { return unresolvedItems; }

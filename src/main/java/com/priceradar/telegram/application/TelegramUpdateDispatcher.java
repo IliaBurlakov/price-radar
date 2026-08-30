@@ -10,6 +10,7 @@ public class TelegramUpdateDispatcher {
     private final TelegramOnboardingHandler onboardingHandler;
     private final TelegramCurrentQuoteHandler currentQuoteHandler;
     private final TelegramMenuHandler menuHandler;
+    private final TelegramRegionHandler regionHandler;
     private final TelegramTrackingHandler trackingHandler;
     private final TelegramSharedBasketHandler sharedBasketHandler;
     private final TrackedItemsMessageHandler trackedItemsHandler;
@@ -21,6 +22,7 @@ public class TelegramUpdateDispatcher {
             TelegramOnboardingHandler onboardingHandler,
             TelegramCurrentQuoteHandler currentQuoteHandler,
             TelegramMenuHandler menuHandler,
+            TelegramRegionHandler regionHandler,
             TelegramTrackingHandler trackingHandler,
             TelegramSharedBasketHandler sharedBasketHandler,
             TrackedItemsMessageHandler trackedItemsHandler,
@@ -29,7 +31,7 @@ public class TelegramUpdateDispatcher {
             TelegramGateway telegramGateway
     ) {
         if (onboardingHandler == null || currentQuoteHandler == null
-                || menuHandler == null || trackingHandler == null
+                || menuHandler == null || regionHandler == null || trackingHandler == null
                 || sharedBasketHandler == null
                 || trackedItemsHandler == null
                 || showLastKnownHandler == null || statisticsHandler == null
@@ -39,6 +41,7 @@ public class TelegramUpdateDispatcher {
         this.onboardingHandler = onboardingHandler;
         this.currentQuoteHandler = currentQuoteHandler;
         this.menuHandler = menuHandler;
+        this.regionHandler = regionHandler;
         this.trackingHandler = trackingHandler;
         this.sharedBasketHandler = sharedBasketHandler;
         this.trackedItemsHandler = trackedItemsHandler;
@@ -60,12 +63,19 @@ public class TelegramUpdateDispatcher {
                 return;
             }
             if (TelegramBotCommand.isCommandText(message.getText())) {
+                regionHandler.clearPendingInput(
+                        message.getTelegramUserId(),
+                        message.getChatId()
+                );
                 trackingHandler.clearPendingInput(
                         message.getTelegramUserId(),
                         message.getChatId()
                 );
             }
             if (menuHandler.handleMessage(message)) {
+                return;
+            }
+            if (regionHandler.handleMessage(message)) {
                 return;
             }
             if (trackingHandler.handleTargetPriceInput(message)) {
@@ -89,6 +99,7 @@ public class TelegramUpdateDispatcher {
             if (onboardingHandler.handleCallback(callback)) {
                 return;
             }
+            clearPendingCitySelectionOnCallbackExit(callback);
             trackingHandler.clearPendingInput(
                     callback.getTelegramUserId(),
                     callback.getChatId()
@@ -114,6 +125,18 @@ public class TelegramUpdateDispatcher {
             trackingHandler.handleCallback(callback);
         } finally {
             answerCallbackBestEffort(callback.getCallbackQueryId());
+        }
+    }
+
+    private void clearPendingCitySelectionOnCallbackExit(IncomingTelegramCallback callback) {
+        boolean opensRegionFlow = regionHandler.supportsCallback(callback)
+                || MainMenuCallbackData.parse(callback.getData())
+                .filter(action -> action == MainMenuCallbackData.Action.REGION)
+                .isPresent();
+        if (!opensRegionFlow) {
+            regionHandler.clearPendingInput(
+                    callback.getTelegramUserId(), callback.getChatId()
+            );
         }
     }
 

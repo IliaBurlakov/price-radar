@@ -1,6 +1,5 @@
 package com.priceradar.user.infrastructure.configuration;
 
-import com.priceradar.region.application.MarketplaceRegionStore;
 import com.priceradar.user.application.UserProfileService;
 import com.priceradar.user.application.UserProfileStore;
 import com.priceradar.user.domain.UserPricePreferences;
@@ -17,7 +16,6 @@ public class UserApplicationConfiguration {
     @Bean
     public UserProfileService userProfileService(
             UserProfileStore profileStore,
-            MarketplaceRegionStore regionStore,
             UserDefaultsProperties properties,
             Clock providerClock
     ) {
@@ -26,7 +24,6 @@ public class UserApplicationConfiguration {
         );
         return new UserProfileService(
                 profileStore,
-                regionStore,
                 defaultPricePreferences,
                 providerClock
         );

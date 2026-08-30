@@ -1,6 +1,5 @@
 package com.priceradar.telegram.application;
 
-import com.priceradar.region.domain.MarketplaceRegionCode;
 import com.priceradar.product.application.ProductUrlParser;
 import com.priceradar.sharedbasket.application.SharedBasketApplyResult;
 import com.priceradar.sharedbasket.application.SharedBasketImportService;
@@ -78,7 +77,7 @@ class TelegramSharedBasketHandlerTest {
                 moscow(), UserPricePreferences.defaults()
         );
         SharedBasketPreview preview = new SharedBasketPreview(
-                importId, MarketplaceRegionCode.MOSCOW,
+                importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 60, 60, 60, 0, List.of(), 15, 45, 8, 2, 27, 27, 50,
                 titles("Add skipped", 18), titles("Sync skipped", 10),
                 List.of("One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"),
@@ -193,7 +192,7 @@ class TelegramSharedBasketHandlerTest {
         ));
         when(service.findPreview(importId, userId, now)).thenReturn(Optional.of(
                 new SharedBasketPreview(
-                        importId, MarketplaceRegionCode.MOSCOW,
+                        importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                         1, 1, 1, 0, List.of(), 0, 1, 0, 0, 50, 1, 1,
                         List.of(), List.of(),
                         List.of(), List.of(), "AbCdEf12345"
@@ -225,7 +224,7 @@ class TelegramSharedBasketHandlerTest {
     void unresolvedItemsHideSynchronizationAndSignedSyncCallbackCannotApplyIt() {
         TestContext context = context();
         SharedBasketPreview preview = new SharedBasketPreview(
-                context.importId, MarketplaceRegionCode.MOSCOW,
+                context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 3, 2, 2, 1, List.of(), 0, 2, 0, 0, 48, 2, 2,
                 List.of(), List.of(),
                 List.of(), List.of(), "AbCdEf12345"
@@ -271,13 +270,13 @@ class TelegramSharedBasketHandlerTest {
     void changedPlanShowsAReplacementConfirmationInsteadOfApplyingNewDestructiveChanges() {
         TestContext context = context();
         SharedBasketPreview original = new SharedBasketPreview(
-                context.importId, MarketplaceRegionCode.MOSCOW,
+                context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 1, 1, 1, 0, List.of(), 0, 1, 1, 0, 49, 1, 1,
                 List.of(), List.of(),
                 List.of("Old removal"), List.of(), "AbCdEf12345"
         );
         SharedBasketPreview refreshed = new SharedBasketPreview(
-                context.importId, MarketplaceRegionCode.MOSCOW,
+                context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 1, 1, 1, 0, List.of(), 0, 1, 2, 0, 48, 1, 1,
                 List.of(), List.of(),
                 List.of("Old removal", "New removal"), List.of(), "ZyXwVu98765"
@@ -304,7 +303,7 @@ class TelegramSharedBasketHandlerTest {
     @Test
     void previewRendersOnlyRelevantCountsAndWarnings() {
         SharedBasketPreview happyPath = new SharedBasketPreview(
-                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 3, 3, 3, 0, List.of(), 0, 3, 0, 0, 50, 3, 3,
                 List.of(), List.of(),
                 List.of(), List.of(), "AbCdEf12345"
@@ -323,7 +322,7 @@ class TelegramSharedBasketHandlerTest {
                 );
 
         SharedBasketPreview warnings = new SharedBasketPreview(
-                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 73, 70, 70, 1, List.of("Product A", "Product B"),
                 15, 55, 6, 2, 35, 35, 50,
                 titles("Add skipped", 20), titles("Sync skipped", 20),
@@ -354,7 +353,7 @@ class TelegramSharedBasketHandlerTest {
                 "Product 54", "Product 55", "Product 56"
         );
         SharedBasketPreview preview = new SharedBasketPreview(
-                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 56, 56, 56, 0, List.of(), 0, 56, 0, 0, 50, 50, 50,
                 skippedTitles, skippedTitles, List.of(), List.of(), "AbCdEf12345"
         );
@@ -366,7 +365,7 @@ class TelegramSharedBasketHandlerTest {
 
         TestContext context = context();
         SharedBasketPreview ownedPreview = new SharedBasketPreview(
-                context.importId, MarketplaceRegionCode.MOSCOW,
+                context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 56, 56, 56, 0, List.of(), 0, 56, 0, 0, 50, 50, 50,
                 skippedTitles, skippedTitles, List.of(), List.of(), "AbCdEf12345"
         );
@@ -411,7 +410,7 @@ class TelegramSharedBasketHandlerTest {
     @Test
     void unavailableBlockUsesSingularFormAndLimitsLongProductLists() {
         SharedBasketPreview twoUnavailable = new SharedBasketPreview(
-                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 28, 26, 26, 0, List.of("Product A", "Product B"),
                 0, 26, 0, 0, 50, 26, 26,
                 List.of(), List.of(),
@@ -427,7 +426,7 @@ class TelegramSharedBasketHandlerTest {
         ).doesNotContain("не удалось обработать");
 
         SharedBasketPreview singular = new SharedBasketPreview(
-                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 1, 0, 0, 0, List.of("Футболка — XXL"),
                 0, 0, 0, 0, 50, 0, 0,
                 List.of(), List.of(),
@@ -446,7 +445,7 @@ class TelegramSharedBasketHandlerTest {
                 .containsExactly("Добавить новые", "Отмена");
 
         SharedBasketPreview longList = new SharedBasketPreview(
-                UUID.randomUUID(), MarketplaceRegionCode.MOSCOW,
+                UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 8, 0, 0, 0,
                 List.of("A", "B", "C", "D", "E", "F", "G", "H"),
                 0, 0, 0, 0, 50, 0, 0,
@@ -467,7 +466,7 @@ class TelegramSharedBasketHandlerTest {
         when(context.service.findPreview(context.importId, context.userId, context.now))
                 .thenReturn(Optional.of(new SharedBasketPreview(
                         context.importId,
-                        MarketplaceRegionCode.MOSCOW,
+                        com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                         preview.getFoundItems(), preview.getAvailableItems(), preview.getReadyItems(),
                         preview.getUnresolvedItems(), preview.getUnavailableTitles(),
                         preview.getAlreadyTracked(), preview.getNewItems(), preview.getAbsentTracked(),
