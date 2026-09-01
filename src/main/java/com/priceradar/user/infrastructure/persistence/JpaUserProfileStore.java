@@ -80,6 +80,23 @@ public class JpaUserProfileStore implements UserProfileStore {
         return toProfile(entity);
     }
 
+    @Override
+    public UserProfile updatePricePreferences(
+            UserProfile profile,
+            UserPricePreferences pricePreferences,
+            Instant updatedAt
+    ) {
+        if (profile == null || pricePreferences == null || updatedAt == null) {
+            throw new IllegalArgumentException("price preference update fields must not be null");
+        }
+        UserProfileEntity entity = profileRepository.findById(profile.getId())
+                .orElseThrow(() -> new IllegalStateException("User profile no longer exists"));
+        entity.updateWalletDiscountPercent(
+                pricePreferences.getWalletDiscountPercent(), updatedAt
+        );
+        return toProfile(entity);
+    }
+
     private UserProfile toProfile(UserProfileEntity entity) {
         return new UserProfile(
                 entity.getId(),

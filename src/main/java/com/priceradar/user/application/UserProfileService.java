@@ -42,6 +42,20 @@ public class UserProfileService {
                 ));
     }
 
+    @Transactional
+    public UserProfile updateWalletDiscountPercent(
+            long telegramUserId,
+            long telegramChatId,
+            int walletDiscountPercent
+    ) {
+        UserPricePreferences pricePreferences = new UserPricePreferences(walletDiscountPercent);
+        UserProfile profile = getOrCreate(telegramUserId, telegramChatId);
+        if (profile.getPricePreferences().equals(pricePreferences)) {
+            return profile;
+        }
+        return profileStore.updatePricePreferences(profile, pricePreferences, clock.instant());
+    }
+
     private UserProfile updateChatIfNeeded(UserProfile profile, long telegramChatId, Instant now) {
         if (profile.getTelegramChatId() == telegramChatId) {
             return profile;

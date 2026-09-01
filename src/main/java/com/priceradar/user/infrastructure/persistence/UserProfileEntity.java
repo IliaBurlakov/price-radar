@@ -1,5 +1,7 @@
 package com.priceradar.user.infrastructure.persistence;
 
+import com.priceradar.user.domain.UserPricePreferences;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -107,6 +109,18 @@ public class UserProfileEntity {
             throw new IllegalArgumentException("location update fields must not be null");
         }
         this.locationId = locationId;
+        this.updatedAt = updatedAt;
+    }
+
+    public void updateWalletDiscountPercent(int walletDiscountPercent, Instant updatedAt) {
+        if (walletDiscountPercent < UserPricePreferences.MIN_WALLET_DISCOUNT_PERCENT
+                || walletDiscountPercent > UserPricePreferences.MAX_WALLET_DISCOUNT_PERCENT) {
+            throw new IllegalArgumentException("walletDiscountPercent must be between 2 and 20");
+        }
+        if (updatedAt == null) {
+            throw new IllegalArgumentException("updatedAt must not be null");
+        }
+        this.walletDiscountPercent = walletDiscountPercent;
         this.updatedAt = updatedAt;
     }
 }
