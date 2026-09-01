@@ -32,6 +32,9 @@ import com.priceradar.telegram.application.TelegramQuoteMessageFactory;
 import com.priceradar.telegram.application.TelegramRegionHandler;
 import com.priceradar.telegram.application.TelegramSharedBasketHandler;
 import com.priceradar.telegram.application.TelegramTrackingHandler;
+import com.priceradar.telegram.application.TelegramTutorialHandler;
+import com.priceradar.telegram.application.TelegramTutorialMessageFactory;
+import com.priceradar.telegram.application.TutorialAssetCatalog;
 import com.priceradar.telegram.application.TrackingCallbackCodec;
 import com.priceradar.telegram.application.TelegramUpdateDispatcher;
 import com.priceradar.telegram.application.TrackedItemsMessageFactory;
@@ -266,8 +269,14 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
-    public TelegramMenuMessageFactory telegramMenuMessageFactory(PriceRadarPolicyProperties policy) {
-        return new TelegramMenuMessageFactory(policy.getActiveSubscriptionLimit());
+    public TelegramMenuMessageFactory telegramMenuMessageFactory(
+            PriceRadarPolicyProperties policy,
+            TelegramBotProperties telegramProperties
+    ) {
+        return new TelegramMenuMessageFactory(
+                policy.getActiveSubscriptionLimit(),
+                telegramProperties.isTutorialsEnabled()
+        );
     }
 
     @Bean
@@ -275,12 +284,14 @@ public class TelegramBotConfiguration {
             TelegramMenuMessageFactory messageFactory,
             TrackedItemsMessageHandler trackedItemsHandler,
             TelegramRegionHandler regionHandler,
+            TelegramFeedbackHandler feedbackHandler,
             TelegramGateway telegramGateway
     ) {
         return new TelegramMenuHandler(
                 messageFactory,
                 trackedItemsHandler,
                 regionHandler,
+                feedbackHandler,
                 telegramGateway
         );
     }
@@ -350,6 +361,31 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public TutorialAssetCatalog tutorialAssetCatalog() {
+        return new TutorialAssetCatalog();
+    }
+
+    @Bean
+    public TelegramTutorialMessageFactory telegramTutorialMessageFactory() {
+        return new TelegramTutorialMessageFactory();
+    }
+
+    @Bean
+    public TelegramTutorialHandler telegramTutorialHandler(
+            TutorialAssetCatalog assetCatalog,
+            TelegramTutorialMessageFactory messageFactory,
+            TelegramGateway telegramGateway,
+            TelegramBotProperties telegramProperties
+    ) {
+        return new TelegramTutorialHandler(
+                assetCatalog,
+                messageFactory,
+                telegramGateway,
+                telegramProperties.isTutorialsEnabled()
+        );
+    }
+
+    @Bean
     public TelegramUpdateDispatcher telegramUpdateDispatcher(
             TelegramOnboardingHandler onboardingHandler,
             TelegramCurrentQuoteHandler currentQuoteHandler,
@@ -361,6 +397,7 @@ public class TelegramBotConfiguration {
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
             TelegramFeedbackHandler feedbackHandler,
+            TelegramTutorialHandler tutorialHandler,
             TelegramGateway telegramGateway
     ) {
         return new TelegramUpdateDispatcher(
@@ -374,6 +411,7 @@ public class TelegramBotConfiguration {
                 showLastKnownHandler,
                 statisticsHandler,
                 feedbackHandler,
+                tutorialHandler,
                 telegramGateway
         );
     }

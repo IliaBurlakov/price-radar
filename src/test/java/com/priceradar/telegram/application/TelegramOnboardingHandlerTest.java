@@ -28,7 +28,7 @@ class TelegramOnboardingHandlerTest {
         when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
         TelegramOnboardingHandler handler = new TelegramOnboardingHandler(users, regions);
 
-        for (String text : new String[]{"/start", "/help", "/menu"}) {
+        for (String text : new String[]{"/start", "/city", "/help", "/feedback", "/menu"}) {
             clearInvocations(regions);
 
             assertThat(handler.handleMessage(message(text))).isFalse();

@@ -118,10 +118,14 @@ public final class WildberriesLinkExtractor {
 
     private boolean hasWildberriesHost(String value) {
         try {
-            return "www.wildberries.ru".equalsIgnoreCase(new URI(value).getHost());
+            String host = new URI(value).getHost();
+            return "wildberries.ru".equalsIgnoreCase(host)
+                    || "www.wildberries.ru".equalsIgnoreCase(host);
         } catch (URISyntaxException exception) {
             String normalized = value.toLowerCase(Locale.ROOT);
-            return normalized.startsWith("https://www.wildberries.ru/")
+            return normalized.startsWith("https://wildberries.ru/")
+                    || normalized.startsWith("http://wildberries.ru/")
+                    || normalized.startsWith("https://www.wildberries.ru/")
                     || normalized.startsWith("http://www.wildberries.ru/");
         }
     }

@@ -46,18 +46,23 @@ public final class TelegramFeedbackHandler {
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
         if (!supportsCallback(callback)) return false;
-        if (!callback.isPrivateChat()) return true;
+        if (callback.isPrivateChat()) {
+            show(callback.getTelegramUserId(), callback.getChatId());
+        }
+        return true;
+    }
+
+    public void show(long telegramUserId, long chatId) {
         UserProfile profile = userProfileService.getOrCreate(
-                callback.getTelegramUserId(), callback.getChatId()
+                telegramUserId, chatId
         );
         feedbackService.begin(profile);
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
-                callback.getChatId(),
+                chatId,
                 "💬 Обратная связь\n\nСпасибо, что пользуетесь Price Radar! Здесь вы можете оставить свой отзыв о сервисе и помочь нам стать лучше.\n\nОтправьте сообщение в течение %d минут."
                         .formatted(feedbackService.getPendingTtl().toMinutes()),
                 TelegramNavigationKeyboard.home()
         ));
-        return true;
     }
 
     public boolean handlePendingMessage(IncomingTelegramMessage message) {

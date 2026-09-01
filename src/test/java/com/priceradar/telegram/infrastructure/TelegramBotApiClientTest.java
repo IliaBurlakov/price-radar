@@ -1,6 +1,7 @@
 package com.priceradar.telegram.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.priceradar.telegram.application.OutgoingTelegramMediaGroup;
 import com.priceradar.telegram.application.TelegramBotCommand;
 import com.priceradar.telegram.application.TelegramBotCommandRegistrar;
 import com.priceradar.telegram.application.TelegramDeliveryException;
@@ -30,6 +31,95 @@ import static org.mockito.Mockito.when;
 class TelegramBotApiClientTest {
 
     @Test
+    void sendsThreePngFilesAsOneMultipartMediaGroupWithCaption() {
+        try (LocalHttpStub stub = LocalHttpStub.start()) {
+            stub.stub("/bot123:secret/sendMediaGroup", 200,
+                    "{\"ok\":true,\"result\":[{\"message_id\":1}]}");
+            TelegramBotApiClient client = client(stub, new ObjectMapper());
+
+            client.sendMediaGroup(mediaGroup());
+
+            assertThat(stub.lastRequestContentType()).startsWith("multipart/form-data; boundary=");
+            String requestBody = stub.lastRequestBody();
+            assertThat(requestBody)
+                    .contains("name=\"chat_id\"", "7001", "name=\"media\"",
+                            "attach://photo0", "attach://photo1", "attach://photo2",
+                            "Инструкция",
+                            "name=\"photo0\"", "name=\"photo1\"", "name=\"photo2\"",
+                            "filename=\"step-1.png\"", "filename=\"step-2.png\"",
+                            "filename=\"step-3.png\"", "Content-Type: image/png");
+            assertThat(requestBody).doesNotContain("show_caption_above_media");
+            assertThat(countOccurrences(requestBody, "caption")).isOne();
+        }
+    }
+
+    @Test
+    void appliesExistingTelegramFailureSemanticsToMediaGroupDelivery() {
+        try (LocalHttpStub stub = LocalHttpStub.start()) {
+            stub.stub("/bot123:secret/sendMediaGroup", 400,
+                    "{\"ok\":false,\"error_code\":400,"
+                            + "\"description\":\"Bad Request: invalid media payload\"}");
+            TelegramBotApiClient client = client(stub, new ObjectMapper());
+
+            assertThatThrownBy(() -> client.sendMediaGroup(mediaGroup()))
+                    .isInstanceOfSatisfying(TelegramDeliveryException.class, exception ->
+                            {
+                                assertThat(exception.getFailureType())
+                                        .isEqualTo(TelegramDeliveryFailureType.PERMANENT_FAILURE);
+                                assertThat(exception.getMessage())
+                                        .contains("Bad Request: invalid media payload");
+                            });
+        }
+
+        HttpClient unavailable = mock(HttpClient.class);
+        try {
+            when(unavailable.send(
+                    any(HttpRequest.class),
+                    org.mockito.ArgumentMatchers.<HttpResponse.BodyHandler<InputStream>>any()
+            )).thenThrow(new ConnectException("connection refused"));
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
+        assertThatThrownBy(() -> client(unavailable).sendMediaGroup(mediaGroup()))
+                .isInstanceOfSatisfying(TelegramDeliveryException.class, exception ->
+                assertThat(exception.getFailureType())
+                        .isEqualTo(TelegramDeliveryFailureType.SAFE_TO_RETRY));
+
+        HttpClient timedOut = mock(HttpClient.class);
+        try {
+            when(timedOut.send(
+                    any(HttpRequest.class),
+                    org.mockito.ArgumentMatchers.<HttpResponse.BodyHandler<InputStream>>any()
+            )).thenThrow(new java.net.http.HttpTimeoutException("response timeout"));
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
+        assertThatThrownBy(() -> client(timedOut).sendMediaGroup(mediaGroup()))
+                .isInstanceOfSatisfying(TelegramDeliveryException.class, exception ->
+                assertThat(exception.getFailureType())
+                        .isEqualTo(TelegramDeliveryFailureType.DELIVERY_AMBIGUOUS));
+    }
+
+    @Test
+    void rejectsTelegramOkFalseForMediaGroupEvenWithHttpSuccess() {
+        try (LocalHttpStub stub = LocalHttpStub.start()) {
+            stub.stub("/bot123:secret/sendMediaGroup", 200,
+                    "{\"ok\":false,\"error_code\":500,"
+                            + "\"description\":\"Internal media processing error\"}");
+            TelegramBotApiClient client = client(stub, new ObjectMapper());
+
+            assertThatThrownBy(() -> client.sendMediaGroup(mediaGroup()))
+                    .isInstanceOfSatisfying(TelegramDeliveryException.class, exception ->
+                            {
+                                assertThat(exception.getFailureType())
+                                        .isEqualTo(TelegramDeliveryFailureType.SAFE_TO_RETRY);
+                                assertThat(exception.getMessage())
+                                        .contains("Internal media processing error");
+                            });
+        }
+    }
+
+    @Test
     void registersTheGlobalCommandMenuThroughTelegramApi() throws Exception {
         try (LocalHttpStub stub = LocalHttpStub.start()) {
             stub.stub("/bot123:secret/setMyCommands", 200, "{\"ok\":true,\"result\":true}");
@@ -41,15 +131,19 @@ class TelegramBotApiClientTest {
             assertThat(stub.requestCount()).isOne();
             assertThat(objectMapper.readTree(stub.lastRequestBody()).path("commands"))
                     .extracting(node -> node.path("command").textValue())
-                    .containsExactly("start", "tracked", "add", "import", "help");
+                    .containsExactly(
+                            "start", "add", "import", "tracked", "city", "help", "feedback"
+                    );
             assertThat(objectMapper.readTree(stub.lastRequestBody()).path("commands"))
                     .extracting(node -> node.path("description").textValue())
                     .containsExactly(
                             "🏠 Главное меню",
-                            "📦 Мои товары",
                             "➕ Добавить товар",
                             "🛒 Импортировать корзину",
-                            "❓ Помощь"
+                            "📦 Мои товары",
+                            "🌍 Город",
+                            "❓ Помощь",
+                            "💬 Обратная связь"
                     );
         }
     }
@@ -170,6 +264,22 @@ class TelegramBotApiClientTest {
 
     private TelegramBotApiClient client(LocalHttpStub stub, ObjectMapper objectMapper) {
         return client(HttpClient.newHttpClient(), stub.baseUri(), objectMapper);
+    }
+
+    private OutgoingTelegramMediaGroup mediaGroup() {
+        return new OutgoingTelegramMediaGroup(
+                7001L,
+                "Инструкция",
+                List.of(
+                        new OutgoingTelegramMediaGroup.Photo("step-1.png", new byte[]{1}),
+                        new OutgoingTelegramMediaGroup.Photo("step-2.png", new byte[]{2}),
+                        new OutgoingTelegramMediaGroup.Photo("step-3.png", new byte[]{3})
+                )
+        );
+    }
+
+    private int countOccurrences(String text, String value) {
+        return (text.length() - text.replace(value, "").length()) / value.length();
     }
 
     private TelegramBotApiClient client(HttpClient httpClient) {

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.priceradar.telegram.application.IncomingTelegramCallback;
 import com.priceradar.telegram.application.IncomingTelegramMessage;
 import com.priceradar.telegram.application.OutgoingTelegramMessage;
+import com.priceradar.telegram.application.OutgoingTelegramMediaGroup;
 import com.priceradar.telegram.application.TelegramBotCommand;
 import com.priceradar.telegram.application.TelegramBotCommandRegistrar;
 import com.priceradar.telegram.application.TelegramDeliveryException;
@@ -24,12 +25,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommandRegistrar {
 
@@ -139,6 +142,20 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
     }
 
     @Override
+    public void sendMediaGroup(OutgoingTelegramMediaGroup mediaGroup) {
+        if (mediaGroup == null) {
+            throw new IllegalArgumentException("mediaGroup must not be null");
+        }
+        String boundary = "PriceRadar-" + UUID.randomUUID();
+        HttpRequest request = HttpRequest.newBuilder(methodUri("sendMediaGroup"))
+                .timeout(requestTimeout)
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(multipartMediaGroupBody(mediaGroup, boundary))
+                .build();
+        execute(request);
+    }
+
+    @Override
     public void answerCallbackQuery(String callbackQueryId) {
         if (callbackQueryId == null || callbackQueryId.isBlank()) {
             throw new IllegalArgumentException("callbackQueryId must not be blank");
@@ -235,6 +252,11 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
                 .POST(HttpRequest.BodyPublishers.ofString(writeJson(requestBody)))
                 .build();
 
+        return execute(request);
+    }
+
+    private JsonNode execute(HttpRequest request) {
+
         HttpResponse<InputStream> response;
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -255,7 +277,10 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
                     ? extractRetryAfter(rawResponse)
                     : Optional.empty();
             throw new TelegramDeliveryException(
-                    "Telegram API returned HTTP " + response.statusCode(),
+                    telegramErrorMessage(
+                            "Telegram API returned HTTP " + response.statusCode(),
+                            rawResponse
+                    ),
                     response.statusCode() == 429 || response.statusCode() >= 500
                             ? TelegramDeliveryFailureType.SAFE_TO_RETRY
                             : TelegramDeliveryFailureType.PERMANENT_FAILURE,
@@ -278,7 +303,12 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
                     ? extractRetryAfter(rawResponse)
                     : Optional.empty();
             throw new TelegramDeliveryException(
-                    "Telegram API returned an unsuccessful response",
+                    telegramErrorMessage(
+                            errorCode > 0
+                                    ? "Telegram API returned error " + errorCode
+                                    : "Telegram API returned an unsuccessful response",
+                            rawResponse
+                    ),
                     errorCode == 429 || errorCode >= 500
                             ? TelegramDeliveryFailureType.SAFE_TO_RETRY
                             : TelegramDeliveryFailureType.PERMANENT_FAILURE,
@@ -293,6 +323,46 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
             );
         }
         return result;
+    }
+
+    private HttpRequest.BodyPublisher multipartMediaGroupBody(
+            OutgoingTelegramMediaGroup mediaGroup,
+            String boundary
+    ) {
+        ArrayNode media = objectMapper.createArrayNode();
+        for (int index = 0; index < mediaGroup.getPhotos().size(); index++) {
+            ObjectNode item = media.addObject();
+            item.put("type", "photo");
+            item.put("media", "attach://photo" + index);
+            if (index == 0) {
+                item.put("caption", mediaGroup.getCaption());
+            }
+        }
+
+        List<byte[]> parts = new ArrayList<>();
+        parts.add(textMultipartPart(boundary, "chat_id", Long.toString(mediaGroup.getChatId())));
+        parts.add(textMultipartPart(boundary, "media", writeJson(media)));
+        for (int index = 0; index < mediaGroup.getPhotos().size(); index++) {
+            OutgoingTelegramMediaGroup.Photo photo = mediaGroup.getPhotos().get(index);
+            parts.add(utf8("--" + boundary + "\r\n"
+                    + "Content-Disposition: form-data; name=\"photo" + index
+                    + "\"; filename=\"" + photo.getFilename() + "\"\r\n"
+                    + "Content-Type: image/png\r\n\r\n"));
+            parts.add(photo.getContent());
+            parts.add(utf8("\r\n"));
+        }
+        parts.add(utf8("--" + boundary + "--\r\n"));
+        return HttpRequest.BodyPublishers.ofByteArrays(parts);
+    }
+
+    private byte[] textMultipartPart(String boundary, String name, String value) {
+        return utf8("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
+                + value + "\r\n");
+    }
+
+    private byte[] utf8(String value) {
+        return value.getBytes(StandardCharsets.UTF_8);
     }
 
     private String writeJson(JsonNode body) {
@@ -395,6 +465,28 @@ public class TelegramBotApiClient implements TelegramGateway, TelegramBotCommand
             return Optional.of(Duration.ofSeconds(cappedSeconds));
         } catch (IOException exception) {
             return Optional.empty();
+        }
+    }
+
+    private String telegramErrorMessage(String fallback, String rawResponse) {
+        try {
+            JsonNode response = objectMapper.readTree(rawResponse);
+            if (response == null || !response.path("description").isTextual()) {
+                return fallback;
+            }
+            String description = response.path("description").textValue()
+                    .replaceAll("[\\r\\n\\t]+", " ")
+                    .trim();
+            if (description.isBlank()) {
+                return fallback;
+            }
+            int end = description.offsetByCodePoints(
+                    0,
+                    Math.min(300, description.codePointCount(0, description.length()))
+            );
+            return fallback + ": " + description.substring(0, end);
+        } catch (IOException exception) {
+            return fallback;
         }
     }
 

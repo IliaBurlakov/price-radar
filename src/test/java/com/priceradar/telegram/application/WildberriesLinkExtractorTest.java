@@ -16,6 +16,22 @@ class WildberriesLinkExtractorTest {
     );
 
     @Test
+    void extractsOfficialBasketAndProductLinksWithoutWww() {
+        WildberriesLinks basket = extractor.extract(
+                "https://wildberries.ru/basket?shareId=mqy5s5pm4z"
+        );
+        WildberriesLinks product = extractor.extract(
+                "https://wildberries.ru/catalog/10302974/detail.aspx"
+        );
+
+        assertThat(basket.getSharedBasketUrl())
+                .contains("https://wildberries.ru/basket?shareId=mqy5s5pm4z");
+        assertThat(product.getProductLinks()).singleElement()
+                .satisfies(link -> assertThat(link.getParsedUrl().getNmId())
+                        .isEqualTo(10_302_974L));
+    }
+
+    @Test
     void extractsProductFromCleanUrlAndSurroundingTextAndRemovesTrailingPunctuation() {
         String url = "https://www.wildberries.ru/catalog/389025161/detail.aspx?size=564351571";
 

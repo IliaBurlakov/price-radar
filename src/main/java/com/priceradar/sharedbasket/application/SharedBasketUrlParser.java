@@ -6,17 +6,22 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 public final class SharedBasketUrlParser {
 
     private static final Pattern SHARE_ID = Pattern.compile("[a-z0-9]{10}");
+    private static final Set<String> SUPPORTED_HOSTS = Set.of(
+            "wildberries.ru", "www.wildberries.ru"
+    );
 
     public boolean supports(String rawUrl) {
         if (rawUrl == null || rawUrl.isBlank()) return false;
         try {
             URI uri = new URI(rawUrl.trim());
-            return "www.wildberries.ru".equalsIgnoreCase(uri.getHost())
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && isSupportedHost(uri.getHost())
                     && "/basket".equals(uri.getPath());
         } catch (URISyntaxException exception) {
             return false;
@@ -30,7 +35,7 @@ public final class SharedBasketUrlParser {
         try {
             URI uri = new URI(rawUrl.trim());
             if (!"https".equalsIgnoreCase(uri.getScheme())
-                    || !"www.wildberries.ru".equalsIgnoreCase(uri.getHost())
+                    || !isSupportedHost(uri.getHost())
                     || uri.getPort() != -1
                     || !"/basket".equals(uri.getPath())
                     || uri.getUserInfo() != null
@@ -45,6 +50,12 @@ public final class SharedBasketUrlParser {
         } catch (URISyntaxException | IllegalArgumentException exception) {
             throw invalid();
         }
+    }
+
+    private static boolean isSupportedHost(String host) {
+        return host != null && SUPPORTED_HOSTS.stream().anyMatch(
+                supported -> supported.equalsIgnoreCase(host)
+        );
     }
 
     private List<String> queryValues(String rawQuery, String expectedName) {
@@ -66,7 +77,7 @@ public final class SharedBasketUrlParser {
 
     private InvalidSharedBasketUrlException invalid() {
         return new InvalidSharedBasketUrlException(
-                "Expected https://www.wildberries.ru/basket?shareId=<10 lowercase letters or digits>"
+                "Expected an HTTPS Wildberries basket URL with a valid shareId"
         );
     }
 }

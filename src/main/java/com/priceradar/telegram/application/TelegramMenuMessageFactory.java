@@ -3,12 +3,18 @@ package com.priceradar.telegram.application;
 public final class TelegramMenuMessageFactory {
 
     private final int activeSubscriptionLimit;
+    private final boolean tutorialsEnabled;
 
     public TelegramMenuMessageFactory(int activeSubscriptionLimit) {
+        this(activeSubscriptionLimit, true);
+    }
+
+    public TelegramMenuMessageFactory(int activeSubscriptionLimit, boolean tutorialsEnabled) {
         if (activeSubscriptionLimit <= 0) {
             throw new IllegalArgumentException("active subscription limit must be positive");
         }
         this.activeSubscriptionLimit = activeSubscriptionLimit;
+        this.tutorialsEnabled = tutorialsEnabled;
     }
 
     public OutgoingTelegramMessage welcome(long chatId) {
@@ -82,7 +88,7 @@ public final class TelegramMenuMessageFactory {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
-                TelegramNavigationKeyboard.home()
+                tutorialKeyboard(TutorialTopic.PRODUCT)
         );
     }
 
@@ -113,7 +119,24 @@ public final class TelegramMenuMessageFactory {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
-                TelegramNavigationKeyboard.home()
+                tutorialKeyboard(TutorialTopic.BASKET)
+        );
+    }
+
+    private java.util.List<java.util.List<TelegramInlineButton>> tutorialKeyboard(
+            TutorialTopic topic
+    ) {
+        if (!tutorialsEnabled) {
+            return TelegramNavigationKeyboard.home();
+        }
+        return java.util.List.of(
+                java.util.List.of(new TelegramInlineButton(
+                        "📖 Инструкция", TutorialCallbackData.open(topic)
+                )),
+                java.util.List.of(new TelegramInlineButton(
+                        "Главное меню",
+                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
+                ))
         );
     }
 }

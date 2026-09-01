@@ -68,7 +68,9 @@ public final class TelegramOnboardingHandler {
     private boolean isPublicNavigationCommand(String text) {
         Optional<TelegramBotCommand> command = TelegramBotCommand.fromMessageText(text);
         if (command.filter(value -> value == TelegramBotCommand.START
-                || value == TelegramBotCommand.HELP).isPresent()) {
+                || value == TelegramBotCommand.HELP
+                || value == TelegramBotCommand.CITY
+                || value == TelegramBotCommand.FEEDBACK).isPresent()) {
             return true;
         }
         return text != null && (text.equals("/menu") || text.startsWith("/menu@"));

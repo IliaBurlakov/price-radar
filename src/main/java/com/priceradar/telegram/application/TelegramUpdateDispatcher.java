@@ -17,6 +17,7 @@ public class TelegramUpdateDispatcher {
     private final ShowLastKnownCallbackHandler showLastKnownHandler;
     private final StatisticsCallbackHandler statisticsHandler;
     private final TelegramFeedbackHandler feedbackHandler;
+    private final TelegramTutorialHandler tutorialHandler;
     private final TelegramGateway telegramGateway;
 
     public TelegramUpdateDispatcher(
@@ -30,6 +31,7 @@ public class TelegramUpdateDispatcher {
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
             TelegramFeedbackHandler feedbackHandler,
+            TelegramTutorialHandler tutorialHandler,
             TelegramGateway telegramGateway
     ) {
         if (onboardingHandler == null || currentQuoteHandler == null
@@ -37,7 +39,7 @@ public class TelegramUpdateDispatcher {
                 || sharedBasketHandler == null
                 || trackedItemsHandler == null
                 || showLastKnownHandler == null || statisticsHandler == null
-                || feedbackHandler == null || telegramGateway == null) {
+                || feedbackHandler == null || tutorialHandler == null || telegramGateway == null) {
             throw new IllegalArgumentException("Telegram update dispatcher dependencies must not be null");
         }
         this.onboardingHandler = onboardingHandler;
@@ -50,6 +52,7 @@ public class TelegramUpdateDispatcher {
         this.showLastKnownHandler = showLastKnownHandler;
         this.statisticsHandler = statisticsHandler;
         this.feedbackHandler = feedbackHandler;
+        this.tutorialHandler = tutorialHandler;
         this.telegramGateway = telegramGateway;
     }
 
@@ -115,6 +118,9 @@ public class TelegramUpdateDispatcher {
                     callback.getChatId()
             );
             if (feedbackHandler.handleCallback(callback)) {
+                return;
+            }
+            if (tutorialHandler.handleCallback(callback)) {
                 return;
             }
             if (sharedBasketHandler.handleCallback(callback)) {

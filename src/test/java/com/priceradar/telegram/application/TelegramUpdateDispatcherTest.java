@@ -21,6 +21,33 @@ import static org.mockito.Mockito.when;
 class TelegramUpdateDispatcherTest {
 
     @Test
+    void routesTutorialCallbackToDedicatedHandlerBeforeBusinessHandlers() {
+        TelegramTutorialHandler tutorial = mock(TelegramTutorialHandler.class);
+        TelegramMenuHandler menu = mock(TelegramMenuHandler.class);
+        TelegramSharedBasketHandler baskets = mock(TelegramSharedBasketHandler.class);
+        TelegramCurrentQuoteHandler quotes = mock(TelegramCurrentQuoteHandler.class);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        IncomingTelegramCallback callback = new IncomingTelegramCallback(
+                "tutorial", 7001L, 7001L, "private",
+                TutorialCallbackData.open(TutorialTopic.PRODUCT)
+        );
+        when(tutorial.handleCallback(callback)).thenReturn(true);
+        TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
+                mock(TelegramOnboardingHandler.class), quotes, menu,
+                mock(TelegramRegionHandler.class), mock(TelegramTrackingHandler.class),
+                baskets, mock(TrackedItemsMessageHandler.class),
+                mock(ShowLastKnownCallbackHandler.class), mock(StatisticsCallbackHandler.class),
+                mock(TelegramFeedbackHandler.class), tutorial, gateway
+        );
+
+        dispatcher.dispatch(new TelegramUpdate(1L, Optional.empty(), Optional.of(callback)));
+
+        verify(tutorial).handleCallback(callback);
+        verifyNoInteractions(menu, baskets, quotes);
+        verify(gateway).answerCallbackQuery("tutorial");
+    }
+
+    @Test
     void pendingFeedbackConsumesTextBeforeOnboardingAndBusinessHandlers() {
         TelegramFeedbackHandler feedback = mock(TelegramFeedbackHandler.class);
         TelegramOnboardingHandler onboarding = mock(TelegramOnboardingHandler.class);
@@ -31,7 +58,8 @@ class TelegramUpdateDispatcherTest {
                 onboarding, quotes, mock(TelegramMenuHandler.class), mock(TelegramRegionHandler.class),
                 mock(TelegramTrackingHandler.class), mock(TelegramSharedBasketHandler.class),
                 mock(TrackedItemsMessageHandler.class), mock(ShowLastKnownCallbackHandler.class),
-                mock(StatisticsCallbackHandler.class), feedback, mock(TelegramGateway.class));
+                mock(StatisticsCallbackHandler.class), feedback,
+                mock(TelegramTutorialHandler.class), mock(TelegramGateway.class));
 
         dispatcher.dispatch(new TelegramUpdate(1L, Optional.of(message)));
 
@@ -48,7 +76,8 @@ class TelegramUpdateDispatcherTest {
                 mock(TelegramMenuHandler.class), mock(TelegramRegionHandler.class),
                 mock(TelegramTrackingHandler.class), mock(TelegramSharedBasketHandler.class),
                 mock(TrackedItemsMessageHandler.class), mock(ShowLastKnownCallbackHandler.class),
-                mock(StatisticsCallbackHandler.class), feedback, gateway);
+                mock(StatisticsCallbackHandler.class), feedback,
+                mock(TelegramTutorialHandler.class), gateway);
         IncomingTelegramCallback home = new IncomingTelegramCallback(
                 "home", 7001L, 7001L, "private",
                 MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME));
@@ -86,6 +115,7 @@ class TelegramUpdateDispatcherTest {
                 mock(ShowLastKnownCallbackHandler.class),
                 mock(StatisticsCallbackHandler.class),
                 mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 mock(TelegramGateway.class)
         );
 
@@ -121,13 +151,15 @@ class TelegramUpdateDispatcherTest {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
         TelegramMenuHandler menu = new TelegramMenuHandler(
-                messages, mock(TrackedItemsMessageHandler.class), regions, gateway
+                messages, mock(TrackedItemsMessageHandler.class), regions,
+                mock(TelegramFeedbackHandler.class), gateway
         );
         TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
                 onboarding, mock(TelegramCurrentQuoteHandler.class), menu, regions,
                 mock(TelegramTrackingHandler.class), mock(TelegramSharedBasketHandler.class),
                 mock(TrackedItemsMessageHandler.class), mock(ShowLastKnownCallbackHandler.class),
-                mock(StatisticsCallbackHandler.class), mock(TelegramFeedbackHandler.class), gateway
+                mock(StatisticsCallbackHandler.class), mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class), gateway
         );
 
         assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
@@ -188,6 +220,7 @@ class TelegramUpdateDispatcherTest {
                 mock(ShowLastKnownCallbackHandler.class),
                 mock(StatisticsCallbackHandler.class),
                 mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 gateway
         );
 
@@ -217,11 +250,11 @@ class TelegramUpdateDispatcherTest {
         assertThat(messages.addProduct(7001L).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("Главное меню");
+                .containsExactly("📖 Инструкция", "Главное меню");
         assertThat(messages.importBasket(7001L).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("Главное меню");
+                .containsExactly("📖 Инструкция", "Главное меню");
         assertThat(messages.help(7001L).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
@@ -249,9 +282,11 @@ class TelegramUpdateDispatcherTest {
     void globalCommandsReuseExistingMenuAndTrackedItemsFlows() {
         TelegramGateway gateway = mock(TelegramGateway.class);
         TrackedItemsMessageHandler trackedItems = mock(TrackedItemsMessageHandler.class);
+        TelegramRegionHandler regions = mock(TelegramRegionHandler.class);
+        TelegramFeedbackHandler feedback = mock(TelegramFeedbackHandler.class);
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
         TelegramMenuHandler handler = new TelegramMenuHandler(
-                messages, trackedItems, mock(TelegramRegionHandler.class), gateway
+                messages, trackedItems, regions, feedback, gateway
         );
 
         assertSentMessage(
@@ -277,6 +312,10 @@ class TelegramUpdateDispatcherTest {
 
         assertThat(handler.handleMessage(message("/tracked"))).isTrue();
         verify(trackedItems).showTracked(7001L, 7001L);
+        assertThat(handler.handleMessage(message("/city"))).isTrue();
+        verify(regions).show(7001L, 7001L);
+        assertThat(handler.handleMessage(message("/feedback"))).isTrue();
+        verify(feedback).show(7001L, 7001L);
     }
 
     @Test
@@ -285,7 +324,7 @@ class TelegramUpdateDispatcherTest {
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
                 messages, mock(TrackedItemsMessageHandler.class),
-                mock(TelegramRegionHandler.class), gateway
+                mock(TelegramRegionHandler.class), mock(TelegramFeedbackHandler.class), gateway
         );
 
         assertSentMessage(
@@ -323,7 +362,7 @@ class TelegramUpdateDispatcherTest {
         TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
                 messages, mock(TrackedItemsMessageHandler.class),
-                mock(TelegramRegionHandler.class), gateway
+                mock(TelegramRegionHandler.class), mock(TelegramFeedbackHandler.class), gateway
         );
         OutgoingTelegramMessage mainMenu = messages.mainMenu(7001L);
 
@@ -343,13 +382,12 @@ class TelegramUpdateDispatcherTest {
                 "Поделиться корзиной",
                 "Добавить новые",
                 "Синхронизировать",
-                "до 50 товаров",
-                "Отправьте ссылку на общую корзину"
+                "Отправьте ссылку на корзину Wildberries"
         );
         assertThat(explanation.getValue().getInlineKeyboard().stream()
                 .flatMap(List::stream)
                 .map(TelegramInlineButton::getText)
-                .toList()).containsExactly("Главное меню");
+                .toList()).containsExactly("📖 Инструкция", "Главное меню");
 
         TelegramSharedBasketHandler sharedBasketHandler = mock(TelegramSharedBasketHandler.class);
         IncomingTelegramMessage sharedLink = new IncomingTelegramMessage(
@@ -388,6 +426,7 @@ class TelegramUpdateDispatcherTest {
                 showLastKnownHandler,
                 statisticsHandler,
                 mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 gateway
         );
         IncomingTelegramCallback callback = new IncomingTelegramCallback(
@@ -431,6 +470,7 @@ class TelegramUpdateDispatcherTest {
                 mock(ShowLastKnownCallbackHandler.class),
                 mock(StatisticsCallbackHandler.class),
                 mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 mock(TelegramGateway.class)
         );
 
@@ -454,6 +494,7 @@ class TelegramUpdateDispatcherTest {
                 mock(TelegramSharedBasketHandler.class), mock(TrackedItemsMessageHandler.class),
                 mock(ShowLastKnownCallbackHandler.class), mock(StatisticsCallbackHandler.class),
                 mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 mock(TelegramGateway.class)
         );
 
@@ -478,6 +519,7 @@ class TelegramUpdateDispatcherTest {
                 mock(TelegramTrackingHandler.class), mock(TelegramSharedBasketHandler.class),
                 trackedItemsHandler, mock(ShowLastKnownCallbackHandler.class),
                 mock(StatisticsCallbackHandler.class), mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 mock(TelegramGateway.class)
         );
 
@@ -511,6 +553,7 @@ class TelegramUpdateDispatcherTest {
                 mock(ShowLastKnownCallbackHandler.class),
                 mock(StatisticsCallbackHandler.class),
                 mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 mock(TelegramGateway.class)
         );
 
@@ -554,6 +597,7 @@ class TelegramUpdateDispatcherTest {
                 mock(ShowLastKnownCallbackHandler.class),
                 mock(StatisticsCallbackHandler.class),
                 mock(TelegramFeedbackHandler.class),
+                mock(TelegramTutorialHandler.class),
                 gateway
         );
     }
