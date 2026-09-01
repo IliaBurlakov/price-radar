@@ -95,6 +95,7 @@ public final class TelegramMenuHandler {
                     callback.getChatId()
             );
             case REGION -> regionHandler.show(callback.getTelegramUserId(), callback.getChatId());
+            case WALLET_DISCOUNT -> { return false; }
             case HELP -> telegramGateway.sendMessage(
                     messageFactory.help(callback.getChatId())
             );

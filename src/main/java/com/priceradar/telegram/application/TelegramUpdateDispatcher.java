@@ -17,6 +17,7 @@ public class TelegramUpdateDispatcher {
     private final ShowLastKnownCallbackHandler showLastKnownHandler;
     private final StatisticsCallbackHandler statisticsHandler;
     private final TelegramFeedbackHandler feedbackHandler;
+    private final TelegramWalletDiscountHandler walletDiscountHandler;
     private final TelegramTutorialHandler tutorialHandler;
     private final TelegramGateway telegramGateway;
 
@@ -31,6 +32,7 @@ public class TelegramUpdateDispatcher {
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
             TelegramFeedbackHandler feedbackHandler,
+            TelegramWalletDiscountHandler walletDiscountHandler,
             TelegramTutorialHandler tutorialHandler,
             TelegramGateway telegramGateway
     ) {
@@ -39,7 +41,8 @@ public class TelegramUpdateDispatcher {
                 || sharedBasketHandler == null
                 || trackedItemsHandler == null
                 || showLastKnownHandler == null || statisticsHandler == null
-                || feedbackHandler == null || tutorialHandler == null || telegramGateway == null) {
+                || feedbackHandler == null || walletDiscountHandler == null
+                || tutorialHandler == null || telegramGateway == null) {
             throw new IllegalArgumentException("Telegram update dispatcher dependencies must not be null");
         }
         this.onboardingHandler = onboardingHandler;
@@ -52,6 +55,7 @@ public class TelegramUpdateDispatcher {
         this.showLastKnownHandler = showLastKnownHandler;
         this.statisticsHandler = statisticsHandler;
         this.feedbackHandler = feedbackHandler;
+        this.walletDiscountHandler = walletDiscountHandler;
         this.tutorialHandler = tutorialHandler;
         this.telegramGateway = telegramGateway;
     }
@@ -66,6 +70,9 @@ public class TelegramUpdateDispatcher {
         }
         update.getMessage().ifPresent(message -> {
             if (feedbackHandler.handlePendingMessage(message)) {
+                return;
+            }
+            if (walletDiscountHandler.handlePendingMessage(message)) {
                 return;
             }
             if (onboardingHandler.handleMessage(message)) {
@@ -105,6 +112,11 @@ public class TelegramUpdateDispatcher {
 
     private void dispatchCallback(IncomingTelegramCallback callback) {
         try {
+            if (!walletDiscountHandler.supportsCallback(callback)) {
+                walletDiscountHandler.cancel(
+                        callback.getTelegramUserId(), callback.getChatId()
+                );
+            }
             boolean opensFeedback = feedbackHandler.supportsCallback(callback);
             if (!opensFeedback) {
                 feedbackHandler.cancel(callback.getTelegramUserId(), callback.getChatId());
@@ -118,6 +130,9 @@ public class TelegramUpdateDispatcher {
                     callback.getChatId()
             );
             if (feedbackHandler.handleCallback(callback)) {
+                return;
+            }
+            if (walletDiscountHandler.handleCallback(callback)) {
                 return;
             }
             if (tutorialHandler.handleCallback(callback)) {

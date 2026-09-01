@@ -25,4 +25,10 @@ public interface UserProfileStore {
     UserProfile updateTelegramChat(UserProfile profile, long telegramChatId, Instant updatedAt);
 
     UserProfile updateLocation(UserProfile profile, ResolvedLocation location, Instant updatedAt);
+
+    UserProfile updatePricePreferences(
+            UserProfile profile,
+            UserPricePreferences pricePreferences,
+            Instant updatedAt
+    );
 }

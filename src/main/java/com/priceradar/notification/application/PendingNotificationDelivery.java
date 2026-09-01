@@ -2,6 +2,7 @@ package com.priceradar.notification.application;
 
 import com.priceradar.notification.domain.NotificationType;
 import com.priceradar.pricing.domain.RubleAmount;
+import com.priceradar.user.domain.UserPricePreferences;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -59,8 +60,9 @@ public final class PendingNotificationDelivery {
                 || canonicalUrl == null || canonicalUrl.isBlank()) {
             throw new IllegalArgumentException("notification display fields must not be blank");
         }
-        if (walletDiscountPercent < 0 || walletDiscountPercent > 100) {
-            throw new IllegalArgumentException("walletDiscountPercent must be between 0 and 100");
+        if (walletDiscountPercent < UserPricePreferences.MIN_WALLET_DISCOUNT_PERCENT
+                || walletDiscountPercent > UserPricePreferences.MAX_WALLET_DISCOUNT_PERCENT) {
+            throw new IllegalArgumentException("walletDiscountPercent must be between 2 and 20");
         }
         validatePrices(type, targetPrice, previousPrice, currentPrice);
         this.outboxId = outboxId;

@@ -100,6 +100,41 @@ public class SubscriptionService {
         return SubscriptionCreationResult.created(persisted);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<RubleAmount> findQuoteRegularPrice(
+            UUID userId,
+            UUID quoteSnapshotId,
+            Instant now
+    ) {
+        validateIdentity(userId, quoteSnapshotId, now);
+        SubscriptionPreparationResult preparation = checkEligibility(
+                userId, quoteSnapshotId, now
+        );
+        if (!preparation.isReady()) {
+            return Optional.empty();
+        }
+        return subscriptionStore.findQuoteObservation(quoteSnapshotId)
+                .flatMap(SubscriptionQuoteObservation::getRegularPrice);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<RubleAmount> findLatestRegularPrice(
+            UUID userId,
+            UUID subscriptionId,
+            Instant now
+    ) {
+        if (userId == null || subscriptionId == null || now == null) {
+            throw new IllegalArgumentException("price history lookup fields must not be null");
+        }
+        if (subscriptionStore.findActiveOwned(userId, subscriptionId).isEmpty()) {
+            return Optional.empty();
+        }
+        return subscriptionStore.findLatestSnapshotActiveOwned(userId, subscriptionId)
+                .flatMap(LatestSnapshotView::getInterpretedPrice)
+                .filter(price -> price.hasValidRegularPrice())
+                .flatMap(com.priceradar.pricing.application.InterpretedPrice::getRegularPrice);
+    }
+
     @Transactional
     public SubscriptionEndResult end(UUID userId, UUID subscriptionId, Instant now) {
         if (userId == null || subscriptionId == null || now == null) {

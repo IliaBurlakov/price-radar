@@ -34,6 +34,7 @@ import com.priceradar.telegram.application.TelegramSharedBasketHandler;
 import com.priceradar.telegram.application.TelegramTrackingHandler;
 import com.priceradar.telegram.application.TelegramTutorialHandler;
 import com.priceradar.telegram.application.TelegramTutorialMessageFactory;
+import com.priceradar.telegram.application.TelegramWalletDiscountHandler;
 import com.priceradar.telegram.application.TutorialAssetCatalog;
 import com.priceradar.telegram.application.TrackingCallbackCodec;
 import com.priceradar.telegram.application.TelegramUpdateDispatcher;
@@ -46,6 +47,7 @@ import com.priceradar.region.application.CitySelectionService;
 import com.priceradar.tracking.application.LatestSnapshotQueryService;
 import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.user.application.UserProfileService;
+import com.priceradar.user.application.PendingWalletDiscountInputStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -361,6 +363,23 @@ public class TelegramBotConfiguration {
     }
 
     @Bean
+    public TelegramWalletDiscountHandler telegramWalletDiscountHandler(
+            UserProfileService userProfileService,
+            PendingWalletDiscountInputStore pendingInputStore,
+            TelegramGateway telegramGateway,
+            Clock providerClock,
+            PriceRadarPolicyProperties policy
+    ) {
+        return new TelegramWalletDiscountHandler(
+                userProfileService,
+                pendingInputStore,
+                telegramGateway,
+                providerClock,
+                policy.getPendingActionTtl()
+        );
+    }
+
+    @Bean
     public TutorialAssetCatalog tutorialAssetCatalog() {
         return new TutorialAssetCatalog();
     }
@@ -397,6 +416,7 @@ public class TelegramBotConfiguration {
             ShowLastKnownCallbackHandler showLastKnownHandler,
             StatisticsCallbackHandler statisticsHandler,
             TelegramFeedbackHandler feedbackHandler,
+            TelegramWalletDiscountHandler walletDiscountHandler,
             TelegramTutorialHandler tutorialHandler,
             TelegramGateway telegramGateway
     ) {
@@ -411,6 +431,7 @@ public class TelegramBotConfiguration {
                 showLastKnownHandler,
                 statisticsHandler,
                 feedbackHandler,
+                walletDiscountHandler,
                 tutorialHandler,
                 telegramGateway
         );

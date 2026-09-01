@@ -83,7 +83,7 @@ public final class TelegramMenuMessageFactory {
                 🔗 Отправьте одну или несколько ссылок Wildberries в одном сообщении.
 
                 Например:
-                https://www.wildberries.ru/catalog/10302970/detail.aspx
+                https://www.wildberries.ru/catalog/10302970123/detail.aspx
                 """;
         return new OutgoingTelegramMessage(
                 chatId,

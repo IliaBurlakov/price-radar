@@ -131,6 +131,19 @@ public class TelegramTrackingHandler {
                 message.getTelegramUserId(),
                 message.getChatId()
         );
+        Optional<RubleAmount> currentRegularPrice = currentRegularPrice(
+                profile, pending.orElseThrow(), now
+        );
+        if (currentRegularPrice.filter(current -> targetPrice.orElseThrow().getMinorUnits()
+                >= current.getMinorUnits()).isPresent()) {
+            telegramGateway.sendMessage(new OutgoingTelegramMessage(
+                    message.getChatId(),
+                    "⚠️ Сейчас товар уже стоит " + format(currentRegularPrice.orElseThrow())
+                            + ".\nВведите желаемую цену ниже текущей.",
+                    targetInputKeyboard(pending.orElseThrow(), message.getTelegramUserId())
+            ));
+            return true;
+        }
         if (pending.get().getPurpose() == PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION) {
             SubscriptionConditionChangeResult result = subscriptionService.changeToTargetPrice(
                     profile.getId(),
@@ -161,6 +174,21 @@ public class TelegramTrackingHandler {
         }
         pendingTargetPriceStore.remove(pending.get());
         return true;
+    }
+
+    private Optional<RubleAmount> currentRegularPrice(
+            UserProfile profile,
+            PendingTargetPrice pending,
+            Instant now
+    ) {
+        if (pending.getPurpose() == PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION) {
+            return subscriptionService.findQuoteRegularPrice(
+                    profile.getId(), pending.requireQuoteSnapshotId(), now
+            );
+        }
+        return subscriptionService.findLatestRegularPrice(
+                profile.getId(), pending.requireSubscriptionId(), now
+        );
     }
 
     private void createAnyDecrease(

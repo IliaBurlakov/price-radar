@@ -170,6 +170,67 @@ class TelegramNotificationConditionTest {
     }
 
     @Test
+    void targetAtOrAboveQuoteRegularPriceKeepsCreateInputPending() {
+        UserProfile profile = profile();
+        UUID quoteSnapshotId = UUID.randomUUID();
+        PendingTargetPrice pending = new PendingTargetPrice(
+                TELEGRAM_ID, TELEGRAM_ID,
+                PendingTargetPrice.Purpose.CREATE_SUBSCRIPTION,
+                quoteSnapshotId, NOW.plusSeconds(900)
+        );
+        UserProfileService users = mock(UserProfileService.class);
+        SubscriptionService subscriptions = mock(SubscriptionService.class);
+        PendingTargetPriceStore pendingStore = mock(PendingTargetPriceStore.class);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        when(pendingStore.find(TELEGRAM_ID, TELEGRAM_ID, NOW))
+                .thenReturn(Optional.of(pending));
+        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
+        when(subscriptions.findQuoteRegularPrice(profile.getId(), quoteSnapshotId, NOW))
+                .thenReturn(Optional.of(RubleAmount.ofMinorUnits(47_900)));
+        TelegramTrackingHandler handler = trackingHandler(
+                users, subscriptions, pendingStore, gateway
+        );
+
+        assertThat(handler.handleTargetPriceInput(message("479"))).isTrue();
+
+        verify(subscriptions, never()).createFromQuote(any(), any(), any(), any(), any());
+        verify(pendingStore, never()).remove(pending);
+        assertThat(captured(gateway).getText()).isEqualTo(
+                "⚠️ Сейчас товар уже стоит 479 ₽.\nВведите желаемую цену ниже текущей."
+        );
+    }
+
+    @Test
+    void targetAboveLatestSubscriptionRegularPriceKeepsEditInputPending() {
+        UserProfile profile = profile();
+        UUID subscriptionId = UUID.randomUUID();
+        PendingTargetPrice pending = new PendingTargetPrice(
+                TELEGRAM_ID, TELEGRAM_ID,
+                PendingTargetPrice.Purpose.EDIT_SUBSCRIPTION,
+                subscriptionId, NOW.plusSeconds(900)
+        );
+        UserProfileService users = mock(UserProfileService.class);
+        SubscriptionService subscriptions = mock(SubscriptionService.class);
+        PendingTargetPriceStore pendingStore = mock(PendingTargetPriceStore.class);
+        TelegramGateway gateway = mock(TelegramGateway.class);
+        when(pendingStore.find(TELEGRAM_ID, TELEGRAM_ID, NOW))
+                .thenReturn(Optional.of(pending));
+        when(users.getOrCreate(TELEGRAM_ID, TELEGRAM_ID)).thenReturn(profile);
+        when(subscriptions.findLatestRegularPrice(profile.getId(), subscriptionId, NOW))
+                .thenReturn(Optional.of(RubleAmount.ofMinorUnits(47_900)));
+        TelegramTrackingHandler handler = trackingHandler(
+                users, subscriptions, pendingStore, gateway
+        );
+
+        assertThat(handler.handleTargetPriceInput(message("500"))).isTrue();
+
+        verify(subscriptions, never()).changeToTargetPrice(any(), any(), any(), any());
+        verify(pendingStore, never()).remove(pending);
+        assertThat(captured(gateway).getText())
+                .contains("Сейчас товар уже стоит 479 ₽", "ниже текущей");
+    }
+
+    @Test
     void invalidEditPriceKeepsEditPendingAndUsesTheExistingValidationMessage() {
         UUID subscriptionId = UUID.randomUUID();
         PendingTargetPrice pending = new PendingTargetPrice(
@@ -266,6 +327,37 @@ class TelegramNotificationConditionTest {
                 UUID.randomUUID(), TELEGRAM_ID, TELEGRAM_ID,
                 moscow(), UserPricePreferences.defaults()
         );
+    }
+
+    private TelegramTrackingHandler trackingHandler(
+            UserProfileService users,
+            SubscriptionService subscriptions,
+            PendingTargetPriceStore pendingStore,
+            TelegramGateway gateway
+    ) {
+        return new TelegramTrackingHandler(
+                users,
+                subscriptions,
+                new TargetPriceParser(),
+                new TrackingCallbackCodec(
+                        "test-only-callback-secret-with-more-than-32-bytes"
+                ),
+                pendingStore,
+                gateway,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                java.time.Duration.ofMinutes(15),
+                50
+        );
+    }
+
+    private IncomingTelegramMessage message(String text) {
+        return new IncomingTelegramMessage(TELEGRAM_ID, TELEGRAM_ID, "private", text);
+    }
+
+    private OutgoingTelegramMessage captured(TelegramGateway gateway) {
+        var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
+        verify(gateway).sendMessage(message.capture());
+        return message.getValue();
     }
 
     private TrackedSubscriptionItem item(
