@@ -13,10 +13,20 @@ class SharedBasketUrlParserTest {
     void acceptsOnlyTheExactWildberriesSharedBasketShape() {
         assertThat(parser.parse("https://www.wildberries.ru/basket?shareId=abc123def4"))
                 .isEqualTo("abc123def4");
+        assertThat(parser.parse("https://wildberries.ru/basket?shareId=abc123def4"))
+                .isEqualTo("abc123def4");
+        assertThat(parser.supports("https://www.wildberries.ru/basket?shareId=abc123def4"))
+                .isTrue();
+        assertThat(parser.supports("https://wildberries.ru/basket?shareId=abc123def4"))
+                .isTrue();
 
         assertThatThrownBy(() -> parser.parse("http://www.wildberries.ru/basket?shareId=abc123def4"))
                 .isInstanceOf(InvalidSharedBasketUrlException.class);
-        assertThatThrownBy(() -> parser.parse("https://wildberries.ru/basket?shareId=abc123def4"))
+        assertThatThrownBy(() -> parser.parse("http://wildberries.ru/basket?shareId=abc123def4"))
+                .isInstanceOf(InvalidSharedBasketUrlException.class);
+        assertThatThrownBy(() -> parser.parse("https://evilwildberries.ru/basket?shareId=abc123def4"))
+                .isInstanceOf(InvalidSharedBasketUrlException.class);
+        assertThatThrownBy(() -> parser.parse("https://wildberries.ru.evil.com/basket?shareId=abc123def4"))
                 .isInstanceOf(InvalidSharedBasketUrlException.class);
         assertThatThrownBy(() -> parser.parse("https://www.wildberries.ru/catalog?shareId=abc123def4"))
                 .isInstanceOf(InvalidSharedBasketUrlException.class);

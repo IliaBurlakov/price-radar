@@ -9,6 +9,7 @@ import java.time.Duration;
 public final class TelegramBotProperties {
 
     private boolean enabled = true;
+    private boolean tutorialsEnabled;
     private URI apiBaseUrl = URI.create("https://api.telegram.org/");
     private Duration longPollingTimeout = Duration.ofSeconds(25);
     private Duration requestTimeout = Duration.ofSeconds(10);
@@ -23,6 +24,14 @@ public final class TelegramBotProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isTutorialsEnabled() {
+        return tutorialsEnabled;
+    }
+
+    public void setTutorialsEnabled(boolean tutorialsEnabled) {
+        this.tutorialsEnabled = tutorialsEnabled;
     }
 
     public URI getApiBaseUrl() {

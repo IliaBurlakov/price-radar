@@ -6,10 +6,12 @@ import java.util.Optional;
 public enum TelegramBotCommand {
 
     START("start", "🏠 Главное меню"),
-    TRACKED("tracked", "📦 Мои товары"),
     ADD("add", "➕ Добавить товар"),
     IMPORT("import", "🛒 Импортировать корзину"),
-    HELP("help", "❓ Помощь");
+    TRACKED("tracked", "📦 Мои товары"),
+    CITY("city", "🌍 Город"),
+    HELP("help", "❓ Помощь"),
+    FEEDBACK("feedback", "💬 Обратная связь");
 
     private final String command;
     private final String description;

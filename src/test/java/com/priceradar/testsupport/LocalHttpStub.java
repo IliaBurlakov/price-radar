@@ -16,12 +16,14 @@ public final class LocalHttpStub implements AutoCloseable {
     private final AtomicInteger requestCount;
     private final AtomicReference<String> lastRequestBody;
     private final AtomicReference<URI> lastRequestUri;
+    private final AtomicReference<String> lastRequestContentType;
 
     private LocalHttpStub(HttpServer server) {
         this.server = server;
         this.requestCount = new AtomicInteger();
         this.lastRequestBody = new AtomicReference<>();
         this.lastRequestUri = new AtomicReference<>();
+        this.lastRequestContentType = new AtomicReference<>();
     }
 
     public static LocalHttpStub start() {
@@ -52,6 +54,7 @@ public final class LocalHttpStub implements AutoCloseable {
         server.createContext(path, exchange -> {
             requestCount.incrementAndGet();
             lastRequestUri.set(exchange.getRequestURI());
+            lastRequestContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
             lastRequestBody.set(new String(
                     exchange.getRequestBody().readAllBytes(),
                     StandardCharsets.UTF_8
@@ -70,6 +73,10 @@ public final class LocalHttpStub implements AutoCloseable {
 
     public URI lastRequestUri() {
         return lastRequestUri.get();
+    }
+
+    public String lastRequestContentType() {
+        return lastRequestContentType.get();
     }
 
     @Override

@@ -5,13 +5,16 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ProductUrlParser {
 
     private static final String SUPPORTED_SCHEME = "https";
-    private static final String SUPPORTED_HOST = "www.wildberries.ru";
+    private static final Set<String> SUPPORTED_HOSTS = Set.of(
+            "wildberries.ru", "www.wildberries.ru"
+    );
     private static final Pattern PRODUCT_PATH = Pattern.compile("^/catalog/([^/]+)/detail\\.aspx$");
     private static final Pattern POSITIVE_ID = Pattern.compile("[1-9]\\d*");
 
@@ -38,7 +41,7 @@ public final class ProductUrlParser {
 
     private static void validateSupportedUrl(URI uri) {
         boolean supported = SUPPORTED_SCHEME.equalsIgnoreCase(uri.getScheme())
-                && SUPPORTED_HOST.equalsIgnoreCase(uri.getHost())
+                && isSupportedHost(uri.getHost())
                 && uri.getPort() == -1
                 && uri.getUserInfo() == null
                 && uri.getFragment() == null;
@@ -48,6 +51,12 @@ public final class ProductUrlParser {
                     "Only canonical HTTPS Wildberries product URLs are supported"
             );
         }
+    }
+
+    private static boolean isSupportedHost(String host) {
+        return host != null && SUPPORTED_HOSTS.stream().anyMatch(
+                supported -> supported.equalsIgnoreCase(host)
+        );
     }
 
     private static long parseProductId(String rawPath) {

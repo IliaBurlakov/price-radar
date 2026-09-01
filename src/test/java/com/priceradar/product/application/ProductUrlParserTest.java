@@ -31,9 +31,21 @@ class ProductUrlParserTest {
     }
 
     @Test
+    void acceptsBothOfficialWildberriesHosts() {
+        assertThat(parser.parse(
+                "https://www.wildberries.ru/catalog/10302974/detail.aspx"
+        ).getNmId()).isEqualTo(10_302_974L);
+        assertThat(parser.parse(
+                "https://wildberries.ru/catalog/10302974/detail.aspx"
+        ).getNmId()).isEqualTo(10_302_974L);
+    }
+
+    @Test
     void rejectsUnsupportedOrMalformedUrls() {
         assertReason("http://www.wildberries.ru/catalog/123/detail.aspx", InvalidProductUrlException.Reason.UNSUPPORTED_URL);
-        assertReason("https://wildberries.ru/catalog/123/detail.aspx", InvalidProductUrlException.Reason.UNSUPPORTED_URL);
+        assertReason("http://wildberries.ru/catalog/123/detail.aspx", InvalidProductUrlException.Reason.UNSUPPORTED_URL);
+        assertReason("https://evilwildberries.ru/catalog/123/detail.aspx", InvalidProductUrlException.Reason.UNSUPPORTED_URL);
+        assertReason("https://wildberries.ru.evil.com/catalog/123/detail.aspx", InvalidProductUrlException.Reason.UNSUPPORTED_URL);
         assertReason("https://www.wildberries.ru/product/123", InvalidProductUrlException.Reason.UNSUPPORTED_URL);
         assertReason("not a URL", InvalidProductUrlException.Reason.MALFORMED);
     }

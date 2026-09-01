@@ -9,5 +9,7 @@ public interface TelegramGateway {
 
     void sendMessage(OutgoingTelegramMessage message);
 
+    void sendMediaGroup(OutgoingTelegramMediaGroup mediaGroup);
+
     void answerCallbackQuery(String callbackQueryId);
 }
