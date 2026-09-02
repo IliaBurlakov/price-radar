@@ -32,14 +32,15 @@ public final class TrackedItemsMessageFactory {
             long chatId,
             List<TrackedSubscriptionItem> items,
             int pageNumber,
-            String cityName
+            String cityName,
+            int activeSubscriptionLimit
     ) {
         validateItems(items);
         if (pageNumber < 0) {
             throw new IllegalArgumentException("pageNumber must not be negative");
         }
         if (items.isEmpty()) {
-            return emptyList(chatId);
+            return emptyList(chatId, activeSubscriptionLimit);
         }
 
         int pageCount = pageCount(items.size());
@@ -56,7 +57,11 @@ public final class TrackedItemsMessageFactory {
                 .append(".\n")
                 .append("Нажмите на товар, чтобы посмотреть цену, историю и настройки.\n\n")
                 .append("Всего товаров: ")
-                .append(items.size());
+                .append(items.size())
+                .append("\n")
+                .append(TelegramDisplayFormatter.trackingCapacity(
+                        items.size(), activeSubscriptionLimit
+                ));
         if (pageCount > 1) {
             text.append("\nСтраница ")
                     .append(pageNumber + 1)
@@ -81,15 +86,10 @@ public final class TrackedItemsMessageFactory {
                 ClearTrackingCallbackData.START
         )));
         keyboard.add(List.of(
-                new TelegramInlineButton(
-                        "Добавить товар",
-                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.ADD_PRODUCT)
-                ),
-                new TelegramInlineButton(
-                        "Главное меню",
-                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
-                )
+                TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.ADD_PRODUCT),
+                TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.IMPORT_BASKET)
         ));
+        keyboard.add(List.of(TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.HOME)));
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
     }
 
@@ -118,12 +118,12 @@ public final class TrackedItemsMessageFactory {
                 .flatMap(TelegramDisplayFormatter::variant)
                 .ifPresent(variant -> text.append("\n")
                         .append(truncate(variant, MAX_DETAIL_LENGTH)));
-        text.append("\n\nРежим: ").append(mode(item));
+        text.append("\n\nРежим уведомлений: ").append(mode(item));
+        text.append('\n');
         appendLatestPrice(text, item, preferences);
         item.getLatestObservedAt().ifPresent(observedAt -> text.append("\nПроверено: ")
                 .append(TelegramDisplayFormatter.observedAt(observedAt)));
-        text.append("\n\nГород: ").append(TelegramDisplayFormatter.region(region));
-        text.append("\nОткрыть товар:\n").append(item.getCanonicalUrl());
+        text.append("\n\nОткрыть товар:\n").append(item.getCanonicalUrl());
 
         List<List<TelegramInlineButton>> keyboard = List.of(
                 List.of(new TelegramInlineButton(
@@ -134,7 +134,7 @@ public final class TrackedItemsMessageFactory {
                         )
                 )),
                 List.of(new TelegramInlineButton(
-                        "🔔 Условие уведомлений",
+                        "🔔 Настроить уведомления",
                         SubscriptionCallbackData.encode(
                                 SubscriptionCallbackData.Action.SHOW_NOTIFICATION_CONDITION,
                                 item.getSubscriptionId()
@@ -152,10 +152,7 @@ public final class TrackedItemsMessageFactory {
                                 "← Назад",
                                 TrackedItemsPageCallbackData.encode(listPage)
                         ),
-                        TelegramNavigationKeyboard.button(
-                                "Главное меню",
-                                MainMenuCallbackData.Action.HOME
-                        )
+                        TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.HOME)
                 )
         );
         return new OutgoingTelegramMessage(chatId, text.toString(), keyboard);
@@ -212,7 +209,7 @@ public final class TrackedItemsMessageFactory {
         )));
         return new OutgoingTelegramMessage(
                 chatId,
-                "🔔 Условие уведомлений\n\nТекущее условие:\n" + currentCondition,
+                "🔔 Настройка уведомлений\n\nТекущий режим:\n" + currentCondition,
                 keyboard
         );
     }
@@ -247,10 +244,10 @@ public final class TrackedItemsMessageFactory {
         } else if (!changed) {
             text = "Уведомления о новой минимальной цене уже включены.";
         } else if (mode == NotificationMode.ANY_DECREASE) {
-            text = "✅ Условие уведомлений изменено.\n\n"
+            text = "✅ Режим уведомлений изменён.\n\n"
                     + "📉 Сообщу о новой минимальной цене.";
         } else {
-            text = "✅ Условие уведомлений изменено.\n\n"
+            text = "✅ Режим уведомлений изменён.\n\n"
                     + "🎯 Сообщу, когда цена будет не выше "
                     + format(targetPrice.orElseThrow()) + ".";
         }
@@ -297,20 +294,15 @@ public final class TrackedItemsMessageFactory {
         );
     }
 
-    private OutgoingTelegramMessage emptyList(long chatId) {
+    private OutgoingTelegramMessage emptyList(long chatId, int activeSubscriptionLimit) {
         return new OutgoingTelegramMessage(
                 chatId,
                 "📦 Мои товары\n\nУ вас пока нет отслеживаемых товаров.\n"
-                        + "Отправьте ссылку Wildberries или нажмите «Добавить товар», чтобы начать отслеживание.",
+                        + "Отправьте ссылку Wildberries или нажмите «Добавить товар», чтобы начать отслеживание.\n\n"
+                        + TelegramDisplayFormatter.trackingCapacity(0, activeSubscriptionLimit),
                 List.of(List.of(
-                        TelegramNavigationKeyboard.button(
-                                "Добавить товар",
-                                MainMenuCallbackData.Action.ADD_PRODUCT
-                        ),
-                        TelegramNavigationKeyboard.button(
-                                "Главное меню",
-                                MainMenuCallbackData.Action.HOME
-                        )
+                        TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.ADD_PRODUCT),
+                        TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.HOME)
                 ))
         );
     }

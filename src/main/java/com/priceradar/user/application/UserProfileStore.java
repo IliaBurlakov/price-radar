@@ -11,6 +11,8 @@ public interface UserProfileStore {
 
     Optional<UserProfile> findByTelegramUserId(long telegramUserId);
 
+    Optional<UserProfile> findById(UUID userId);
+
     boolean existsAndLockById(UUID userId);
 
     Optional<UserProfile> findByIdAndLock(UUID userId);
@@ -19,6 +21,7 @@ public interface UserProfileStore {
             long telegramUserId,
             long telegramChatId,
             UserPricePreferences pricePreferences,
+            int activeSubscriptionLimit,
             Instant createdAt
     );
 

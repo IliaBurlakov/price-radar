@@ -177,7 +177,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("18");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -202,6 +202,7 @@ class PersistenceSmokeTest {
                 telegramId,
                 telegramId + 1,
                 3,
+                10,
                 now.plusSeconds(1),
                 now.plusSeconds(1)
         );
@@ -693,7 +694,71 @@ class PersistenceSmokeTest {
         assertThat(snapshotRepository.count()).isEqualTo(1);
     }
 
+    @Test
+    void persistsIndividualActiveSubscriptionLimits() {
+        UserProfile standard = userProfileService.getOrCreate(22002L, 22002L);
+        UserProfile extended = userProfileService.getOrCreate(22003L, 22003L);
+
+        assertThat(standard.getActiveSubscriptionLimit()).isEqualTo(10);
+        assertThat(extended.getActiveSubscriptionLimit()).isEqualTo(10);
+
+        jdbcTemplate.update(
+                "UPDATE user_profiles SET active_subscription_limit = 100 WHERE id = ?",
+                extended.getId()
+        );
+
+        assertThat(userProfileService.getOrCreate(22002L, 22002L).getActiveSubscriptionLimit())
+                .isEqualTo(10);
+        assertThat(userProfileService.getOrCreate(22003L, 22003L).getActiveSubscriptionLimit())
+                .isEqualTo(100);
+    }
+
+    @Test
+    void quoteMetadataUpdateKeepsTheNewestObservation() {
+        long nmId = 123457L;
+        Instant initialObservation = Instant.now()
+                .minus(3, ChronoUnit.MINUTES)
+                .truncatedTo(ChronoUnit.MILLIS);
+        Instant newestObservation = initialObservation.plus(2, ChronoUnit.MINUTES);
+        Instant staleObservation = initialObservation.plus(1, ChronoUnit.MINUTES);
+
+        quotePersistenceService.save(quoteCommand(
+                nmId, initialObservation, "Initial URL", "Initial title", "Initial brand"
+        ));
+        quotePersistenceService.save(quoteCommand(
+                nmId, newestObservation, "Newest URL", "Newest title", "Newest brand"
+        ));
+        quotePersistenceService.save(quoteCommand(
+                nmId, staleObservation, "Stale URL", "Stale title", "Stale brand"
+        ));
+
+        assertThat(productRepository.findByMarketplaceAndExternalProductId(
+                Marketplace.WILDBERRIES, nmId
+        )).get().satisfies(product -> {
+            assertThat(product.getCanonicalUrl()).isEqualTo("Newest URL");
+            assertThat(product.getTitle()).isEqualTo("Newest title");
+            assertThat(product.getBrand()).isEqualTo("Newest brand");
+            assertThat(product.getMetadataUpdatedAt()).isEqualTo(newestObservation);
+        });
+    }
+
     private ResolvedQuotePersistenceCommand quoteCommand(long nmId, Instant observedAt) {
+        return quoteCommand(
+                nmId,
+                observedAt,
+                "https://www.wildberries.ru/catalog/%d/detail.aspx".formatted(nmId),
+                "Test product",
+                "Test brand"
+        );
+    }
+
+    private ResolvedQuotePersistenceCommand quoteCommand(
+            long nmId,
+            Instant observedAt,
+            String canonicalUrl,
+            String title,
+            String brand
+    ) {
         PriceContext priceContext = new PriceContext("Moscow", 1259570991L, 30);
         ProviderPriceFields priceFields = new ProviderPriceFields(
                 true,
@@ -705,8 +770,8 @@ class PersistenceSmokeTest {
         MarketplaceProductDetails product = new MarketplaceProductDetails(
                 Marketplace.WILDBERRIES,
                 String.valueOf(nmId),
-                Optional.of("Test product"),
-                Optional.of("Test brand"),
+                Optional.of(title),
+                Optional.of(brand),
                 List.of(),
                 Map.of(variantKey, priceFields)
         );
@@ -714,7 +779,7 @@ class PersistenceSmokeTest {
         return new ResolvedQuotePersistenceCommand(
                 product,
                 nmId,
-                "https://www.wildberries.ru/catalog/%d/detail.aspx".formatted(nmId),
+                canonicalUrl,
                 ResolvedVariant.noVariant(),
                 priceContext,
                 interpretedPrice,

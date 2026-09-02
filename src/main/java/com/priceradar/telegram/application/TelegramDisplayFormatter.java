@@ -8,10 +8,11 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public final class TelegramDisplayFormatter {
 
-    private static final String SIZE_PREFIX = "Size:";
     private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter
             .ofPattern("dd.MM.yyyy HH:mm 'МСК'", Locale.ROOT)
             .withZone(ZoneId.of("Europe/Moscow"));
@@ -20,6 +21,16 @@ public final class TelegramDisplayFormatter {
             .withZone(ZoneId.of("Europe/Moscow"));
 
     private TelegramDisplayFormatter() {
+    }
+
+    public static String trackingCapacity(int activeSubscriptions, int limit) {
+        if (activeSubscriptions < 0 || limit <= 0) {
+            throw new IllegalArgumentException("subscription capacity must be valid");
+        }
+        int occupiedSlots = Math.min(activeSubscriptions, limit);
+        int freeSlots = Math.max(0, limit - activeSubscriptions);
+        return "Отслеживается: %d из %d · можно добавить ещё %d"
+                .formatted(occupiedSlots, limit, freeSlots);
     }
 
     public static String region(String cityName) {
@@ -41,17 +52,12 @@ public final class TelegramDisplayFormatter {
             return Optional.empty();
         }
         String normalized = displayName.trim();
-        if (normalized.equals("0")) {
-            return Optional.empty();
-        }
-        if (startsWithIgnoreCase(normalized, SIZE_PREFIX)) {
-            String value = normalized.substring(SIZE_PREFIX.length()).trim();
-            if (value.isEmpty() || value.equals("0")) {
-                return Optional.empty();
-            }
-            return Optional.of("Размер: " + value);
-        }
-        return Optional.of(normalized);
+        String formatted = Stream.of(normalized.split(" / "))
+                .map(String::trim)
+                .map(TelegramDisplayFormatter::formatVariantAttribute)
+                .flatMap(Optional::stream)
+                .collect(Collectors.joining(" / "));
+        return formatted.isEmpty() ? Optional.empty() : Optional.of(formatted);
     }
 
     public static String observedAt(Instant instant) {
@@ -80,7 +86,7 @@ public final class TelegramDisplayFormatter {
         if (estimate == null) {
             throw new IllegalArgumentException("estimate must not be null");
         }
-        return "≈ " + RublePriceFormatter.format(estimate.getAmount());
+        return RublePriceFormatter.format(estimate.getAmount());
     }
 
     public static String targetPriceInputPrompt() {
@@ -89,7 +95,27 @@ public final class TelegramDisplayFormatter {
                 + "Ответ можно отправить в течение 15 минут.";
     }
 
-    private static boolean startsWithIgnoreCase(String value, String prefix) {
-        return value.regionMatches(true, 0, prefix, 0, prefix.length());
+    private static Optional<String> formatVariantAttribute(String attribute) {
+        if (attribute.isEmpty() || attribute.equals("0")) {
+            return Optional.empty();
+        }
+        int separator = attribute.indexOf(':');
+        if (separator < 0) {
+            return Optional.of("Вариант: " + attribute);
+        }
+
+        String name = attribute.substring(0, separator).trim();
+        String value = attribute.substring(separator + 1).trim();
+        if (value.isEmpty() || (name.equalsIgnoreCase("size") && value.equals("0"))) {
+            return Optional.empty();
+        }
+
+        String localizedName = switch (name.toLowerCase(Locale.ROOT)) {
+            case "size" -> "Размер";
+            case "color", "colour" -> "Цвет";
+            case "memory", "storage" -> "Память";
+            default -> name;
+        };
+        return Optional.of(localizedName + ": " + value);
     }
 }

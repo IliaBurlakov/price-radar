@@ -31,6 +31,14 @@ public class JpaUserProfileStore implements UserProfileStore {
     }
 
     @Override
+    public Optional<UserProfile> findById(UUID userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId must not be null");
+        }
+        return profileRepository.findById(userId).map(this::toProfile);
+    }
+
+    @Override
     public boolean existsAndLockById(UUID userId) {
         if (userId == null) {
             throw new IllegalArgumentException("userId must not be null");
@@ -49,6 +57,7 @@ public class JpaUserProfileStore implements UserProfileStore {
             long telegramUserId,
             long telegramChatId,
             UserPricePreferences pricePreferences,
+            int activeSubscriptionLimit,
             Instant createdAt
     ) {
         profileRepository.upsert(
@@ -56,6 +65,7 @@ public class JpaUserProfileStore implements UserProfileStore {
                 telegramUserId,
                 telegramChatId,
                 pricePreferences.getWalletDiscountPercent(),
+                activeSubscriptionLimit,
                 createdAt,
                 createdAt
         );
@@ -104,7 +114,8 @@ public class JpaUserProfileStore implements UserProfileStore {
                 entity.getTelegramChatId(),
                 entity.getLocationId() == null ? null : locationCatalog.findById(entity.getLocationId())
                         .orElseThrow(() -> new IllegalStateException("User location no longer exists")),
-                new UserPricePreferences(entity.getWalletDiscountPercent())
+                new UserPricePreferences(entity.getWalletDiscountPercent()),
+                entity.getActiveSubscriptionLimit()
         );
     }
 }

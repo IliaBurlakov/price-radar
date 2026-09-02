@@ -99,7 +99,7 @@ class TelegramCurrentQuoteHandlerTest {
         assertThat(sent.getAllValues().getLast().getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .contains("Следить за минимумом для всех");
+                .contains("Следить за снижением для всех");
     }
 
     @Test
@@ -201,7 +201,7 @@ class TelegramCurrentQuoteHandlerTest {
         verify(context.gateway).sendMessage(sent.capture());
         assertThat(sent.getValue().getText()).contains(
                 "Добавлено: 1", "Режим изменён: 1", "Не удалось добавить: 1",
-                "новой минимальной цене"
+                "Режим уведомлений: новая минимальная цена"
         );
     }
 

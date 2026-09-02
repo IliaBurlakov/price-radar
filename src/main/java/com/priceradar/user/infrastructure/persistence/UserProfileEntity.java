@@ -30,6 +30,9 @@ public class UserProfileEntity {
     @Column(name = "wallet_discount_percent", nullable = false)
     private int walletDiscountPercent;
 
+    @Column(name = "active_subscription_limit", nullable = false)
+    private int activeSubscriptionLimit;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -49,6 +52,7 @@ public class UserProfileEntity {
             long telegramChatId,
             UUID locationId,
             int walletDiscountPercent,
+            int activeSubscriptionLimit,
             Instant createdAt,
             Instant updatedAt
     ) {
@@ -57,6 +61,7 @@ public class UserProfileEntity {
         this.telegramChatId = telegramChatId;
         this.locationId = locationId;
         this.walletDiscountPercent = walletDiscountPercent;
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -79,6 +84,10 @@ public class UserProfileEntity {
 
     public int getWalletDiscountPercent() {
         return walletDiscountPercent;
+    }
+
+    public int getActiveSubscriptionLimit() {
+        return activeSubscriptionLimit;
     }
 
     public Instant getCreatedAt() {

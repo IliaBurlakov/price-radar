@@ -23,7 +23,6 @@ public class TelegramSharedBasketHandler {
     private final UserProfileService userProfileService;
     private final TelegramGateway telegramGateway;
     private final Clock clock;
-    private final int activeSubscriptionLimit;
 
     public TelegramSharedBasketHandler(
             WildberriesLinkExtractor linkExtractor,
@@ -31,8 +30,7 @@ public class TelegramSharedBasketHandler {
             SharedBasketCallbackCodec callbackCodec,
             UserProfileService userProfileService,
             TelegramGateway telegramGateway,
-            Clock clock,
-            int activeSubscriptionLimit
+            Clock clock
     ) {
         this.linkExtractor = java.util.Objects.requireNonNull(linkExtractor);
         this.importService = java.util.Objects.requireNonNull(importService);
@@ -40,10 +38,6 @@ public class TelegramSharedBasketHandler {
         this.userProfileService = java.util.Objects.requireNonNull(userProfileService);
         this.telegramGateway = java.util.Objects.requireNonNull(telegramGateway);
         this.clock = java.util.Objects.requireNonNull(clock);
-        if (activeSubscriptionLimit <= 0) {
-            throw new IllegalArgumentException("active subscription limit must be positive");
-        }
-        this.activeSubscriptionLimit = activeSubscriptionLimit;
     }
 
     public boolean handleMessage(IncomingTelegramMessage message) {
@@ -146,7 +140,8 @@ public class TelegramSharedBasketHandler {
             }
             if (preview.getExcludedByLimit() > 0) {
                 appendLimitRemovalWarning(
-                        text, preview.getExcludedByLimit(), preview.getExcludedByLimitTitles()
+                        text, preview.getExcludedByLimit(), preview.getExcludedByLimitTitles(),
+                        preview.getActiveSubscriptionLimit()
                 );
             }
             text.append("\nℹ️ Некоторые товары могли отслеживаться долгое время.\n")
@@ -189,7 +184,12 @@ public class TelegramSharedBasketHandler {
 
     private OutgoingTelegramMessage previewMessage(long chatId, long telegramUserId, SharedBasketPreview preview) {
         StringBuilder text = new StringBuilder("🛒 Корзина Wildberries\n\n")
-                .append("Найдено товаров: ").append(preview.getFoundItems());
+                .append("Найдено товаров: ").append(preview.getFoundItems())
+                .append("\n")
+                .append(TelegramDisplayFormatter.trackingCapacity(
+                        preview.getActiveSubscriptionLimit() - preview.getFreeSlots(),
+                        preview.getActiveSubscriptionLimit()
+                ));
         if (preview.getAlreadyTracked() > 0) {
             text.append("\nУже отслеживаются: ").append(preview.getAlreadyTracked());
         }
@@ -216,7 +216,8 @@ public class TelegramSharedBasketHandler {
                     .append("Можно добавить остальные новые товары или повторить импорт позже.");
         }
         if (preview.getSyncSkippedByLimit() > 0) {
-            text.append("\n\n⚠️ Лимит отслеживания — ").append(activeSubscriptionLimit).append(" товаров.\n")
+            text.append("\n\n⚠️ Лимит отслеживания — ")
+                    .append(preview.getActiveSubscriptionLimit()).append(" товаров.\n")
                     .append(items(preview.getSyncSkippedByLimit())).append(" из этой корзины ")
                     .append(isSingularCount(preview.getSyncSkippedByLimit()) ? "не войдёт" : "не войдут")
                     .append(" в отслеживание:\n");
@@ -240,9 +241,11 @@ public class TelegramSharedBasketHandler {
 
     private void appendUnavailableItems(StringBuilder text, List<String> titles) {
         int count = titles.size();
-        text.append("\n\n⚠️ Сейчас ")
-                .append(isSingularCount(count) ? "недоступен " : "недоступны ")
-                .append(items(count)).append(":\n\n");
+        text.append("\n\n⚠️ Сейчас нет в наличии ")
+                .append(count)
+                .append(' ')
+                .append(unavailableItemWord(count))
+                .append(":\n\n");
         titles.stream().limit(UNAVAILABLE_DISPLAY_LIMIT)
                 .forEach(title -> text.append("• ").append(title).append('\n'));
         if (count > UNAVAILABLE_DISPLAY_LIMIT) {
@@ -252,7 +255,12 @@ public class TelegramSharedBasketHandler {
                 ? "Он не будет добавлен." : "Они не будут добавлены.");
     }
 
-    private void appendLimitRemovalWarning(StringBuilder text, int count, List<String> titles) {
+    private void appendLimitRemovalWarning(
+            StringBuilder text,
+            int count,
+            List<String> titles,
+            int activeSubscriptionLimit
+    ) {
         text.append("\n⚠️ Ещё ").append(count);
         if (isSingularCount(count)) {
             text.append(" отслеживаемый товар есть в корзине,\n")
@@ -366,6 +374,15 @@ public class TelegramSharedBasketHandler {
 
     private String relativePronoun(int count) {
         return isSingularCount(count) ? "которого" : "которых";
+    }
+
+    private String unavailableItemWord(int count) {
+        int lastTwo = Math.abs(count) % 100;
+        int last = lastTwo % 10;
+        if (lastTwo < 11 || lastTwo > 14) {
+            return last == 1 ? "товара" : "товаров";
+        }
+        return "товаров";
     }
 
     private boolean isSingularCount(int count) {

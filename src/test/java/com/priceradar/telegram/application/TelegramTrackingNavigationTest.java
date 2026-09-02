@@ -44,7 +44,7 @@ class TelegramTrackingNavigationTest {
         TelegramTrackingHandler handler = new TelegramTrackingHandler(
                 users, subscriptions, new TargetPriceParser(), codec,
                 pendingStore, gateway, Clock.fixed(now, ZoneOffset.UTC),
-                java.time.Duration.ofMinutes(15), 50
+                java.time.Duration.ofMinutes(15)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -92,7 +92,7 @@ class TelegramTrackingNavigationTest {
                 codec,
                 pendingStore,
                 gateway,
-                Clock.fixed(now, ZoneOffset.UTC), java.time.Duration.ofMinutes(15), 50
+                Clock.fixed(now, ZoneOffset.UTC), java.time.Duration.ofMinutes(15)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(

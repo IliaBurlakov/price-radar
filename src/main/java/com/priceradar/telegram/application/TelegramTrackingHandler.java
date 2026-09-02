@@ -26,7 +26,6 @@ public class TelegramTrackingHandler {
     private final TelegramGateway telegramGateway;
     private final Clock clock;
     private final Duration pendingActionTtl;
-    private final int activeSubscriptionLimit;
 
     public TelegramTrackingHandler(
             UserProfileService userProfileService,
@@ -36,16 +35,15 @@ public class TelegramTrackingHandler {
             PendingTargetPriceStore pendingTargetPriceStore,
             TelegramGateway telegramGateway,
             Clock clock,
-            Duration pendingActionTtl,
-            int activeSubscriptionLimit
+            Duration pendingActionTtl
     ) {
         if (userProfileService == null || subscriptionService == null || targetPriceParser == null
                 || trackingCallbackCodec == null || pendingTargetPriceStore == null
                 || telegramGateway == null || clock == null || pendingActionTtl == null) {
             throw new IllegalArgumentException("Telegram tracking handler dependencies must not be null");
         }
-        if (pendingActionTtl.isZero() || pendingActionTtl.isNegative() || activeSubscriptionLimit <= 0) {
-            throw new IllegalArgumentException("Telegram tracking policy values must be positive");
+        if (pendingActionTtl.isZero() || pendingActionTtl.isNegative()) {
+            throw new IllegalArgumentException("pending action TTL must be positive");
         }
         this.userProfileService = userProfileService;
         this.subscriptionService = subscriptionService;
@@ -55,7 +53,6 @@ public class TelegramTrackingHandler {
         this.telegramGateway = telegramGateway;
         this.clock = clock;
         this.pendingActionTtl = pendingActionTtl;
-        this.activeSubscriptionLimit = activeSubscriptionLimit;
     }
 
     public void handleCallback(IncomingTelegramCallback callback) {
@@ -303,11 +300,11 @@ public class TelegramTrackingHandler {
             SubscriptionConditionChangeResult result
     ) {
         String text = switch (result.getStatus()) {
-            case CHANGED -> "✅ Условие уведомлений изменено.\n\n🎯 Сообщу, когда цена будет не выше "
+            case CHANGED -> "✅ Режим уведомлений изменён.\n\n🎯 Сообщу, когда цена будет не выше "
                     + format(targetPrice) + ".";
             case UNCHANGED -> "Целевая цена уже установлена на " + format(targetPrice) + ".";
             case NOT_FOUND -> "Этот товар больше не отслеживается.";
-            case CONFLICT -> "Условие уведомлений уже изменилось. Откройте товар и повторите попытку.";
+            case CONFLICT -> "Настройки уведомлений уже изменились. Откройте товар и повторите попытку.";
         };
         return new OutgoingTelegramMessage(
                 chatId,
@@ -354,7 +351,7 @@ public class TelegramTrackingHandler {
                         : "уведомлять о новой минимальной цене";
                 yield withTrackedButton(
                         chatId,
-                        "✅ Отслеживание включено.\n\nРежим: " + mode
+                        "✅ Отслеживание включено.\n\nРежим уведомлений: " + mode
                                 + "\nГород: " + region
                 );
             }
@@ -364,7 +361,7 @@ public class TelegramTrackingHandler {
             );
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
-                    "Можно отслеживать не больше " + activeSubscriptionLimit + " товаров. "
+                    "Можно отслеживать не больше " + profile.getActiveSubscriptionLimit() + " товаров. "
                             + "Остановите отслеживание одного из товаров, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
@@ -391,7 +388,7 @@ public class TelegramTrackingHandler {
             );
             case LIMIT_REACHED -> withTrackedButton(
                     chatId,
-                    "Можно отслеживать не больше " + activeSubscriptionLimit + " товаров. "
+                    "Можно отслеживать не больше " + profile.getActiveSubscriptionLimit() + " товаров. "
                             + "Остановите отслеживание одного из товаров, чтобы добавить новый."
             );
             case QUOTE_EXPIRED -> expiredQuoteMessage(chatId);
@@ -423,7 +420,6 @@ public class TelegramTrackingHandler {
         return withMenuButton(
                 chatId,
                 text,
-                "Мои товары",
                 MainMenuCallbackData.Action.TRACKED_ITEMS
         );
     }
@@ -432,7 +428,6 @@ public class TelegramTrackingHandler {
         return withMenuButton(
                 chatId,
                 text,
-                "Добавить товар",
                 MainMenuCallbackData.Action.ADD_PRODUCT
         );
     }
@@ -440,18 +435,14 @@ public class TelegramTrackingHandler {
     private OutgoingTelegramMessage withMenuButton(
             long chatId,
             String text,
-            String buttonText,
             MainMenuCallbackData.Action action
     ) {
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
                 List.of(List.of(
-                        TelegramNavigationKeyboard.button(buttonText, action),
-                        TelegramNavigationKeyboard.button(
-                                "Главное меню",
-                                MainMenuCallbackData.Action.HOME
-                        )
+                        TelegramNavigationKeyboard.button(action),
+                        TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.HOME)
                 ))
         );
     }

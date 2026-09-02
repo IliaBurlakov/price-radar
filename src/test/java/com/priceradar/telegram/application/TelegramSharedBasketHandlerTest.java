@@ -78,7 +78,7 @@ class TelegramSharedBasketHandlerTest {
         );
         SharedBasketPreview preview = new SharedBasketPreview(
                 importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                60, 60, 60, 0, List.of(), 15, 45, 8, 2, 27, 27, 50,
+                60, 60, 60, 0, List.of(), 15, 45, 8, 2, 50, 27, 27, 50,
                 titles("Add skipped", 18), titles("Sync skipped", 10),
                 List.of("One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"),
                 List.of("Limited one", "Limited two"), "AbCdEf12345"
@@ -87,7 +87,7 @@ class TelegramSharedBasketHandlerTest {
         when(service.findPreview(importId, userId, now)).thenReturn(Optional.of(preview));
         TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
                 linkExtractor(), service, codec, users, gateway,
-                Clock.fixed(now, ZoneOffset.UTC), 50
+                Clock.fixed(now, ZoneOffset.UTC)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -151,7 +151,7 @@ class TelegramSharedBasketHandlerTest {
         when(service.findPreview(importId, userId, now)).thenReturn(Optional.empty());
         TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
                 linkExtractor(), service, codec, users, gateway,
-                Clock.fixed(now, ZoneOffset.UTC), 50
+                Clock.fixed(now, ZoneOffset.UTC)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -193,14 +193,14 @@ class TelegramSharedBasketHandlerTest {
         when(service.findPreview(importId, userId, now)).thenReturn(Optional.of(
                 new SharedBasketPreview(
                         importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                        1, 1, 1, 0, List.of(), 0, 1, 0, 0, 50, 1, 1,
+                        1, 1, 1, 0, List.of(), 0, 1, 0, 0, 50, 50, 1, 1,
                         List.of(), List.of(),
                         List.of(), List.of(), "AbCdEf12345"
                 )
         ));
         TelegramSharedBasketHandler handler = new TelegramSharedBasketHandler(
                 linkExtractor(), service, codec, users, gateway,
-                Clock.fixed(now, ZoneOffset.UTC), 50
+                Clock.fixed(now, ZoneOffset.UTC)
         );
 
         handler.handleCallback(new IncomingTelegramCallback(
@@ -225,7 +225,7 @@ class TelegramSharedBasketHandlerTest {
         TestContext context = context();
         SharedBasketPreview preview = new SharedBasketPreview(
                 context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                3, 2, 2, 1, List.of(), 0, 2, 0, 0, 48, 2, 2,
+                3, 2, 2, 1, List.of(), 0, 2, 0, 0, 50, 48, 2, 2,
                 List.of(), List.of(),
                 List.of(), List.of(), "AbCdEf12345"
         );
@@ -271,13 +271,13 @@ class TelegramSharedBasketHandlerTest {
         TestContext context = context();
         SharedBasketPreview original = new SharedBasketPreview(
                 context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                1, 1, 1, 0, List.of(), 0, 1, 1, 0, 49, 1, 1,
+                1, 1, 1, 0, List.of(), 0, 1, 1, 0, 50, 49, 1, 1,
                 List.of(), List.of(),
                 List.of("Old removal"), List.of(), "AbCdEf12345"
         );
         SharedBasketPreview refreshed = new SharedBasketPreview(
                 context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                1, 1, 1, 0, List.of(), 0, 1, 2, 0, 48, 1, 1,
+                1, 1, 1, 0, List.of(), 0, 1, 2, 0, 50, 48, 1, 1,
                 List.of(), List.of(),
                 List.of("Old removal", "New removal"), List.of(), "ZyXwVu98765"
         );
@@ -304,19 +304,23 @@ class TelegramSharedBasketHandlerTest {
     void previewRendersOnlyRelevantCountsAndWarnings() {
         SharedBasketPreview happyPath = new SharedBasketPreview(
                 UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                3, 3, 3, 0, List.of(), 0, 3, 0, 0, 50, 3, 3,
+                3, 3, 3, 0, List.of(), 0, 3, 0, 0, 50, 50, 3, 3,
                 List.of(), List.of(),
                 List.of(), List.of(), "AbCdEf12345"
         );
         String happyText = renderPreview(happyPath).getText();
 
         assertThat(happyText)
-                .contains("Найдено товаров: 3", "Новых: 3")
+                .contains(
+                        "Найдено товаров: 3",
+                        "Отслеживается: 0 из 50 · можно добавить ещё 50",
+                        "Новых: 3"
+                )
                 .doesNotContain(
                         "Готово к импорту",
                         "Уже отслеживаются: 0",
                         "не удалось обработать",
-                        "Сейчас недоступ",
+                        "Сейчас нет в наличии",
                         "Лимит отслеживания",
                         "При синхронизации бот перестанет"
                 );
@@ -324,7 +328,7 @@ class TelegramSharedBasketHandlerTest {
         SharedBasketPreview warnings = new SharedBasketPreview(
                 UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 73, 70, 70, 1, List.of("Product A", "Product B"),
-                15, 55, 6, 2, 35, 35, 50,
+                15, 55, 6, 2, 50, 35, 35, 50,
                 titles("Add skipped", 20), titles("Sync skipped", 20),
                 List.of("Outside"), List.of("Limited"), "ZyXwVu98765"
         );
@@ -334,7 +338,7 @@ class TelegramSharedBasketHandlerTest {
                 "Уже отслеживаются: 15",
                 "При синхронизации бот перестанет отслеживать",
                 "6 товаров, которых нет в этой корзине",
-                "Сейчас недоступны 2 товара:",
+                "Сейчас нет в наличии 2 товаров:",
                 "• Product A",
                 "• Product B",
                 "Они не будут добавлены.",
@@ -354,7 +358,7 @@ class TelegramSharedBasketHandlerTest {
         );
         SharedBasketPreview preview = new SharedBasketPreview(
                 UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                56, 56, 56, 0, List.of(), 0, 56, 0, 0, 50, 50, 50,
+                56, 56, 56, 0, List.of(), 0, 56, 0, 0, 50, 50, 50, 50,
                 skippedTitles, skippedTitles, List.of(), List.of(), "AbCdEf12345"
         );
 
@@ -366,7 +370,7 @@ class TelegramSharedBasketHandlerTest {
         TestContext context = context();
         SharedBasketPreview ownedPreview = new SharedBasketPreview(
                 context.importId, com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
-                56, 56, 56, 0, List.of(), 0, 56, 0, 0, 50, 50, 50,
+                56, 56, 56, 0, List.of(), 0, 56, 0, 0, 50, 50, 50, 50,
                 skippedTitles, skippedTitles, List.of(), List.of(), "AbCdEf12345"
         );
         when(context.service.findPreview(context.importId, context.userId, context.now))
@@ -412,14 +416,14 @@ class TelegramSharedBasketHandlerTest {
         SharedBasketPreview twoUnavailable = new SharedBasketPreview(
                 UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 28, 26, 26, 0, List.of("Product A", "Product B"),
-                0, 26, 0, 0, 50, 26, 26,
+                0, 26, 0, 0, 50, 50, 26, 26,
                 List.of(), List.of(),
                 List.of(), List.of(), "QrStUv12345"
         );
         assertThat(renderPreview(twoUnavailable).getText()).contains(
                 "Найдено товаров: 28",
                 "Новых: 26",
-                "⚠️ Сейчас недоступны 2 товара:\n\n• Product A\n• Product B",
+                "⚠️ Сейчас нет в наличии 2 товаров:\n\n• Product A\n• Product B",
                 "Они не будут добавлены.",
                 "В корзине есть недоступные товары, поэтому сейчас нельзя выполнить синхронизацию "
                         + "без риска остановить отслеживание лишних товаров."
@@ -428,13 +432,13 @@ class TelegramSharedBasketHandlerTest {
         SharedBasketPreview singular = new SharedBasketPreview(
                 UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 1, 0, 0, 0, List.of("Футболка — XXL"),
-                0, 0, 0, 0, 50, 0, 0,
+                0, 0, 0, 0, 50, 50, 0, 0,
                 List.of(), List.of(),
                 List.of(), List.of(), "AbCdEf12345"
         );
         OutgoingTelegramMessage singularMessage = renderPreview(singular);
         assertThat(singularMessage.getText()).contains(
-                "⚠️ Сейчас недоступен 1 товар:",
+                "⚠️ Сейчас нет в наличии 1 товара:",
                 "• Футболка — XXL",
                 "Он не будет добавлен."
         );
@@ -448,13 +452,13 @@ class TelegramSharedBasketHandlerTest {
                 UUID.randomUUID(), com.priceradar.testsupport.TestMarketplaceRegions.MOSCOW_ID,
                 8, 0, 0, 0,
                 List.of("A", "B", "C", "D", "E", "F", "G", "H"),
-                0, 0, 0, 0, 50, 0, 0,
+                0, 0, 0, 0, 50, 50, 0, 0,
                 List.of(), List.of(),
                 List.of(), List.of(), "ZyXwVu98765"
         );
         assertThat(renderPreview(longList).getText())
                 .contains(
-                        "⚠️ Сейчас недоступны 8 товаров:",
+                        "⚠️ Сейчас нет в наличии 8 товаров:",
                         "• A", "• B", "• C", "• D", "• E", "• и ещё 3",
                         "Они не будут добавлены."
                 )
@@ -470,7 +474,8 @@ class TelegramSharedBasketHandlerTest {
                         preview.getFoundItems(), preview.getAvailableItems(), preview.getReadyItems(),
                         preview.getUnresolvedItems(), preview.getUnavailableTitles(),
                         preview.getAlreadyTracked(), preview.getNewItems(), preview.getAbsentTracked(),
-                        preview.getExcludedByLimit(), preview.getFreeSlots(), preview.getAddableItems(),
+                        preview.getExcludedByLimit(), preview.getActiveSubscriptionLimit(),
+                        preview.getFreeSlots(), preview.getAddableItems(),
                         preview.getSyncTargetItems(), preview.getAddSkippedTitles(),
                         preview.getSyncSkippedTitles(), preview.getAbsentTitles(),
                         preview.getExcludedByLimitTitles(), preview.getDestructivePlanFingerprint()
@@ -501,7 +506,7 @@ class TelegramSharedBasketHandlerTest {
                 now, userId, importId, telegramUserId, service, gateway, codec,
                 new TelegramSharedBasketHandler(
                         linkExtractor(), service, codec, users, gateway,
-                        Clock.fixed(now, ZoneOffset.UTC), 50
+                        Clock.fixed(now, ZoneOffset.UTC)
                 )
         );
     }

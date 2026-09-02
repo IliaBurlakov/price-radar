@@ -101,7 +101,7 @@ class TelegramNotificationConditionTest {
                 new TrackingCallbackCodec("test-only-callback-secret-with-more-than-32-bytes"),
                 pendingStore,
                 gateway,
-                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15), 50
+                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15)
         );
 
         boolean handled = handler.handleTargetPriceInput(new IncomingTelegramMessage(
@@ -117,7 +117,7 @@ class TelegramNotificationConditionTest {
         var message = org.mockito.ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(gateway).sendMessage(message.capture());
         assertThat(message.getValue().getText())
-                .contains("Условие уведомлений изменено", "не выше 350 ₽");
+                .contains("Режим уведомлений изменён", "не выше 350 ₽");
         assertThat(message.getValue().getInlineKeyboard().getFirst().getFirst().getCallbackData())
                 .isEqualTo(SubscriptionCallbackData.encode(
                         SubscriptionCallbackData.Action.OPEN_ITEM,
@@ -252,7 +252,7 @@ class TelegramNotificationConditionTest {
                 new TrackingCallbackCodec("test-only-callback-secret-with-more-than-32-bytes"),
                 pendingStore,
                 gateway,
-                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15), 50
+                Clock.fixed(NOW, ZoneOffset.UTC), java.time.Duration.ofMinutes(15)
         );
 
         boolean handled = handler.handleTargetPriceInput(new IncomingTelegramMessage(
@@ -345,8 +345,7 @@ class TelegramNotificationConditionTest {
                 pendingStore,
                 gateway,
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                java.time.Duration.ofMinutes(15),
-                50
+                java.time.Duration.ofMinutes(15)
         );
     }
 

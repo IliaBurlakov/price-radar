@@ -1,5 +1,6 @@
 package com.priceradar.telegram.application;
 
+import com.priceradar.tracking.application.SubscriptionService;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
 import com.priceradar.user.domain.UserPricePreferences;
@@ -153,10 +154,12 @@ class TelegramUpdateDispatcherTest {
                 .thenReturn(unconfigured, configured, unconfigured);
         TelegramOnboardingHandler onboarding = new TelegramOnboardingHandler(users, regions);
         TelegramGateway gateway = mock(TelegramGateway.class);
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        SubscriptionService subscriptions = mock(SubscriptionService.class);
         TelegramMenuHandler menu = new TelegramMenuHandler(
                 messages, mock(TrackedItemsMessageHandler.class), regions,
-                mock(TelegramFeedbackHandler.class), gateway
+                mock(TelegramFeedbackHandler.class),
+                mock(TelegramWalletDiscountHandler.class), users, subscriptions, gateway
         );
         TelegramUpdateDispatcher dispatcher = new TelegramUpdateDispatcher(
                 onboarding, mock(TelegramCurrentQuoteHandler.class), menu, regions,
@@ -175,7 +178,7 @@ class TelegramUpdateDispatcherTest {
         )), messages.welcome(7001L));
         assertSentMessage(gateway, () -> dispatcher.dispatch(new TelegramUpdate(
                 3L, Optional.of(message("/help"))
-        )), messages.help(7001L));
+        )), messages.help(7001L, 10));
 
         verify(regions, never()).showOnboarding(unconfigured);
     }
@@ -243,12 +246,18 @@ class TelegramUpdateDispatcherTest {
 
     @Test
     void backAndMainMenuNeverDuplicateTheSameDestination() {
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
-        assertThat(messages.addProduct(7001L).getText()).contains(
-                "Отправьте одну или несколько ссылок", "в одном сообщении"
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        assertThat(messages.addProduct(7001L, 0, 10).getText()).contains(
+                "отправьте одну или несколько ссылок", "в одном сообщении",
+                "Отслеживается: 0 из 10 · можно добавить ещё 10"
         );
-        assertThat(messages.help(7001L).getText()).contains(
-                "одну или несколько ссылок", "Обратная связь", "Price Radar"
+        assertThat(messages.importBasket(7001L, 7, 10).getText())
+                .contains("Отслеживается: 7 из 10 · можно добавить ещё 3");
+        assertThat(messages.help(7001L, 10).getText()).contains(
+                "Одновременно вам доступно до 10 товаров",
+                "📉 Снижение цены",
+                "💰 Цена и WB Кошелёк",
+                "💬 Обратная связь"
         ).doesNotContain("Copy/Share");
         assertThat(TelegramNavigationKeyboard.mainMenu().getLast())
                 .extracting(TelegramInlineButton::getText)
@@ -265,18 +274,18 @@ class TelegramUpdateDispatcherTest {
                         "❓ Помощь",
                         "💬 Обратная связь"
                 );
-        assertThat(messages.addProduct(7001L).getInlineKeyboard())
+        assertThat(messages.addProduct(7001L, 0, 10).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("📖 Инструкция", "Главное меню");
-        assertThat(messages.importBasket(7001L).getInlineKeyboard())
+                .containsExactly("📖 Инструкция", "🏠 Главное меню");
+        assertThat(messages.importBasket(7001L, 0, 10).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("📖 Инструкция", "Главное меню");
-        assertThat(messages.help(7001L).getInlineKeyboard())
+                .containsExactly("📖 Инструкция", "🏠 Главное меню");
+        assertThat(messages.help(7001L, 10).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("Главное меню");
+                .containsExactly("🏠 Главное меню");
 
         List<TelegramInlineButton> itemNavigation = TelegramNavigationKeyboard
                 .itemSubscreen(java.util.UUID.randomUUID())
@@ -289,7 +298,7 @@ class TelegramUpdateDispatcherTest {
                 .orElseThrow()
                 .getCallbackData();
         String homeDestination = itemNavigation.stream()
-                .filter(button -> button.getText().equals("Главное меню"))
+                .filter(button -> button.getText().equals("🏠 Главное меню"))
                 .findFirst()
                 .orElseThrow()
                 .getCallbackData();
@@ -302,9 +311,17 @@ class TelegramUpdateDispatcherTest {
         TrackedItemsMessageHandler trackedItems = mock(TrackedItemsMessageHandler.class);
         TelegramRegionHandler regions = mock(TelegramRegionHandler.class);
         TelegramFeedbackHandler feedback = mock(TelegramFeedbackHandler.class);
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
+        TelegramWalletDiscountHandler wallet = mock(TelegramWalletDiscountHandler.class);
+        UserProfileService users = mock(UserProfileService.class);
+        SubscriptionService subscriptions = mock(SubscriptionService.class);
+        UserProfile profile = new UserProfile(
+                UUID.randomUUID(), 7001L, 7001L, moscow(), UserPricePreferences.defaults(), 10
+        );
+        when(users.getOrCreate(7001L, 7001L)).thenReturn(profile);
+        when(subscriptions.findActive(profile.getId())).thenReturn(List.of());
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
         TelegramMenuHandler handler = new TelegramMenuHandler(
-                messages, trackedItems, regions, feedback, gateway
+                messages, trackedItems, regions, feedback, wallet, users, subscriptions, gateway
         );
 
         assertSentMessage(
@@ -315,17 +332,17 @@ class TelegramUpdateDispatcherTest {
         assertSentMessage(
                 gateway,
                 () -> handler.handleMessage(message("/add")),
-                messages.addProduct(7001L)
+                messages.addProduct(7001L, 0, 10)
         );
         assertSentMessage(
                 gateway,
                 () -> handler.handleMessage(message("/import")),
-                messages.importBasket(7001L)
+                messages.importBasket(7001L, 0, 10)
         );
         assertSentMessage(
                 gateway,
                 () -> handler.handleMessage(message("/help")),
-                messages.help(7001L)
+                messages.help(7001L, 10)
         );
 
         assertThat(handler.handleMessage(message("/tracked"))).isTrue();
@@ -334,15 +351,24 @@ class TelegramUpdateDispatcherTest {
         verify(regions).show(7001L, 7001L);
         assertThat(handler.handleMessage(message("/feedback"))).isTrue();
         verify(feedback).show(7001L, 7001L);
+        assertThat(handler.handleMessage(message("/wallet"))).isTrue();
+        verify(wallet).show(7001L, 7001L);
     }
 
     @Test
     void unknownCommandGetsHintAndUnsupportedTextShowsTheFullHelpMessage() {
         TelegramGateway gateway = mock(TelegramGateway.class);
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        UserProfileService users = mock(UserProfileService.class);
+        UserProfile profile = new UserProfile(
+                UUID.randomUUID(), 7001L, 7001L, moscow(), UserPricePreferences.defaults(), 10
+        );
+        when(users.getOrCreate(7001L, 7001L)).thenReturn(profile);
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
                 messages, mock(TrackedItemsMessageHandler.class),
-                mock(TelegramRegionHandler.class), mock(TelegramFeedbackHandler.class), gateway
+                mock(TelegramRegionHandler.class), mock(TelegramFeedbackHandler.class),
+                mock(TelegramWalletDiscountHandler.class), users,
+                mock(SubscriptionService.class), gateway
         );
 
         assertSentMessage(
@@ -369,7 +395,7 @@ class TelegramUpdateDispatcherTest {
         assertSentMessage(
                 gateway,
                 () -> dispatcher.dispatch(new TelegramUpdate(4L, Optional.of(unsupportedText))),
-                messages.help(7001L)
+                messages.help(7001L, 10)
         );
         verify(currentQuoteHandler).handle(unsupportedText);
     }
@@ -377,10 +403,18 @@ class TelegramUpdateDispatcherTest {
     @Test
     void mainNavigationExplainsBasketImportAndDispatcherAcceptsTheFollowingSharedLink() {
         TelegramGateway gateway = mock(TelegramGateway.class);
-        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory(50);
+        TelegramMenuMessageFactory messages = new TelegramMenuMessageFactory();
+        UserProfileService users = mock(UserProfileService.class);
+        SubscriptionService subscriptions = mock(SubscriptionService.class);
+        UserProfile profile = new UserProfile(
+                UUID.randomUUID(), 7001L, 7001L, moscow(), UserPricePreferences.defaults(), 10
+        );
+        when(users.getOrCreate(7001L, 7001L)).thenReturn(profile);
+        when(subscriptions.findActive(profile.getId())).thenReturn(List.of());
         TelegramMenuHandler menuHandler = new TelegramMenuHandler(
                 messages, mock(TrackedItemsMessageHandler.class),
-                mock(TelegramRegionHandler.class), mock(TelegramFeedbackHandler.class), gateway
+                mock(TelegramRegionHandler.class), mock(TelegramFeedbackHandler.class),
+                mock(TelegramWalletDiscountHandler.class), users, subscriptions, gateway
         );
         OutgoingTelegramMessage mainMenu = messages.mainMenu(7001L);
 
@@ -405,7 +439,7 @@ class TelegramUpdateDispatcherTest {
         assertThat(explanation.getValue().getInlineKeyboard().stream()
                 .flatMap(List::stream)
                 .map(TelegramInlineButton::getText)
-                .toList()).containsExactly("📖 Инструкция", "Главное меню");
+                .toList()).containsExactly("📖 Инструкция", "🏠 Главное меню");
 
         TelegramSharedBasketHandler sharedBasketHandler = mock(TelegramSharedBasketHandler.class);
         IncomingTelegramMessage sharedLink = new IncomingTelegramMessage(

@@ -2,18 +2,13 @@ package com.priceradar.telegram.application;
 
 public final class TelegramMenuMessageFactory {
 
-    private final int activeSubscriptionLimit;
     private final boolean tutorialsEnabled;
 
-    public TelegramMenuMessageFactory(int activeSubscriptionLimit) {
-        this(activeSubscriptionLimit, true);
+    public TelegramMenuMessageFactory() {
+        this(true);
     }
 
-    public TelegramMenuMessageFactory(int activeSubscriptionLimit, boolean tutorialsEnabled) {
-        if (activeSubscriptionLimit <= 0) {
-            throw new IllegalArgumentException("active subscription limit must be positive");
-        }
-        this.activeSubscriptionLimit = activeSubscriptionLimit;
+    public TelegramMenuMessageFactory(boolean tutorialsEnabled) {
         this.tutorialsEnabled = tutorialsEnabled;
     }
 
@@ -22,8 +17,9 @@ public final class TelegramMenuMessageFactory {
                 Добро пожаловать в Price Radar!
 
                 Бот поможет следить за ценами на Wildberries:
+
                 🔎 покажет текущую цену товара;
-                🔔 сообщит о новой минимальной цене;
+                🔔 сообщит о скидке;
                 🎯 уведомит, когда цена достигнет выбранного значения;
                 📊 покажет историю изменения цены.
 
@@ -44,30 +40,48 @@ public final class TelegramMenuMessageFactory {
         );
     }
 
-    public OutgoingTelegramMessage help(long chatId) {
+    public OutgoingTelegramMessage help(long chatId, int activeSubscriptionLimit) {
         String text = """
                 ❓ Помощь
 
-                Price Radar помогает следить за ценами товаров Wildberries и уведомляет, когда появляется новая минимальная цена или цена снижается до выбранного значения.
+                Price Radar следит за ценами товаров на Wildberries и сообщает, когда цена снижается.
 
-                ➕ Добавить товар
-                Отправьте одну или несколько ссылок на товары Wildberries.
+                ➕ Как добавить товар
+                Отправьте ссылку на товар Wildberries. Если у товара есть размеры, выберите нужный, а затем настройте уведомления.
+                Можно выбрать один из двух вариантов:
 
-                🛒 Импортировать корзину
-                Добавьте сразу несколько товаров из общей корзины Wildberries.
+                📉 Снижение цены — при каждом снижении будет приходить уведомление. Если цена повысилась, а потом опустилась до прежнего уровня — уведомление не придет.
 
-                📦 Мои товары
-                Здесь находятся активные отслеживания, настройки и статистика цен.
+                🎯 Целевая цена — придёт уведомление, когда цена товара станет ниже той, которую вы указали.
 
-                🌍 Город
-                Выберите город, для которого нужно показывать цены и наличие товаров.
+                📦 Сколько товаров можно отслеживать
+                Одновременно вам доступно до %d товаров. Количество свободных мест можно посмотреть в разделах «Мои товары», «Добавить товар» и «Импорт корзины».
+
+                🛒 Импорт корзины
+                Можно отправить ссылку на корзину Wildberries и добавить сразу несколько товаров.
+
+                Добавить новые — добавятся только те товары, которых ещё нет в отслеживании.
+
+                Синхронизировать — список отслеживаемых товаров будет обновлён по вашей корзине. Товары, которых в ней нет, перестанут отслеживаться.
+
+                💰 Цена и WB Кошелёк
+                Для отслеживания, уведомлений и статистики используется обычная цена товара без WB Кошелька.
+                Цена с WB Кошельком показывается отдельно для удобства. Размер вашей скидки WB Кошелька можно изменить в разделе «WB Кошелёк». По умолчанию размер скидки — 3%%.
+
+                📊 История цены
+                История цены товара начинается с момента, когда вы начали его отслеживать.
+
+                ⏱️ Как часто проверяется цена
+                Price Radar фиксирует цены раз в 6 часов.
+
+                ❌ Если товар закончился
+                Отслеживание не останавливается. Price Radar продолжит проверять товар и снова начнёт учитывать цену, когда он появится в наличии.
+
+                🌍 Выбор города
+                Цена и наличие товара зависят от региона. Пока у вас есть товары в режиме отслеживания, изменить город нельзя. Для смены города необходимо сначала остановить все отслеживания.
 
                 💬 Обратная связь
-                Отправьте пожелание, идею или расскажите о найденной ошибке.
-
-                Одновременно можно отслеживать до %d товаров.
-
-                Для навигации используйте кнопки под сообщениями или меню команд Telegram.
+                Есть вопрос, пожелание или вы нашли ошибку? Напишите нам через раздел «Обратная связь».
                 """.formatted(activeSubscriptionLimit);
         return new OutgoingTelegramMessage(
                 chatId,
@@ -76,15 +90,22 @@ public final class TelegramMenuMessageFactory {
         );
     }
 
-    public OutgoingTelegramMessage addProduct(long chatId) {
+    public OutgoingTelegramMessage addProduct(
+            long chatId,
+            int activeSubscriptions,
+            int activeSubscriptionLimit
+    ) {
         String text = """
                 ➕ Добавить товар
 
-                🔗 Отправьте одну или несколько ссылок Wildberries в одном сообщении.
+                🔗 Чтобы начать отслеживание, отправьте одну или несколько ссылок Wildberries в одном сообщении.
 
                 Например:
                 https://www.wildberries.ru/catalog/10302970123/detail.aspx
                 """;
+        text += "\n" + TelegramDisplayFormatter.trackingCapacity(
+                activeSubscriptions, activeSubscriptionLimit
+        );
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
@@ -100,7 +121,11 @@ public final class TelegramMenuMessageFactory {
         );
     }
 
-    public OutgoingTelegramMessage importBasket(long chatId) {
+    public OutgoingTelegramMessage importBasket(
+            long chatId,
+            int activeSubscriptions,
+            int activeSubscriptionLimit
+    ) {
         String text = """
                 🛒 Импорт корзины Wildberries
 
@@ -109,13 +134,16 @@ public final class TelegramMenuMessageFactory {
                 После загрузки можно выбрать:
 
                 ➕ Добавить новые
-                Добавятся только товары, которых вы ещё не отслеживаете.
+                Добавятся только те товары, которые вы ещё не отслеживаете.
 
                 🔄 Синхронизировать
-                Список отслеживания будет приведён в соответствие с корзиной. Перед остановкой отслеживания товаров бот попросит подтверждение.
+                Список отслеживаемых товаров будет совпадать с вашей корзиной.
 
-                Отправьте ссылку на корзину Wildberries.
+                Отправьте ссылку на корзину Wildberries:
                 """;
+        text += "\n" + TelegramDisplayFormatter.trackingCapacity(
+                activeSubscriptions, activeSubscriptionLimit
+        );
         return new OutgoingTelegramMessage(
                 chatId,
                 text,
@@ -133,9 +161,8 @@ public final class TelegramMenuMessageFactory {
                 java.util.List.of(new TelegramInlineButton(
                         "📖 Инструкция", TutorialCallbackData.open(topic)
                 )),
-                java.util.List.of(new TelegramInlineButton(
-                        "Главное меню",
-                        MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
+                java.util.List.of(TelegramNavigationKeyboard.button(
+                        MainMenuCallbackData.Action.HOME
                 ))
         );
     }

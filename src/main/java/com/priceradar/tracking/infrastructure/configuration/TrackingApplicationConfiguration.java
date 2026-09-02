@@ -23,7 +23,6 @@ public class TrackingApplicationConfiguration {
                 userProfileStore,
                 subscriptionStore,
                 thresholdNotificationEnqueuer,
-                policy.getActiveSubscriptionLimit(),
                 policy.getQuoteTtl()
         );
     }

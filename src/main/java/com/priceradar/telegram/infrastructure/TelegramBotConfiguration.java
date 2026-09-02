@@ -148,12 +148,11 @@ public class TelegramBotConfiguration {
             SharedBasketCallbackCodec callbackCodec,
             UserProfileService userProfileService,
             TelegramGateway telegramGateway,
-            Clock providerClock,
-            PriceRadarPolicyProperties policy
+            Clock providerClock
     ) {
         return new TelegramSharedBasketHandler(
-                linkExtractor, importService, callbackCodec, userProfileService, telegramGateway, providerClock,
-                policy.getActiveSubscriptionLimit()
+                linkExtractor, importService, callbackCodec, userProfileService,
+                telegramGateway, providerClock
         );
     }
 
@@ -223,8 +222,7 @@ public class TelegramBotConfiguration {
                 pendingTargetPriceStore,
                 telegramGateway,
                 providerClock,
-                policy.getPendingActionTtl(),
-                policy.getActiveSubscriptionLimit()
+                policy.getPendingActionTtl()
         );
     }
 
@@ -272,13 +270,9 @@ public class TelegramBotConfiguration {
 
     @Bean
     public TelegramMenuMessageFactory telegramMenuMessageFactory(
-            PriceRadarPolicyProperties policy,
             TelegramBotProperties telegramProperties
     ) {
-        return new TelegramMenuMessageFactory(
-                policy.getActiveSubscriptionLimit(),
-                telegramProperties.isTutorialsEnabled()
-        );
+        return new TelegramMenuMessageFactory(telegramProperties.isTutorialsEnabled());
     }
 
     @Bean
@@ -287,6 +281,9 @@ public class TelegramBotConfiguration {
             TrackedItemsMessageHandler trackedItemsHandler,
             TelegramRegionHandler regionHandler,
             TelegramFeedbackHandler feedbackHandler,
+            TelegramWalletDiscountHandler walletDiscountHandler,
+            UserProfileService userProfileService,
+            SubscriptionService subscriptionService,
             TelegramGateway telegramGateway
     ) {
         return new TelegramMenuHandler(
@@ -294,6 +291,9 @@ public class TelegramBotConfiguration {
                 trackedItemsHandler,
                 regionHandler,
                 feedbackHandler,
+                walletDiscountHandler,
+                userProfileService,
+                subscriptionService,
                 telegramGateway
         );
     }

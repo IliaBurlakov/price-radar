@@ -208,7 +208,7 @@ public class TelegramCurrentQuoteHandler {
         if (created == 0 && updated == 0 && alreadyTracked == 0) {
             text.append("\n\nПодходящих товаров для добавления не найдено.");
         } else {
-            text.append("\n\nРежим: уведомлять о новой минимальной цене.");
+            text.append("\n\nРежим уведомлений: новая минимальная цена.");
         }
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(), text.toString(), TelegramNavigationKeyboard.trackedItemsAndHome()

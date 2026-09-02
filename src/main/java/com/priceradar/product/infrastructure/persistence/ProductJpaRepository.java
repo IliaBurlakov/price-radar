@@ -42,7 +42,8 @@ public interface ProductJpaRepository extends JpaRepository<ProductEntity, UUID>
     @Modifying
     @Query(value = """
             UPDATE products
-            SET title = COALESCE(:title, title),
+            SET canonical_url = COALESCE(:canonicalUrl, canonical_url),
+                title = COALESCE(:title, title),
                 brand = COALESCE(:brand, brand),
                 metadata_updated_at = :observedAt
             WHERE id = :productId
@@ -50,6 +51,7 @@ public interface ProductJpaRepository extends JpaRepository<ProductEntity, UUID>
             """, nativeQuery = true)
     int updateMetadataIfNewer(
             @Param("productId") UUID productId,
+            @Param("canonicalUrl") String canonicalUrl,
             @Param("title") String title,
             @Param("brand") String brand,
             @Param("observedAt") Instant observedAt

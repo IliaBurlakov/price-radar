@@ -70,6 +70,7 @@ public final class TelegramOnboardingHandler {
         if (command.filter(value -> value == TelegramBotCommand.START
                 || value == TelegramBotCommand.HELP
                 || value == TelegramBotCommand.CITY
+                || value == TelegramBotCommand.WALLET
                 || value == TelegramBotCommand.FEEDBACK).isPresent()) {
             return true;
         }

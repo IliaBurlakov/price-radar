@@ -4,6 +4,11 @@ services:
   postgres:
     image: postgres:18.4-alpine3.23
     restart: unless-stopped
+
+    mem_limit: 512m
+    cpuset: "0"
+
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-priceradar}
       POSTGRES_USER: ${POSTGRES_USER:-priceradar}
@@ -25,6 +30,9 @@ services:
 
   app:
     image: priceradar:local
+
+    mem_limit: 1g
+    cpuset: "0"
     build:
       context: .
       dockerfile: Dockerfile

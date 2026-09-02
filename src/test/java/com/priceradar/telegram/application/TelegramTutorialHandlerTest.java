@@ -14,15 +14,15 @@ class TelegramTutorialHandlerTest {
 
     @Test
     void disabledTutorialsAreHiddenAndOldCallbacksCannotOpenThem() {
-        TelegramMenuMessageFactory menuFactory = new TelegramMenuMessageFactory(50, false);
-        assertThat(menuFactory.addProduct(1L).getInlineKeyboard())
+        TelegramMenuMessageFactory menuFactory = new TelegramMenuMessageFactory(false);
+        assertThat(menuFactory.addProduct(1L, 0, 10).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("Главное меню");
-        assertThat(menuFactory.importBasket(1L).getInlineKeyboard())
+                .containsExactly("🏠 Главное меню");
+        assertThat(menuFactory.importBasket(1L, 0, 10).getInlineKeyboard())
                 .flatExtracting(row -> row)
                 .extracting(TelegramInlineButton::getText)
-                .containsExactly("Главное меню");
+                .containsExactly("🏠 Главное меню");
 
         TelegramGateway gateway = mock(TelegramGateway.class);
         TelegramTutorialHandler handler = new TelegramTutorialHandler(
@@ -78,7 +78,7 @@ class TelegramTutorialHandlerTest {
         assertThat(buttons).extracting(TelegramInlineButton::getText)
                 .containsExactly(
                         "🍎 iPhone", "🤖 Android", "💻 Компьютер (Windows)",
-                        "← Назад", "Главное меню"
+                        "← Назад", "🏠 Главное меню"
                 );
         assertThat(buttons.get(3).getCallbackData())
                 .isEqualTo(MainMenuCallbackData.encode(expectedBack));

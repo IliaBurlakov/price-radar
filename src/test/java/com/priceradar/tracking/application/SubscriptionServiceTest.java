@@ -35,7 +35,6 @@ class SubscriptionServiceTest {
             userStore,
             subscriptionStore,
             thresholdNotificationEnqueuer,
-            50,
             Duration.ofMinutes(15)
     );
 
@@ -190,6 +189,50 @@ class SubscriptionServiceTest {
         assertThat(limited.getStatus())
                 .isEqualTo(SubscriptionCreationResult.Status.LIMIT_REACHED);
         verify(subscriptionStore, never()).create(any());
+    }
+
+    @Test
+    void subscriptionLimitBelongsToTheUserProfile() {
+        Instant now = Instant.parse("2026-01-01T00:10:00Z");
+        UUID standardUserId = UUID.randomUUID();
+        UUID extendedUserId = UUID.randomUUID();
+        SubscriptionQuoteObservation standardObservation = new SubscriptionQuoteObservation(
+                UUID.randomUUID(), UUID.randomUUID(), now.minusSeconds(30),
+                Optional.of(RubleAmount.ofMinorUnits(8_000)), moscow().toPriceContext()
+        );
+        SubscriptionQuoteObservation extendedObservation = new SubscriptionQuoteObservation(
+                UUID.randomUUID(), UUID.randomUUID(), now.minusSeconds(30),
+                Optional.of(RubleAmount.ofMinorUnits(8_000)), moscow().toPriceContext()
+        );
+        when(userStore.findByIdAndLock(standardUserId)).thenReturn(Optional.of(new UserProfile(
+                standardUserId, 1L, 1L, moscow(), UserPricePreferences.defaults(), 10
+        )));
+        when(userStore.findByIdAndLock(extendedUserId)).thenReturn(Optional.of(new UserProfile(
+                extendedUserId, 2L, 2L, moscow(), UserPricePreferences.defaults(), 100
+        )));
+        when(subscriptionStore.findQuoteObservation(standardObservation.getSnapshotId()))
+                .thenReturn(Optional.of(standardObservation));
+        when(subscriptionStore.findQuoteObservation(extendedObservation.getSnapshotId()))
+                .thenReturn(Optional.of(extendedObservation));
+        when(subscriptionStore.findActive(standardUserId, standardObservation.getWatchTargetId()))
+                .thenReturn(Optional.empty());
+        when(subscriptionStore.findActive(extendedUserId, extendedObservation.getWatchTargetId()))
+                .thenReturn(Optional.empty());
+        when(subscriptionStore.countActive(standardUserId)).thenReturn(10L);
+        when(subscriptionStore.countActive(extendedUserId)).thenReturn(20L);
+        when(subscriptionStore.create(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubscriptionCreationResult standard = service.createFromQuote(
+                standardUserId, standardObservation.getSnapshotId(),
+                NotificationMode.ANY_DECREASE, Optional.empty(), now
+        );
+        SubscriptionCreationResult extended = service.createFromQuote(
+                extendedUserId, extendedObservation.getSnapshotId(),
+                NotificationMode.ANY_DECREASE, Optional.empty(), now
+        );
+
+        assertThat(standard.getStatus()).isEqualTo(SubscriptionCreationResult.Status.LIMIT_REACHED);
+        assertThat(extended.getStatus()).isEqualTo(SubscriptionCreationResult.Status.CREATED);
     }
 
     private void ready(

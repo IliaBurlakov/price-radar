@@ -45,8 +45,31 @@ class UserProfileServiceTest {
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.any()
         );
+    }
+
+    @Test
+    void createsNewUserWithConfiguredSubscriptionLimit() {
+        UserProfileStore store = mock(UserProfileStore.class);
+        UserProfile created = new UserProfile(
+                UUID.randomUUID(), 7002L, 7002L, null,
+                UserPricePreferences.defaults(), 10
+        );
+        when(store.findByTelegramUserId(7002L)).thenReturn(Optional.empty());
+        when(store.create(
+                7002L, 7002L, UserPricePreferences.defaults(), 10, NOW
+        )).thenReturn(created);
+        UserProfileService service = new UserProfileService(
+                store, UserPricePreferences.defaults(), 10,
+                Clock.fixed(NOW, ZoneOffset.UTC)
+        );
+
+        UserProfile result = service.getOrCreate(7002L, 7002L);
+
+        assertThat(result.getActiveSubscriptionLimit()).isEqualTo(10);
+        verify(store).create(7002L, 7002L, UserPricePreferences.defaults(), 10, NOW);
     }
 
     @Test

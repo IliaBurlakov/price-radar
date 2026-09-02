@@ -28,9 +28,8 @@ public final class TelegramTutorialMessageFactory {
                         List.of(new TelegramInlineButton(
                                 "← Назад", MainMenuCallbackData.encode(backAction)
                         )),
-                        List.of(new TelegramInlineButton(
-                                "Главное меню",
-                                MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
+                        List.of(TelegramNavigationKeyboard.button(
+                                MainMenuCallbackData.Action.HOME
                         ))
                 )
         );
@@ -43,10 +42,7 @@ public final class TelegramTutorialMessageFactory {
                 List.of(
                         List.of(new TelegramInlineButton(
                                 "← Назад", TutorialCallbackData.open(topic)
-                        ), new TelegramInlineButton(
-                                "Главное меню",
-                                MainMenuCallbackData.encode(MainMenuCallbackData.Action.HOME)
-                        ))
+                        ), TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.HOME))
                 )
         );
     }

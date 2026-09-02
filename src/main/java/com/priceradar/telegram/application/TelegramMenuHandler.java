@@ -2,12 +2,19 @@ package com.priceradar.telegram.application;
 
 import java.util.Optional;
 
+import com.priceradar.tracking.application.SubscriptionService;
+import com.priceradar.user.application.UserProfile;
+import com.priceradar.user.application.UserProfileService;
+
 public final class TelegramMenuHandler {
 
     private final TelegramMenuMessageFactory messageFactory;
     private final TrackedItemsMessageHandler trackedItemsHandler;
     private final TelegramRegionHandler regionHandler;
     private final TelegramFeedbackHandler feedbackHandler;
+    private final TelegramWalletDiscountHandler walletDiscountHandler;
+    private final UserProfileService userProfileService;
+    private final SubscriptionService subscriptionService;
     private final TelegramGateway telegramGateway;
 
     public TelegramMenuHandler(
@@ -15,16 +22,24 @@ public final class TelegramMenuHandler {
             TrackedItemsMessageHandler trackedItemsHandler,
             TelegramRegionHandler regionHandler,
             TelegramFeedbackHandler feedbackHandler,
+            TelegramWalletDiscountHandler walletDiscountHandler,
+            UserProfileService userProfileService,
+            SubscriptionService subscriptionService,
             TelegramGateway telegramGateway
     ) {
         if (messageFactory == null || trackedItemsHandler == null
-                || regionHandler == null || feedbackHandler == null || telegramGateway == null) {
+                || regionHandler == null || feedbackHandler == null
+                || walletDiscountHandler == null || userProfileService == null
+                || subscriptionService == null || telegramGateway == null) {
             throw new IllegalArgumentException("menu handler dependencies must not be null");
         }
         this.messageFactory = messageFactory;
         this.trackedItemsHandler = trackedItemsHandler;
         this.regionHandler = regionHandler;
         this.feedbackHandler = feedbackHandler;
+        this.walletDiscountHandler = walletDiscountHandler;
+        this.userProfileService = userProfileService;
+        this.subscriptionService = subscriptionService;
         this.telegramGateway = telegramGateway;
     }
 
@@ -59,10 +74,13 @@ public final class TelegramMenuHandler {
                     message.getTelegramUserId(),
                     message.getChatId()
             );
-            case ADD -> telegramGateway.sendMessage(messageFactory.addProduct(message.getChatId()));
-            case IMPORT -> telegramGateway.sendMessage(messageFactory.importBasket(message.getChatId()));
+            case ADD -> telegramGateway.sendMessage(addProductMessage(message));
+            case IMPORT -> telegramGateway.sendMessage(importBasketMessage(message));
             case CITY -> regionHandler.show(message.getTelegramUserId(), message.getChatId());
-            case HELP -> telegramGateway.sendMessage(messageFactory.help(message.getChatId()));
+            case WALLET -> walletDiscountHandler.show(
+                    message.getTelegramUserId(), message.getChatId()
+            );
+            case HELP -> telegramGateway.sendMessage(helpMessage(message));
             case FEEDBACK -> feedbackHandler.show(message.getTelegramUserId(), message.getChatId());
         }
     }
@@ -85,10 +103,10 @@ public final class TelegramMenuHandler {
                     messageFactory.mainMenu(callback.getChatId())
             );
             case ADD_PRODUCT -> telegramGateway.sendMessage(
-                    messageFactory.addProduct(callback.getChatId())
+                    addProductMessage(callback)
             );
             case IMPORT_BASKET -> telegramGateway.sendMessage(
-                    messageFactory.importBasket(callback.getChatId())
+                    importBasketMessage(callback)
             );
             case TRACKED_ITEMS -> trackedItemsHandler.showTracked(
                     callback.getTelegramUserId(),
@@ -97,7 +115,7 @@ public final class TelegramMenuHandler {
             case REGION -> regionHandler.show(callback.getTelegramUserId(), callback.getChatId());
             case WALLET_DISCOUNT -> { return false; }
             case HELP -> telegramGateway.sendMessage(
-                    messageFactory.help(callback.getChatId())
+                    helpMessage(callback)
             );
             case FEEDBACK -> { return false; }
         }
@@ -108,8 +126,50 @@ public final class TelegramMenuHandler {
         if (!message.isPrivateChat()) {
             return false;
         }
-        telegramGateway.sendMessage(messageFactory.help(message.getChatId()));
+        telegramGateway.sendMessage(helpMessage(message));
         return true;
+    }
+
+    private OutgoingTelegramMessage addProductMessage(IncomingTelegramMessage message) {
+        return addProductMessage(message.getTelegramUserId(), message.getChatId());
+    }
+
+    private OutgoingTelegramMessage addProductMessage(IncomingTelegramCallback callback) {
+        return addProductMessage(callback.getTelegramUserId(), callback.getChatId());
+    }
+
+    private OutgoingTelegramMessage addProductMessage(long telegramUserId, long chatId) {
+        UserProfile profile = userProfileService.getOrCreate(telegramUserId, chatId);
+        int active = subscriptionService.findActive(profile.getId()).size();
+        return messageFactory.addProduct(chatId, active, profile.getActiveSubscriptionLimit());
+    }
+
+    private OutgoingTelegramMessage importBasketMessage(IncomingTelegramMessage message) {
+        return importBasketMessage(message.getTelegramUserId(), message.getChatId());
+    }
+
+    private OutgoingTelegramMessage importBasketMessage(IncomingTelegramCallback callback) {
+        return importBasketMessage(callback.getTelegramUserId(), callback.getChatId());
+    }
+
+    private OutgoingTelegramMessage importBasketMessage(long telegramUserId, long chatId) {
+        UserProfile profile = userProfileService.getOrCreate(telegramUserId, chatId);
+        int active = subscriptionService.findActive(profile.getId()).size();
+        return messageFactory.importBasket(chatId, active, profile.getActiveSubscriptionLimit());
+    }
+
+    private OutgoingTelegramMessage helpMessage(IncomingTelegramMessage message) {
+        UserProfile profile = userProfileService.getOrCreate(
+                message.getTelegramUserId(), message.getChatId()
+        );
+        return messageFactory.help(message.getChatId(), profile.getActiveSubscriptionLimit());
+    }
+
+    private OutgoingTelegramMessage helpMessage(IncomingTelegramCallback callback) {
+        UserProfile profile = userProfileService.getOrCreate(
+                callback.getTelegramUserId(), callback.getChatId()
+        );
+        return messageFactory.help(callback.getChatId(), profile.getActiveSubscriptionLimit());
     }
 
     private boolean isLegacyMenuCommand(String text) {

@@ -51,16 +51,19 @@ public final class TelegramWalletDiscountHandler {
         if (!callback.isPrivateChat()) {
             return true;
         }
-        UserProfile profile = userProfileService.getOrCreate(
-                callback.getTelegramUserId(), callback.getChatId()
-        );
+        show(callback.getTelegramUserId(), callback.getChatId());
+        return true;
+    }
+
+    public void show(long telegramUserId, long chatId) {
+        UserProfile profile = userProfileService.getOrCreate(telegramUserId, chatId);
         Instant now = clock.instant();
         pendingInputStore.replace(new PendingWalletDiscountInput(
                 profile.getId(), profile.getTelegramUserId(), profile.getTelegramChatId(),
                 now, now.plus(pendingInputTtl)
         ));
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
-                callback.getChatId(),
+                chatId,
                 ("💳 WB Кошелёк\n\nПо умолчанию скидка с WB кошельком составляет 3%%. Если у вас " +
                         "увеличенный размер скидки, вы можете задать его здесь.\n\n" +
                         "Текущая скидка: %d%%.\n\n")
@@ -68,7 +71,6 @@ public final class TelegramWalletDiscountHandler {
                         + "Введите размер скидки вашего WB Кошелька:",
                 TelegramNavigationKeyboard.home()
         ));
-        return true;
     }
 
     public void cancel(long telegramUserId, long chatId) {

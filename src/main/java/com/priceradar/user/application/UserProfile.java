@@ -15,6 +15,7 @@ public final class UserProfile {
     private final long telegramChatId;
     private final ResolvedLocation selectedLocation;
     private final UserPricePreferences pricePreferences;
+    private final int activeSubscriptionLimit;
 
     public UserProfile(
             UUID id,
@@ -23,17 +24,32 @@ public final class UserProfile {
             ResolvedLocation selectedLocation,
             UserPricePreferences pricePreferences
     ) {
+        this(id, telegramUserId, telegramChatId, selectedLocation, pricePreferences, 10);
+    }
+
+    public UserProfile(
+            UUID id,
+            long telegramUserId,
+            long telegramChatId,
+            ResolvedLocation selectedLocation,
+            UserPricePreferences pricePreferences,
+            int activeSubscriptionLimit
+    ) {
         if (id == null || pricePreferences == null) {
             throw new IllegalArgumentException("user profile fields must not be null");
         }
         if (telegramUserId <= 0 || telegramChatId <= 0) {
             throw new IllegalArgumentException("Telegram identifiers must be positive");
         }
+        if (activeSubscriptionLimit <= 0) {
+            throw new IllegalArgumentException("activeSubscriptionLimit must be positive");
+        }
         this.id = id;
         this.telegramUserId = telegramUserId;
         this.telegramChatId = telegramChatId;
         this.selectedLocation = selectedLocation;
         this.pricePreferences = pricePreferences;
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
     }
 
     public UUID getId() {
@@ -69,6 +85,10 @@ public final class UserProfile {
 
     public UserPricePreferences getPricePreferences() {
         return pricePreferences;
+    }
+
+    public int getActiveSubscriptionLimit() {
+        return activeSubscriptionLimit;
     }
 
     public boolean isRegionSelected() {

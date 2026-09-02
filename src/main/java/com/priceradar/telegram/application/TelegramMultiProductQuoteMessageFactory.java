@@ -89,7 +89,7 @@ public final class TelegramMultiProductQuoteMessageFactory {
         if (!navigation.isEmpty()) keyboard.add(List.copyOf(navigation));
         if (session.getItems().stream().anyMatch(item -> item.getQuote().isPresent())) {
             keyboard.add(List.of(new TelegramInlineButton(
-                    "Следить за минимумом для всех",
+                    "Следить за снижением для всех",
                     callbackCodec.encode(
                             MultiProductQuoteCallbackCodec.Action.ALL_MINIMUM,
                             session.getId(), 0, telegramUserId

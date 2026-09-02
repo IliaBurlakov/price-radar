@@ -46,7 +46,7 @@ class SharedBasketImportServiceTest {
             new SharedBasketUrlParser(), mock(SharedBasketProvider.class),
             mock(SharedBasketProductResolver.class), new PriceSemanticsService(),
             mock(ResolvedQuotePersistenceService.class), pendingStore, userStore, subscriptionStore,
-            50, Duration.ofMinutes(15)
+            Duration.ofMinutes(15)
     );
 
     @Test
@@ -79,6 +79,26 @@ class SharedBasketImportServiceTest {
                         .isPresent()
         );
         verify(userStore).findByIdAndLock(userId);
+    }
+
+    @Test
+    void addNewUsesTheLockedUsersIndividualLimit() {
+        UUID userId = UUID.randomUUID();
+        List<Subscription> active = subscriptions(userId, 43);
+        PendingSharedBasketImport pending = pending(userId, 10);
+        when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
+        lockedUser(userId, 100);
+        when(subscriptionStore.findActiveSubscriptions(userId)).thenReturn(active);
+        pending.getItems().forEach(item -> when(subscriptionStore.findQuoteObservation(item.getSnapshotId()))
+                .thenReturn(Optional.of(observation(item))));
+        when(subscriptionStore.create(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SharedBasketApplyResult result = service.apply(
+                pending.getId(), userId, SharedBasketImportService.ApplyMode.ADD_NEW, NOW
+        );
+
+        assertThat(result.getAdded()).isEqualTo(10);
+        assertThat(result.getSkippedByLimit()).isZero();
     }
 
     @Test
@@ -220,7 +240,7 @@ class SharedBasketImportServiceTest {
         SharedBasketImportService importService = new SharedBasketImportService(
                 new SharedBasketUrlParser(), provider, resolver, new PriceSemanticsService(),
                 mock(ResolvedQuotePersistenceService.class), sessions, mock(UserProfileStore.class), subscriptions,
-                50, Duration.ofMinutes(15)
+                Duration.ofMinutes(15)
         );
         SharedBasketItem first = new SharedBasketItem(100, 1001, 1);
         SharedBasketItem duplicateWithQuantity = new SharedBasketItem(100, 1001, 3);
@@ -262,7 +282,7 @@ class SharedBasketImportServiceTest {
         SharedBasketImportService importService = new SharedBasketImportService(
                 new SharedBasketUrlParser(), provider, resolver, new PriceSemanticsService(),
                 quotes, sessions, mock(UserProfileStore.class), subscriptions,
-                50, Duration.ofMinutes(15)
+                Duration.ofMinutes(15)
         );
         SharedBasketItem first = new SharedBasketItem(100, 1001, 1);
         SharedBasketItem second = new SharedBasketItem(100, 1002, 1);
@@ -308,7 +328,7 @@ class SharedBasketImportServiceTest {
         SharedBasketImportService importService = new SharedBasketImportService(
                 new SharedBasketUrlParser(), provider, resolver, new PriceSemanticsService(),
                 mock(ResolvedQuotePersistenceService.class), sessions, users, subscriptions,
-                50, Duration.ofMinutes(15)
+                Duration.ofMinutes(15)
         );
         UserProfile irkutskUser = new UserProfile(
                 userId, 7001L, 7001L, irkutsk(), UserPricePreferences.defaults()
@@ -357,6 +377,7 @@ class SharedBasketImportServiceTest {
                 NOW.minusSeconds(30), NOW.plusSeconds(600)
         );
         when(pendingStore.findOwned(pending.getId(), userId)).thenReturn(Optional.of(pending));
+        lockedUser(userId);
         when(subscriptionStore.findActiveSubscriptions(userId)).thenReturn(List.of(trackedBeyondLimit));
         when(subscriptionStore.findActiveByUserId(userId)).thenReturn(List.of());
 
@@ -467,9 +488,16 @@ class SharedBasketImportServiceTest {
     }
 
     private void lockedUser(UUID userId) {
-        when(userStore.findByIdAndLock(userId)).thenReturn(Optional.of(new UserProfile(
-                userId, 7001L, 7001L, moscow(), UserPricePreferences.defaults()
-        )));
+        lockedUser(userId, 50);
+    }
+
+    private void lockedUser(UUID userId, int activeSubscriptionLimit) {
+        UserProfile user = new UserProfile(
+                userId, 7001L, 7001L, moscow(), UserPricePreferences.defaults(),
+                activeSubscriptionLimit
+        );
+        when(userStore.findById(userId)).thenReturn(Optional.of(user));
+        when(userStore.findByIdAndLock(userId)).thenReturn(Optional.of(user));
     }
 
     private List<Subscription> subscriptions(UUID userId, int count) {
