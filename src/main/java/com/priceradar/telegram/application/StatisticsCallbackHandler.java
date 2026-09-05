@@ -2,6 +2,7 @@ package com.priceradar.telegram.application;
 
 import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
+import com.priceradar.statistics.domain.StatisticsPeriod;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
 import java.time.Clock;
@@ -86,30 +87,23 @@ public class StatisticsCallbackHandler {
             UUID subscriptionId,
             Instant now
     ) {
-        boolean activeAndOwned = statisticsService.calculate(
-                profile.getId(),
-                subscriptionId,
-                com.priceradar.statistics.domain.StatisticsPeriod.ALL_TIME,
-                now
-        ).isPresent();
-        if (!activeAndOwned) {
+        Optional<List<StatisticsPeriod>> availablePeriods =
+                statisticsService.findAvailablePeriods(
+                        profile.getId(),
+                        subscriptionId,
+                        now
+                );
+        if (availablePeriods.isEmpty()) {
             telegramGateway.sendMessage(notFoundMessage(callback.getChatId()));
             return;
         }
-        List<List<TelegramInlineButton>> keyboard = new ArrayList<>(List.of(
-                List.of(
-                        periodButton("7 дней", subscriptionId,
-                                com.priceradar.statistics.domain.StatisticsPeriod.LAST_7_DAYS),
-                        periodButton("30 дней", subscriptionId,
-                                com.priceradar.statistics.domain.StatisticsPeriod.LAST_30_DAYS)
-                ),
-                List.of(
-                        periodButton("365 дней", subscriptionId,
-                                com.priceradar.statistics.domain.StatisticsPeriod.LAST_365_DAYS),
-                        periodButton("Всё время", subscriptionId,
-                                com.priceradar.statistics.domain.StatisticsPeriod.ALL_TIME)
-                )
-        ));
+        List<TelegramInlineButton> buttons = availablePeriods.orElseThrow().stream()
+                .map(period -> periodButton(periodLabel(period), subscriptionId, period))
+                .toList();
+        List<List<TelegramInlineButton>> keyboard = new ArrayList<>();
+        for (int index = 0; index < buttons.size(); index += 2) {
+            keyboard.add(buttons.subList(index, Math.min(index + 2, buttons.size())));
+        }
         keyboard.addAll(TelegramNavigationKeyboard.itemSubscreen(subscriptionId));
         telegramGateway.sendMessage(new OutgoingTelegramMessage(
                 callback.getChatId(),
@@ -121,12 +115,22 @@ public class StatisticsCallbackHandler {
     private TelegramInlineButton periodButton(
             String text,
             UUID subscriptionId,
-            com.priceradar.statistics.domain.StatisticsPeriod period
+            StatisticsPeriod period
     ) {
         return new TelegramInlineButton(
                 text,
                 StatisticsCallbackData.encode(subscriptionId, period)
         );
+    }
+
+    private String periodLabel(StatisticsPeriod period) {
+        return switch (period) {
+            case LAST_1_DAY -> "1 день";
+            case LAST_7_DAYS -> "7 дней";
+            case LAST_30_DAYS -> "30 дней";
+            case LAST_365_DAYS -> "365 дней";
+            case ALL_TIME -> "Всё время";
+        };
     }
 
     private OutgoingTelegramMessage notFoundMessage(long chatId) {

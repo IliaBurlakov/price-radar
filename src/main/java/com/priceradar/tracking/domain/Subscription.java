@@ -19,6 +19,7 @@ public final class Subscription {
     private final Optional<Instant> thresholdObservedAt;
     private final SubscriptionStatus status;
     private final Instant createdAt;
+    private final Instant priceHistoryStartedAt;
     private final Optional<Instant> endedAt;
     private final long version;
 
@@ -37,11 +38,35 @@ public final class Subscription {
             Optional<Instant> endedAt,
             long version
     ) {
+        this(
+                id, userId, watchTargetId, notificationMode, targetPrice,
+                notificationReferencePrice, lastProcessedPriceObservedAt,
+                thresholdState, thresholdObservedAt, status, createdAt,
+                createdAt, endedAt, version
+        );
+    }
+
+    public Subscription(
+            UUID id,
+            UUID userId,
+            UUID watchTargetId,
+            NotificationMode notificationMode,
+            Optional<RubleAmount> targetPrice,
+            Optional<RubleAmount> notificationReferencePrice,
+            Optional<Instant> lastProcessedPriceObservedAt,
+            ThresholdState thresholdState,
+            Optional<Instant> thresholdObservedAt,
+            SubscriptionStatus status,
+            Instant createdAt,
+            Instant priceHistoryStartedAt,
+            Optional<Instant> endedAt,
+            long version
+    ) {
         if (id == null || userId == null || watchTargetId == null || notificationMode == null
                 || targetPrice == null || notificationReferencePrice == null
                 || lastProcessedPriceObservedAt == null
                 || thresholdState == null || thresholdObservedAt == null || status == null
-                || createdAt == null || endedAt == null) {
+                || createdAt == null || priceHistoryStartedAt == null || endedAt == null) {
             throw new IllegalArgumentException("subscription fields must not be null");
         }
         if (version < 0) {
@@ -55,7 +80,7 @@ public final class Subscription {
                 thresholdState,
                 thresholdObservedAt
         );
-        validateLifecycle(status, createdAt, endedAt);
+        validateLifecycle(status, createdAt, priceHistoryStartedAt, endedAt);
         this.id = id;
         this.userId = userId;
         this.watchTargetId = watchTargetId;
@@ -67,6 +92,7 @@ public final class Subscription {
         this.thresholdObservedAt = thresholdObservedAt;
         this.status = status;
         this.createdAt = createdAt;
+        this.priceHistoryStartedAt = priceHistoryStartedAt;
         this.endedAt = endedAt;
         this.version = version;
     }
@@ -90,6 +116,7 @@ public final class Subscription {
                 thresholdObservedAt,
                 SubscriptionStatus.ENDED,
                 createdAt,
+                priceHistoryStartedAt,
                 Optional.of(endedAt),
                 version
         );
@@ -107,7 +134,7 @@ public final class Subscription {
         if (referencePrice == null || referencePrice.getMinorUnits() == 0) {
             throw new IllegalArgumentException("notification reference price must be positive");
         }
-        if (observedAt == null || observedAt.isBefore(createdAt)) {
+        if (observedAt == null || observedAt.isBefore(priceHistoryStartedAt)) {
             throw new IllegalArgumentException(
                     "processed price observation must belong to subscription period"
             );
@@ -124,6 +151,7 @@ public final class Subscription {
                 thresholdObservedAt,
                 status,
                 createdAt,
+                priceHistoryStartedAt,
                 endedAt,
                 version
         );
@@ -136,7 +164,7 @@ public final class Subscription {
         if (newState == null || newState == ThresholdState.NOT_APPLICABLE) {
             throw new IllegalArgumentException("TARGET_PRICE requires applicable threshold state");
         }
-        if (observedAt == null || observedAt.isBefore(createdAt)) {
+        if (observedAt == null || observedAt.isBefore(priceHistoryStartedAt)) {
             throw new IllegalArgumentException("threshold observation must belong to subscription period");
         }
         return new Subscription(
@@ -151,6 +179,7 @@ public final class Subscription {
                 Optional.of(observedAt),
                 status,
                 createdAt,
+                priceHistoryStartedAt,
                 endedAt,
                 version
         );
@@ -188,6 +217,7 @@ public final class Subscription {
                 latestRegularPriceObservedAt,
                 status,
                 createdAt,
+                priceHistoryStartedAt,
                 endedAt,
                 version
         );
@@ -213,6 +243,7 @@ public final class Subscription {
                 Optional.empty(),
                 status,
                 createdAt,
+                priceHistoryStartedAt,
                 endedAt,
                 version
         );
@@ -260,6 +291,10 @@ public final class Subscription {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getPriceHistoryStartedAt() {
+        return priceHistoryStartedAt;
     }
 
     public Optional<Instant> getEndedAt() {
@@ -321,7 +356,7 @@ public final class Subscription {
         if (price.filter(value -> value.getMinorUnits() == 0).isPresent()) {
             throw new IllegalArgumentException("observed price must be positive");
         }
-        if (observedAt.filter(value -> value.isBefore(createdAt)).isPresent()) {
+        if (observedAt.filter(value -> value.isBefore(priceHistoryStartedAt)).isPresent()) {
             throw new IllegalArgumentException("observation must belong to subscription statistics period");
         }
     }
@@ -339,8 +374,12 @@ public final class Subscription {
     private void validateLifecycle(
             SubscriptionStatus status,
             Instant createdAt,
+            Instant priceHistoryStartedAt,
             Optional<Instant> endedAt
     ) {
+        if (priceHistoryStartedAt.isAfter(createdAt)) {
+            throw new IllegalArgumentException("price history must not start after subscription creation");
+        }
         if (status == SubscriptionStatus.ACTIVE && endedAt.isPresent()) {
             throw new IllegalArgumentException("active subscription must not have endedAt");
         }

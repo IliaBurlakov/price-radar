@@ -106,7 +106,7 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
                     SELECT latest.regular_price_minor
                     FROM price_snapshots latest
                     WHERE latest.watch_target_id = subscription.watch_target_id
-                      AND latest.observed_at >= subscription.created_at
+                      AND latest.observed_at >= subscription.price_history_started_at
                       AND latest.observed_at <= :observedToInclusive
                       AND latest.status = 'REGULAR_PRICE'
                       AND latest.price_source = 'PRODUCT'
@@ -118,7 +118,7 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
             FROM subscriptions subscription
             LEFT JOIN price_snapshots snapshot
               ON snapshot.watch_target_id = subscription.watch_target_id
-             AND snapshot.observed_at >= subscription.created_at
+             AND snapshot.observed_at >= subscription.price_history_started_at
              AND snapshot.observed_at <= :observedToInclusive
              AND snapshot.status = 'REGULAR_PRICE'
              AND snapshot.price_source = 'PRODUCT'
@@ -126,7 +126,8 @@ public interface SubscriptionJpaRepository extends JpaRepository<SubscriptionEnt
             WHERE subscription.id = :subscriptionId
               AND subscription.user_id = :userId
               AND subscription.status = 'ACTIVE'
-            GROUP BY subscription.id, subscription.watch_target_id, subscription.created_at
+            GROUP BY subscription.id, subscription.watch_target_id,
+                     subscription.price_history_started_at
             """, nativeQuery = true)
     Optional<SubscriptionPriceHistoryProjection> findValidPriceHistory(
             @Param("userId") UUID userId,
