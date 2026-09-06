@@ -69,10 +69,6 @@ public final class SubscriptionStatistics {
         return observedPrices.getMaximumPrice();
     }
 
-    public Optional<BigDecimal> getAverageMinorUnits() {
-        return observedPrices.getAverageMinorUnits();
-    }
-
     public Optional<RubleAmount> getFirstPrice() {
         return observedPrices.getFirstPrice();
     }

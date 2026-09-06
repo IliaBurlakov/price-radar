@@ -16,7 +16,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -67,7 +66,7 @@ class StatisticsCallbackHandlerTest {
     }
 
     @Test
-    void rendersSubscriptionStatisticsWithRegionAndApproximatePriceWarning() {
+    void rendersSubscriptionStatisticsWithRegion() {
         when(userProfileService.getOrCreate(TELEGRAM_USER_ID, CHAT_ID))
                 .thenReturn(profile);
         UUID subscriptionId = UUID.randomUUID();
@@ -81,7 +80,6 @@ class StatisticsCallbackHandlerTest {
                         RubleAmount.ofMinorUnits(22_800L),
                         Instant.parse("2026-07-18T08:40:00Z"),
                         RubleAmount.ofMinorUnits(49_600L),
-                        new BigDecimal("43900"),
                         RubleAmount.ofMinorUnits(49_600L),
                         RubleAmount.ofMinorUnits(43_400L)
                 )
@@ -123,13 +121,11 @@ class StatisticsCallbackHandlerTest {
 
                         📌 За период
                         Максимум: 496 ₽
-                        Средняя: 439 ₽
                         Проверок цены: 35
 
                         🌍 Город: Москва
 
-                        ℹ️ WB Кошелёк: скидка 3%.
-                        История ведётся с момента добавления товара.""");
+                        ℹ️ WB Кошелёк: скидка 3%.""");
         assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
         assertThat(messageCaptor.getValue().getInlineKeyboard().stream()
                 .flatMap(java.util.Collection::stream)
@@ -214,9 +210,7 @@ class StatisticsCallbackHandlerTest {
 
                         За этот период пока недостаточно данных.
 
-                        🌍 Город: Москва
-
-                        История ведётся с момента добавления товара.""");
+                        🌍 Город: Москва""");
         assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
     }
 
@@ -232,7 +226,6 @@ class StatisticsCallbackHandlerTest {
                         RubleAmount.ofMinorUnits(41_000L),
                         NOW.minusSeconds(60),
                         RubleAmount.ofMinorUnits(43_400L),
-                        new BigDecimal("42200"),
                         RubleAmount.ofMinorUnits(41_000L),
                         RubleAmount.ofMinorUnits(41_000L)
                 )
@@ -265,7 +258,6 @@ class StatisticsCallbackHandlerTest {
                         RubleAmount.ofMinorUnits(41_000L),
                         NOW.minusSeconds(120),
                         RubleAmount.ofMinorUnits(49_600L),
-                        new BigDecimal("45300"),
                         RubleAmount.ofMinorUnits(41_000L),
                         RubleAmount.ofMinorUnits(49_600L)
                 )

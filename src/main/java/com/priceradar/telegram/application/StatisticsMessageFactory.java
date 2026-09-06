@@ -44,7 +44,6 @@ public final class StatisticsMessageFactory {
             text.append("\n\nЗа этот период пока недостаточно данных.");
             text.append("\n\n🌍 Город: ")
                     .append(TelegramDisplayFormatter.region(region));
-            text.append("\n\nИстория ведётся с момента добавления товара.");
             return withItemNavigation(chatId, text.toString(), statistics.getSubscriptionId());
         }
 
@@ -93,18 +92,14 @@ public final class StatisticsMessageFactory {
 
         text.append("\n\n📌 За период")
                 .append("\nМаксимум: ")
-                .append(format(statistics.getMaximumPrice().orElseThrow()));
-        BigDecimal averageMinorUnits = statistics.getAverageMinorUnits().orElseThrow();
-        text.append("\nСредняя: ")
-                .append(formatAverage(averageMinorUnits));
-        text.append("\nПроверок цены: ")
+                .append(format(statistics.getMaximumPrice().orElseThrow()))
+                .append("\nПроверок цены: ")
                 .append(statistics.getObservationCount());
         text.append("\n\n🌍 Город: ")
                 .append(TelegramDisplayFormatter.region(region));
         text.append("\n\nℹ️ WB Кошелёк: скидка ")
                 .append(preferences.getWalletDiscountPercent())
                 .append("%.");
-        text.append("\nИстория ведётся с момента добавления товара.");
         return withItemNavigation(chatId, text.toString(), statistics.getSubscriptionId());
     }
 
@@ -128,10 +123,6 @@ public final class StatisticsMessageFactory {
             case LAST_365_DAYS -> "за 365 дней";
             case ALL_TIME -> "за всё время отслеживания";
         };
-    }
-
-    private String formatAverage(BigDecimal averageMinorUnits) {
-        return RublePriceFormatter.formatMinorUnits(averageMinorUnits);
     }
 
     private String format(RubleAmount amount) {

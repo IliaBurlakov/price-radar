@@ -40,7 +40,11 @@ class TelegramRegionHandlerTest {
 
         OutgoingTelegramMessage message = captured(context.gateway);
         assertThat(message.getText())
-                .contains("Выберите город", "Введите название", "Сейчас выбран: Москва")
+                .contains(
+                        "Выберите город",
+                        "Введите город",
+                        "Сейчас выбран: Москва"
+                )
                 .doesNotContain("1259570991", "dest", "spp");
         verify(context.selection).begin(context.profile, NOW);
     }
