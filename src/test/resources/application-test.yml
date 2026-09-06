@@ -11,5 +11,8 @@ priceradar:
       password: test-only-actuator-password
   telegram:
     enabled: false
+  notification:
+    fan-out:
+      enabled: false
   scheduler:
     enabled: false

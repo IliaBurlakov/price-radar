@@ -6,7 +6,6 @@ import com.priceradar.marketplace.application.MarketplaceProviderFailure;
 import com.priceradar.marketplace.application.MarketplaceProviderFailureCode;
 import com.priceradar.marketplace.application.MarketplaceProviderResult;
 import com.priceradar.marketplace.domain.Marketplace;
-import com.priceradar.notification.application.NotificationObservation;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.application.ProviderPriceFields;
 import com.priceradar.pricing.domain.RubleAmount;
@@ -45,9 +44,6 @@ class WatchTargetCheckServiceTest {
     @Mock
     private WatchTargetCheckTransaction checkTransaction;
 
-    @Mock
-    private NotificationFanOutService notificationFanOutService;
-
     private WatchTargetCheckService checkService;
 
     @BeforeEach
@@ -57,7 +53,6 @@ class WatchTargetCheckServiceTest {
                 List.of(provider),
                 new PriceSemanticsService(),
                 checkTransaction,
-                notificationFanOutService,
                 () -> JITTER,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 Duration.ofHours(6),
@@ -76,24 +71,9 @@ class WatchTargetCheckServiceTest {
                 "scheduled-observation:" + target.getWatchTargetId() + ":"
                         + NOW.minusSeconds(1).truncatedTo(ChronoUnit.MICROS)
         ).getBytes(StandardCharsets.UTF_8));
-        NotificationObservation observation = new NotificationObservation(
-                UUID.randomUUID(),
-                target.getWatchTargetId(),
-                interpretedPrice,
-                NOW.minusSeconds(1)
-        );
         when(provider.fetchCurrent(any())).thenReturn(
                 MarketplaceProviderResult.success(product, NOW.minusSeconds(1))
         );
-        when(checkTransaction.persistObservation(
-                target,
-                observationId,
-                product,
-                interpretedPrice,
-                NOW.minusSeconds(1),
-                NOW,
-                NOW.plus(Duration.ofHours(6)).plus(JITTER)
-        )).thenReturn(observation);
 
         WatchTargetCheckOutcome outcome = checkService.check(target);
 
@@ -108,7 +88,6 @@ class WatchTargetCheckServiceTest {
                 NOW,
                 NOW.plus(Duration.ofHours(6)).plus(JITTER)
         );
-        verify(notificationFanOutService).process(observation, NOW);
     }
 
     @Test

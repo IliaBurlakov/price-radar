@@ -6,12 +6,15 @@ import com.priceradar.notification.application.NotificationOutboxWriter;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.scheduler.application.DueWatchTargetReader;
 import com.priceradar.scheduler.application.NotificationFanOutService;
+import com.priceradar.scheduler.application.NotificationFanOutJobService;
+import com.priceradar.scheduler.application.NotificationFanOutJobStore;
 import com.priceradar.scheduler.application.ScheduleJitter;
 import com.priceradar.scheduler.application.ScheduledObservationStore;
 import com.priceradar.scheduler.application.WatchTargetCheckService;
 import com.priceradar.scheduler.application.WatchTargetCheckTransaction;
 import com.priceradar.scheduler.application.SubscriptionNotificationProcessor;
 import com.priceradar.scheduler.infrastructure.RandomScheduleJitter;
+import com.priceradar.scheduler.infrastructure.NotificationFanOutWorker;
 import com.priceradar.scheduler.infrastructure.WatchTargetSchedulerWorker;
 import com.priceradar.tracking.application.SubscriptionStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -25,7 +28,7 @@ import java.util.List;
 
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
-@EnableConfigurationProperties(SchedulerProperties.class)
+@EnableConfigurationProperties({SchedulerProperties.class, NotificationFanOutProperties.class})
 public class SchedulerConfiguration {
 
     @Bean
@@ -35,9 +38,10 @@ public class SchedulerConfiguration {
 
     @Bean
     public WatchTargetCheckTransaction watchTargetCheckTransaction(
-            ScheduledObservationStore observationStore
+            ScheduledObservationStore observationStore,
+            NotificationFanOutJobStore fanOutJobStore
     ) {
-        return new WatchTargetCheckTransaction(observationStore);
+        return new WatchTargetCheckTransaction(observationStore, fanOutJobStore);
     }
 
     @Bean
@@ -66,7 +70,6 @@ public class SchedulerConfiguration {
             List<MarketplaceProvider> marketplaceProviders,
             PriceSemanticsService priceSemanticsService,
             WatchTargetCheckTransaction checkTransaction,
-            NotificationFanOutService notificationFanOutService,
             ScheduleJitter scheduleJitter,
             Clock providerClock,
             SchedulerProperties properties
@@ -75,12 +78,42 @@ public class SchedulerConfiguration {
                 marketplaceProviders,
                 priceSemanticsService,
                 checkTransaction,
-                notificationFanOutService,
                 scheduleJitter,
                 providerClock,
                 properties.getRefreshInterval(),
                 properties.getFailureRetryDelay()
         );
+    }
+
+    @Bean
+    public NotificationFanOutJobService notificationFanOutJobService(
+            NotificationFanOutJobStore jobStore,
+            NotificationFanOutService fanOutService,
+            Clock providerClock,
+            NotificationFanOutProperties properties
+    ) {
+        return new NotificationFanOutJobService(
+                jobStore,
+                fanOutService,
+                providerClock,
+                properties.getBatchSize(),
+                properties.getClaimTimeout(),
+                properties.getBaseBackoff(),
+                properties.getMaxBackoff()
+        );
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "priceradar.notification.fan-out",
+            name = "enabled",
+            havingValue = "true",
+            matchIfMissing = true
+    )
+    public NotificationFanOutWorker notificationFanOutWorker(
+            NotificationFanOutJobService jobService
+    ) {
+        return new NotificationFanOutWorker(jobService);
     }
 
     @Bean

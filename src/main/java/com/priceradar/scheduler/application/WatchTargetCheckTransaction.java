@@ -11,12 +11,17 @@ import java.util.UUID;
 public class WatchTargetCheckTransaction {
 
     private final ScheduledObservationStore observationStore;
+    private final NotificationFanOutJobStore fanOutJobStore;
 
-    public WatchTargetCheckTransaction(ScheduledObservationStore observationStore) {
-        if (observationStore == null) {
+    public WatchTargetCheckTransaction(
+            ScheduledObservationStore observationStore,
+            NotificationFanOutJobStore fanOutJobStore
+    ) {
+        if (observationStore == null || fanOutJobStore == null) {
             throw new IllegalArgumentException("watch target check dependencies must not be null");
         }
         this.observationStore = observationStore;
+        this.fanOutJobStore = fanOutJobStore;
     }
 
     @Transactional
@@ -44,6 +49,7 @@ public class WatchTargetCheckTransaction {
                 price,
                 observedAt
         );
+        fanOutJobStore.createIfAbsent(snapshotId, completedAt);
         observationStore.updateProductMetadata(target.getProductId(), product, observedAt);
 
         NotificationObservation observation = new NotificationObservation(

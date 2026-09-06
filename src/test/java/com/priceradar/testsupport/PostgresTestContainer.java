@@ -5,7 +5,8 @@ import org.testcontainers.utility.DockerImageName;
 
 public final class PostgresTestContainer {
 
-    private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:16-alpine");
+    private static final DockerImageName POSTGRES_IMAGE =
+            DockerImageName.parse("postgres:17.11-alpine");
 
     private PostgresTestContainer() {
     }

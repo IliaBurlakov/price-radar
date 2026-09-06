@@ -7,7 +7,6 @@ import com.priceradar.marketplace.application.MarketplaceProviderFailure;
 import com.priceradar.marketplace.application.MarketplaceProviderFailureCode;
 import com.priceradar.marketplace.application.MarketplaceProviderResult;
 import com.priceradar.marketplace.domain.Marketplace;
-import com.priceradar.notification.application.NotificationObservation;
 import com.priceradar.pricing.application.InterpretedPrice;
 import com.priceradar.pricing.application.PriceSemanticsService;
 import com.priceradar.pricing.application.ProviderPriceFields;
@@ -31,7 +30,6 @@ public final class WatchTargetCheckService {
     private final Map<Marketplace, MarketplaceProvider> providers;
     private final PriceSemanticsService priceSemanticsService;
     private final WatchTargetCheckTransaction checkTransaction;
-    private final NotificationFanOutService notificationFanOutService;
     private final ScheduleJitter scheduleJitter;
     private final Clock clock;
     private final Duration refreshInterval;
@@ -41,14 +39,12 @@ public final class WatchTargetCheckService {
             List<MarketplaceProvider> providers,
             PriceSemanticsService priceSemanticsService,
             WatchTargetCheckTransaction checkTransaction,
-            NotificationFanOutService notificationFanOutService,
             ScheduleJitter scheduleJitter,
             Clock clock,
             Duration refreshInterval,
             Duration failureRetryDelay
     ) {
         if (providers == null || priceSemanticsService == null || checkTransaction == null
-                || notificationFanOutService == null
                 || scheduleJitter == null || clock == null || refreshInterval == null
                 || failureRetryDelay == null) {
             throw new IllegalArgumentException("watch target check dependencies must not be null");
@@ -58,7 +54,6 @@ public final class WatchTargetCheckService {
         this.providers = indexProviders(providers);
         this.priceSemanticsService = priceSemanticsService;
         this.checkTransaction = checkTransaction;
-        this.notificationFanOutService = notificationFanOutService;
         this.scheduleJitter = scheduleJitter;
         this.clock = clock;
         this.refreshInterval = refreshInterval;
@@ -100,7 +95,7 @@ public final class WatchTargetCheckService {
         Instant nextCheckAt = completedAt
                 .plus(refreshInterval)
                 .plus(scheduleJitter.next());
-        NotificationObservation observation = checkTransaction.persistObservation(
+        checkTransaction.persistObservation(
                 target,
                 observationId(target, observedAt),
                 product,
@@ -109,7 +104,6 @@ public final class WatchTargetCheckService {
                 completedAt,
                 nextCheckAt
         );
-        notificationFanOutService.process(observation, completedAt);
         return WatchTargetCheckOutcome.OBSERVATION_SAVED;
     }
 

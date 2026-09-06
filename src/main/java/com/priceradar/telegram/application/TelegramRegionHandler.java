@@ -170,7 +170,7 @@ public final class TelegramRegionHandler {
             text.append(index + 1).append(". ")
                     .append(locationLabelFormatter.format(candidates.get(index))).append('\n');
         }
-        text.append("\nОтправьте номер нужного варианта.");
+        text.append("\nОтправьте номер нужного варианта.\n\n");
         return new OutgoingTelegramMessage(chatId, text.toString(), TelegramNavigationKeyboard.home());
     }
 

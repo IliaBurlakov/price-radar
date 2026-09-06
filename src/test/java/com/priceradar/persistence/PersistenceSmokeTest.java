@@ -24,6 +24,8 @@ import com.priceradar.product.infrastructure.persistence.ProductJpaRepository;
 import com.priceradar.scheduler.application.DueWatchTarget;
 import com.priceradar.scheduler.application.DueWatchTargetReader;
 import com.priceradar.scheduler.application.NotificationFanOutService;
+import com.priceradar.scheduler.application.NotificationFanOutJobStore;
+import com.priceradar.scheduler.application.PendingNotificationFanOutJob;
 import com.priceradar.scheduler.application.WatchTargetCheckTransaction;
 import com.priceradar.statistics.application.SubscriptionStatistics;
 import com.priceradar.statistics.application.SubscriptionStatisticsService;
@@ -50,6 +52,7 @@ import com.priceradar.telegram.application.PendingTargetPriceStore;
 import com.priceradar.user.application.UserProfile;
 import com.priceradar.user.application.UserProfileService;
 import com.priceradar.user.infrastructure.persistence.UserProfileJpaRepository;
+import com.priceradar.testsupport.PostgresTestContainer;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,8 +92,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PersistenceSmokeTest {
 
     @Container
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:17-alpine");
+    private static final PostgreSQLContainer<?> POSTGRES = PostgresTestContainer.create();
 
     @DynamicPropertySource
     static void configureDatabase(DynamicPropertyRegistry registry) {
@@ -157,6 +159,9 @@ class PersistenceSmokeTest {
     private NotificationFanOutService notificationFanOutService;
 
     @Autowired
+    private NotificationFanOutJobStore notificationFanOutJobStore;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -185,7 +190,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("19");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("20");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -328,6 +333,9 @@ class PersistenceSmokeTest {
                 quoteCommand(777777L, now.minusSeconds(5))
         );
         UserProfile user = userProfileService.getOrCreate(10001L, 10001L);
+        userRegionService.changeLocation(
+                user.getId(), com.priceradar.testsupport.TestMarketplaceRegions.moscow(), now
+        );
 
         SubscriptionCreationResult result = subscriptionService.createFromQuote(
                 user.getId(),
@@ -453,7 +461,7 @@ class PersistenceSmokeTest {
         assertThat(minimum.getSubscription().orElseThrow().getCreatedAt())
                 .isEqualTo(original.getCreatedAt());
         assertThat(minimum.getSubscription().orElseThrow().getNotificationReferencePrice())
-                .contains(RubleAmount.ofMinorUnits(30_000));
+                .contains(RubleAmount.ofMinorUnits(10_000));
         assertThat(minimum.getSubscription().orElseThrow().getLastProcessedPriceObservedAt())
                 .contains(createdAt.plusSeconds(180));
         assertThat(afterTarget.getMinimumPrice()).isEqualTo(before.getMinimumPrice());
@@ -482,6 +490,16 @@ class PersistenceSmokeTest {
 
         UserProfile firstUser = userProfileService.getOrCreate(30001L, 30001L);
         UserProfile secondUser = userProfileService.getOrCreate(30002L, 30002L);
+        userRegionService.changeLocation(
+                firstUser.getId(),
+                com.priceradar.testsupport.TestMarketplaceRegions.moscow(),
+                now
+        );
+        userRegionService.changeLocation(
+                secondUser.getId(),
+                com.priceradar.testsupport.TestMarketplaceRegions.moscow(),
+                now
+        );
         subscriptionService.createFromQuote(
                 firstUser.getId(),
                 quote.getSnapshotId(),
@@ -529,12 +547,61 @@ class PersistenceSmokeTest {
                 completedAt,
                 nextCheckAt
         );
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM notification_fanout_jobs WHERE snapshot_id = ?",
+                Long.class,
+                observation.getSnapshotId()
+        )).isEqualTo(1L);
         notificationFanOutService.process(observation, completedAt);
 
         assertThat(snapshotRepository.count()).isEqualTo(2);
         assertThat(notificationOutboxRepository.count()).isEqualTo(2);
         assertThat(watchTargetRepository.findById(watchTargetId).orElseThrow().getNextCheckAt())
                 .isEqualTo(nextCheckAt);
+    }
+
+    @Test
+    void expiredFanOutClaimBecomesAvailableAgain() {
+        Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        PersistedResolvedQuote quote = quotePersistenceService.save(
+                quoteCommand(919191L, createdAt.minusSeconds(5))
+        );
+        UUID snapshotId = quote.getSnapshotId();
+        notificationFanOutJobStore.createIfAbsent(snapshotId, createdAt);
+
+        PendingNotificationFanOutJob pending = notificationFanOutJobStore
+                .findDue(createdAt, 10)
+                .getFirst();
+        UUID firstClaim = UUID.randomUUID();
+        Instant claimUntil = createdAt.plusSeconds(60);
+        assertThat(notificationFanOutJobStore.claim(
+                snapshotId,
+                pending.getNextAttemptAt(),
+                createdAt,
+                firstClaim,
+                claimUntil
+        )).isTrue();
+        assertThat(notificationFanOutJobStore.findDue(createdAt.plusSeconds(30), 10))
+                .isEmpty();
+
+        PendingNotificationFanOutJob recovered = notificationFanOutJobStore
+                .findDue(claimUntil.plusMillis(1), 10)
+                .getFirst();
+        UUID secondClaim = UUID.randomUUID();
+        assertThat(notificationFanOutJobStore.claim(
+                snapshotId,
+                recovered.getNextAttemptAt(),
+                claimUntil.plusMillis(1),
+                secondClaim,
+                claimUntil.plusSeconds(60)
+        )).isTrue();
+        assertThat(notificationFanOutJobStore.markDone(
+                snapshotId,
+                secondClaim,
+                claimUntil.plusSeconds(1)
+        )).isTrue();
+        assertThat(notificationFanOutJobStore.findDue(claimUntil.plusSeconds(61), 10))
+                .isEmpty();
     }
 
     @Test
@@ -747,8 +814,6 @@ class PersistenceSmokeTest {
                 .contains(subscriptionStartedAt.plusSeconds(1));
         assertThat(firstPeriod.getMaximumPrice())
                 .contains(RubleAmount.ofMinorUnits(11_001L));
-        assertThat(firstPeriod.getAverageMinorUnits().orElseThrow())
-                .isEqualByComparingTo("10000.3333333333333333");
         assertThat(firstPeriod.getFirstPrice())
                 .contains(RubleAmount.ofMinorUnits(10_000L));
         assertThat(firstPeriod.getLatestPrice())
@@ -821,8 +886,6 @@ class PersistenceSmokeTest {
         assertThat(newPeriod.getPriceChangeMinorUnits()).contains(-1_500L);
         assertThat(newPeriod.getLatestPriceDifferenceFromMinimum())
                 .contains(RubleAmount.ofMinorUnits(0));
-        assertThat(newPeriod.getAverageMinorUnits().orElseThrow())
-                .isEqualByComparingTo("9250");
     }
 
     @Test

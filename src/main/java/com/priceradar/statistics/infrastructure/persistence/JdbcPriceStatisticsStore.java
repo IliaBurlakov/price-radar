@@ -6,7 +6,6 @@ import com.priceradar.statistics.application.PriceStatisticsStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -53,7 +52,6 @@ public class JdbcPriceStatisticsStore implements PriceStatisticsStore {
                             COUNT(*) AS observation_count,
                             MIN(regular_price_minor) AS minimum_price_minor,
                             MAX(regular_price_minor) AS maximum_price_minor,
-                            AVG(regular_price_minor) AS average_price_minor,
                             (
                                 SELECT regular_price_minor
                                 FROM observations
@@ -88,7 +86,6 @@ public class JdbcPriceStatisticsStore implements PriceStatisticsStore {
         }
         long minimumPriceMinor = resultSet.getLong("minimum_price_minor");
         long maximumPriceMinor = resultSet.getLong("maximum_price_minor");
-        BigDecimal averagePriceMinor = resultSet.getBigDecimal("average_price_minor");
         long firstPriceMinor = resultSet.getLong("first_price_minor");
         long latestPriceMinor = resultSet.getLong("latest_price_minor");
         Instant minimumObservedAt = resultSet.getTimestamp("minimum_observed_at").toInstant();
@@ -97,7 +94,6 @@ public class JdbcPriceStatisticsStore implements PriceStatisticsStore {
                 RubleAmount.ofMinorUnits(minimumPriceMinor),
                 minimumObservedAt,
                 RubleAmount.ofMinorUnits(maximumPriceMinor),
-                averagePriceMinor,
                 RubleAmount.ofMinorUnits(firstPriceMinor),
                 RubleAmount.ofMinorUnits(latestPriceMinor)
         );
