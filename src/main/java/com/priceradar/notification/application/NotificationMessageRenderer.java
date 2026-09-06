@@ -56,7 +56,7 @@ public final class NotificationMessageRenderer {
             text.append("\n\nЦелевая цена: ")
                     .append(format(notification.getTargetPrice().orElseThrow()));
         }
-        text.append("\nНовая цена без WB Кошелька: ")
+        text.append("\n\nНовая цена без WB Кошелька: ")
                 .append(format(notification.getCurrentPrice()));
         appendWalletEstimate(
                 text,
@@ -65,11 +65,9 @@ public final class NotificationMessageRenderer {
                 "Новая цена",
                 true
         );
-        text.append("\n\nГород: ")
-                .append(TelegramDisplayFormatter.region(notification.getCityName()));
-        text.append("\nПроверено: ")
+        text.append("\n\nЦена проверена: ")
                 .append(TelegramDisplayFormatter.observedAt(notification.getObservedAt()));
-        text.append("\nОткрыть товар:\n").append(notification.getCanonicalUrl());
+        text.append("\n\nОткрыть товар:\n").append(notification.getCanonicalUrl());
 
         return new OutgoingTelegramMessage(
                 notification.getChatId(),

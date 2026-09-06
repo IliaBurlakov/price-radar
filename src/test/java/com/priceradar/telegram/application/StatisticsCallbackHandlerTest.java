@@ -109,14 +109,14 @@ class StatisticsCallbackHandlerTest {
                         🗓 17.07.2026 — 18.07.2026
 
                         💰 Последняя известная цена
-                        434 ₽ · с WB Кошельком ≈ 421 ₽
+                        434 ₽ · с WB Кошельком 420 ₽
 
                         📉 Изменение за период
                         496 ₽ → 434 ₽
                         −62 ₽ (−12,5%)
 
                         🏷 Минимум
-                        228 ₽ · с WB Кошельком ≈ 221 ₽
+                        228 ₽ · с WB Кошельком 221 ₽
                         Зафиксирован: 18.07.2026 11:40 МСК
                         Сейчас цена на 206 ₽ выше минимума.
 
@@ -127,7 +127,7 @@ class StatisticsCallbackHandlerTest {
 
                         🌍 Город: Москва
 
-                        ℹ️ WB Кошелёк: оценка со скидкой 3%.
+                        ℹ️ WB Кошелёк: скидка 3%.
                         История ведётся с момента добавления товара.""");
         assertThat(messageCaptor.getValue().getInlineKeyboard()).isNotEmpty();
         assertThat(messageCaptor.getValue().getInlineKeyboard().stream()

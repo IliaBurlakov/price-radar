@@ -24,7 +24,7 @@ class PricingRulesTest {
                 .estimate(price, UserPricePreferences.defaults())
                 .orElseThrow();
 
-        assertThat(estimate.getAmount()).isEqualTo(RubleAmount.ofMinorUnits(114_977L));
+        assertThat(estimate.getAmount()).isEqualTo(RubleAmount.ofMinorUnits(114_900L));
         assertThat(estimate.getWalletDiscountPercent()).isEqualTo(3);
         assertThat(estimate.getSource()).isEqualTo(WalletPriceSource.ESTIMATED_BY_PERCENT);
     }

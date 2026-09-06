@@ -91,7 +91,7 @@ public final class TelegramRegionHandler {
                         + locationLabelFormatter.format(location.toCandidate()) + '.')
                 .orElse("");
         String text = "📍 Выберите город" + current + "\n\n"
-                + "Введите название города, для которого нужно отслеживать цены Wildberries.\n\n"
+                + "Введите город, для которого нужно отслеживать цены Wildberries.\n\n"
                 + "Например:\nМосква\n\n";
         List<List<TelegramInlineButton>> keyboard = profile.isRegionSelected()
                 ? TelegramNavigationKeyboard.home()
@@ -204,10 +204,8 @@ public final class TelegramRegionHandler {
                 + "Чтобы выбрать другой город, сначала остановите все активные отслеживания.";
         return new OutgoingTelegramMessage(chatId, text, List.of(
                 List.of(new TelegramInlineButton("🧹 Очистить все", ClearTrackingCallbackData.START)),
-                List.of(TelegramNavigationKeyboard.button(
-                        "Мои товары", MainMenuCallbackData.Action.TRACKED_ITEMS
-                )),
-                List.of(TelegramNavigationKeyboard.button("Главное меню", MainMenuCallbackData.Action.HOME))
+                List.of(TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.TRACKED_ITEMS)),
+                List.of(TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.HOME))
         ));
     }
 

@@ -101,7 +101,7 @@ public final class StatisticsMessageFactory {
                 .append(statistics.getObservationCount());
         text.append("\n\n🌍 Город: ")
                 .append(TelegramDisplayFormatter.region(region));
-        text.append("\n\nℹ️ WB Кошелёк: оценка со скидкой ")
+        text.append("\n\nℹ️ WB Кошелёк: скидка ")
                 .append(preferences.getWalletDiscountPercent())
                 .append("%.");
         text.append("\nИстория ведётся с момента добавления товара.");

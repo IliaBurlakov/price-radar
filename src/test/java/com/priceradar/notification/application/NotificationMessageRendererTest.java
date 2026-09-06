@@ -37,10 +37,12 @@ class NotificationMessageRendererTest {
                 .contains("Новая минимальная цена")
                 .contains("Кофемолка")
                 .contains("Предыдущая цена без WB Кошелька: 120 ₽")
-                .contains("Предыдущая цена с WB Кошельком: ≈ 116 ₽")
+                .contains("Предыдущая цена с WB Кошельком: 116 ₽\n\n"
+                        + "Новая цена без WB Кошелька: 100 ₽")
                 .contains("Новая цена без WB Кошелька: 100 ₽")
-                .contains("Новая цена с WB Кошельком: ≈ 97 ₽")
-                .contains("Город: Москва")
+                .contains("Новая цена с WB Кошельком: 97 ₽ (скидка 3%)\n\n"
+                        + "Цена проверена: 18.07.2026 09:00 МСК\n\n"
+                        + "Открыть товар:\n")
                 .contains("https://www.wildberries.ru/catalog/123456/detail.aspx")
                 .doesNotContain("Цена может отличаться");
         assertThat(message.getInlineKeyboard()).isNotEmpty();
@@ -48,8 +50,8 @@ class NotificationMessageRendererTest {
                 .contains("Целевая цена достигнута")
                 .contains("Целевая цена: 110 ₽")
                 .contains("Новая цена без WB Кошелька: 100 ₽")
-                .contains("Новая цена с WB Кошельком: ≈ 97 ₽")
-                .contains("Проверено: 18.07.2026 09:00 МСК");
+                .contains("Новая цена с WB Кошельком: 97 ₽")
+                .contains("Цена проверена: 18.07.2026 09:00 МСК");
     }
 
     private PendingNotificationDelivery notification(

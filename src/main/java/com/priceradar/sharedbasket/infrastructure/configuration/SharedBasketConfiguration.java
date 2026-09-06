@@ -36,7 +36,7 @@ public class SharedBasketConfiguration {
         return new SharedBasketImportService(
                 urlParser, basketProvider, productResolver, priceSemanticsService,
                 quotePersistenceService, pendingStore, userProfileStore, subscriptionStore,
-                policy.getActiveSubscriptionLimit(), policy.getSharedBasketImportTtl()
+                policy.getSharedBasketImportTtl()
         );
     }
 }

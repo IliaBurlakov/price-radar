@@ -28,13 +28,14 @@ class TrackedItemsMessageFactoryTest {
             items.add(item("Товар " + index, 1000L + index, Optional.empty()));
         }
 
-        OutgoingTelegramMessage firstPage = factory.createList(7001L, items, 0, "Москва");
-        OutgoingTelegramMessage secondPage = factory.createList(7001L, items, 1, "Москва");
+        OutgoingTelegramMessage firstPage = factory.createList(7001L, items, 0, "Москва", 10);
+        OutgoingTelegramMessage secondPage = factory.createList(7001L, items, 1, "Москва", 10);
 
         assertThat(firstPage.getText())
                 .contains("📦 Мои товары")
                 .contains("Отслеживаемые товары для города Москва.")
                 .contains("Всего товаров: 9")
+                .contains("Отслеживается: 9 из 10 · можно добавить ещё 1")
                 .contains("Страница 1 из 2")
                 .doesNotContain("1. Товар 1", "Выберите товар:");
         assertThat(firstPage.getInlineKeyboard())
@@ -51,6 +52,13 @@ class TrackedItemsMessageFactoryTest {
                 .singleElement()
                 .satisfies(row -> assertThat(row.getFirst().getText())
                         .isEqualTo("9. Товар 9"));
+        assertThat(firstPage.getInlineKeyboard())
+                .flatExtracting(row -> row)
+                .extracting(TelegramInlineButton::getText)
+                .contains("➕ Добавить товар", "🛒 Импортировать корзину", "🏠 Главное меню");
+        assertThat(firstPage.getInlineKeyboard().getLast())
+                .extracting(TelegramInlineButton::getText)
+                .containsExactly("🏠 Главное меню");
     }
 
     @Test
@@ -72,7 +80,7 @@ class TrackedItemsMessageFactoryTest {
 
         assertThat(message.getText())
                 .contains("Цена без WB Кошелька: 1 222 ₽")
-                .contains("С WB Кошельком: ≈ 1 185 ₽")
+                .contains("С WB Кошельком: 1 185 ₽")
                 .doesNotContain("Size: 0")
                 .doesNotContain("Размер: 0");
         assertThat(message.getInlineKeyboard())
@@ -80,7 +88,7 @@ class TrackedItemsMessageFactoryTest {
                 .extracting(TelegramInlineButton::getText)
                 .contains(
                         "📊 Статистика",
-                        "🔔 Условие уведомлений",
+                        "🔔 Настроить уведомления",
                         "❌ Остановить отслеживание",
                         "← Назад"
                 )

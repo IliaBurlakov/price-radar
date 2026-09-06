@@ -74,7 +74,9 @@ public class TrackedItemsMessageHandler {
         );
         String cityName = profile.getPriceContext().getCityName();
         List<TrackedSubscriptionItem> items = subscriptionService.findActive(profile.getId());
-        telegramGateway.sendMessage(messageFactory.createList(chatId, items, 0, cityName));
+        telegramGateway.sendMessage(messageFactory.createList(
+                chatId, items, 0, cityName, profile.getActiveSubscriptionLimit()
+        ));
     }
 
     public boolean handleCallback(IncomingTelegramCallback callback) {
@@ -255,9 +257,9 @@ public class TrackedItemsMessageHandler {
     private OutgoingTelegramMessage conditionConflictMessage(long chatId, UUID subscriptionId) {
         return new OutgoingTelegramMessage(
                 chatId,
-                "Условие уведомлений уже изменилось. Откройте его ещё раз.",
+                "Настройки уведомлений уже изменились. Откройте их ещё раз.",
                 List.of(List.of(new TelegramInlineButton(
-                        "Открыть условие",
+                        "Открыть настройки",
                         SubscriptionCallbackData.encode(
                                 SubscriptionCallbackData.Action.SHOW_NOTIFICATION_CONDITION,
                                 subscriptionId
@@ -291,7 +293,8 @@ public class TrackedItemsMessageHandler {
                 chatId,
                 items,
                 pageNumber,
-                profile.getPriceContext().getCityName()
+                profile.getPriceContext().getCityName(),
+                profile.getActiveSubscriptionLimit()
         ));
     }
 
@@ -357,9 +360,7 @@ public class TrackedItemsMessageHandler {
                         TelegramNavigationKeyboard.button(
                                 "🌍 Выбрать город", MainMenuCallbackData.Action.REGION
                         ),
-                        TelegramNavigationKeyboard.button(
-                                "Главное меню", MainMenuCallbackData.Action.HOME
-                        )
+                        TelegramNavigationKeyboard.button(MainMenuCallbackData.Action.HOME)
                 ))
         ));
     }
@@ -407,8 +408,7 @@ public class TrackedItemsMessageHandler {
             SubscriptionEndResult result
     ) {
         String text = switch (result.getStatus()) {
-            case ENDED -> "Отслеживание остановлено. Уведомления по этому товару "
-                    + "больше не придут.";
+            case ENDED -> "✅ Отслеживание остановлено.";
             case NOT_FOUND -> "Этот товар уже не отслеживается.";
         };
         return new OutgoingTelegramMessage(

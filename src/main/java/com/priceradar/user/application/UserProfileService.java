@@ -10,6 +10,7 @@ public class UserProfileService {
 
     private final UserProfileStore profileStore;
     private final UserPricePreferences defaultPricePreferences;
+    private final int defaultActiveSubscriptionLimit;
     private final Clock clock;
 
     public UserProfileService(
@@ -17,11 +18,22 @@ public class UserProfileService {
             UserPricePreferences defaultPricePreferences,
             Clock clock
     ) {
-        if (profileStore == null || defaultPricePreferences == null || clock == null) {
+        this(profileStore, defaultPricePreferences, 10, clock);
+    }
+
+    public UserProfileService(
+            UserProfileStore profileStore,
+            UserPricePreferences defaultPricePreferences,
+            int defaultActiveSubscriptionLimit,
+            Clock clock
+    ) {
+        if (profileStore == null || defaultPricePreferences == null || clock == null
+                || defaultActiveSubscriptionLimit <= 0) {
             throw new IllegalArgumentException("user profile service dependencies must not be null");
         }
         this.profileStore = profileStore;
         this.defaultPricePreferences = defaultPricePreferences;
+        this.defaultActiveSubscriptionLimit = defaultActiveSubscriptionLimit;
         this.clock = clock;
     }
 
@@ -38,6 +50,7 @@ public class UserProfileService {
                         telegramUserId,
                         telegramChatId,
                         defaultPricePreferences,
+                        defaultActiveSubscriptionLimit,
                         now
                 ));
     }

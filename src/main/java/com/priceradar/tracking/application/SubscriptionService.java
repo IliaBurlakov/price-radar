@@ -25,27 +25,24 @@ public class SubscriptionService {
     private final UserProfileStore userProfileStore;
     private final SubscriptionStore subscriptionStore;
     private final InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer;
-    private final int activeSubscriptionLimit;
     private final Duration quoteTtl;
 
     public SubscriptionService(
             UserProfileStore userProfileStore,
             SubscriptionStore subscriptionStore,
             InitialThresholdNotificationEnqueuer thresholdNotificationEnqueuer,
-            int activeSubscriptionLimit,
             Duration quoteTtl
     ) {
         if (userProfileStore == null || subscriptionStore == null
                 || thresholdNotificationEnqueuer == null || quoteTtl == null) {
             throw new IllegalArgumentException("subscription service dependencies must not be null");
         }
-        if (activeSubscriptionLimit <= 0 || quoteTtl.isZero() || quoteTtl.isNegative()) {
-            throw new IllegalArgumentException("subscription policy values must be positive");
+        if (quoteTtl.isZero() || quoteTtl.isNegative()) {
+            throw new IllegalArgumentException("quote TTL must be positive");
         }
         this.userProfileStore = userProfileStore;
         this.subscriptionStore = subscriptionStore;
         this.thresholdNotificationEnqueuer = thresholdNotificationEnqueuer;
-        this.activeSubscriptionLimit = activeSubscriptionLimit;
         this.quoteTtl = quoteTtl;
     }
 
@@ -405,7 +402,7 @@ public class SubscriptionService {
         if (existing.isPresent()) {
             return SubscriptionPreparationResult.alreadyActive(existing.get());
         }
-        if (subscriptionStore.countActive(userId) >= activeSubscriptionLimit) {
+        if (subscriptionStore.countActive(userId) >= user.getActiveSubscriptionLimit()) {
             return SubscriptionPreparationResult.failed(
                     SubscriptionPreparationResult.Status.LIMIT_REACHED
             );

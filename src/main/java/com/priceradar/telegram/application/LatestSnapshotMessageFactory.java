@@ -47,7 +47,7 @@ public final class LatestSnapshotMessageFactory {
         }
 
         InterpretedPrice price = snapshot.getInterpretedPrice().orElseThrow();
-        text.append("\n\nПроверено: ")
+        text.append("\n\nЦена проверена: ")
                 .append(TelegramDisplayFormatter.observedAt(
                         snapshot.getObservedAt().orElseThrow()
                 ));

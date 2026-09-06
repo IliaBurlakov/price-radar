@@ -10,39 +10,35 @@ public final class TelegramNavigationKeyboard {
 
     public static List<List<TelegramInlineButton>> mainMenu() {
         return List.of(
-                List.of(button("➕ Добавить товар", MainMenuCallbackData.Action.ADD_PRODUCT)),
-                List.of(button("🛒 Импортировать корзину", MainMenuCallbackData.Action.IMPORT_BASKET)),
+                List.of(button(MainMenuCallbackData.Action.ADD_PRODUCT)),
+                List.of(button(MainMenuCallbackData.Action.IMPORT_BASKET)),
                 List.of(
-                        button("📦 Мои товары", MainMenuCallbackData.Action.TRACKED_ITEMS),
-                        button("🌍 Город", MainMenuCallbackData.Action.REGION)
+                        button(MainMenuCallbackData.Action.TRACKED_ITEMS),
+                        button(MainMenuCallbackData.Action.REGION)
                 ),
-                List.of(button(
-                        "💳 WB Кошелёк", MainMenuCallbackData.Action.WALLET_DISCOUNT
-                )),
+                List.of(button(MainMenuCallbackData.Action.WALLET_DISCOUNT)),
                 List.of(
-                        button("❓ Помощь", MainMenuCallbackData.Action.HELP),
-                        button("💬 Обратная связь", MainMenuCallbackData.Action.FEEDBACK)
+                        button(MainMenuCallbackData.Action.HELP),
+                        button(MainMenuCallbackData.Action.FEEDBACK)
                 )
         );
     }
 
     public static List<List<TelegramInlineButton>> home() {
-        return List.of(List.of(
-                button("Главное меню", MainMenuCallbackData.Action.HOME)
-        ));
+        return List.of(List.of(button(MainMenuCallbackData.Action.HOME)));
     }
 
     public static List<List<TelegramInlineButton>> addProductAndHome() {
         return List.of(List.of(
-                button("Добавить товар", MainMenuCallbackData.Action.ADD_PRODUCT),
-                button("Главное меню", MainMenuCallbackData.Action.HOME)
+                button(MainMenuCallbackData.Action.ADD_PRODUCT),
+                button(MainMenuCallbackData.Action.HOME)
         ));
     }
 
     public static List<List<TelegramInlineButton>> trackedItemsAndHome() {
         return List.of(List.of(
-                button("Мои товары", MainMenuCallbackData.Action.TRACKED_ITEMS),
-                button("Главное меню", MainMenuCallbackData.Action.HOME)
+                button(MainMenuCallbackData.Action.TRACKED_ITEMS),
+                button(MainMenuCallbackData.Action.HOME)
         ));
     }
 
@@ -67,5 +63,22 @@ public final class TelegramNavigationKeyboard {
             MainMenuCallbackData.Action action
     ) {
         return new TelegramInlineButton(text, MainMenuCallbackData.encode(action));
+    }
+
+    public static TelegramInlineButton button(MainMenuCallbackData.Action action) {
+        return button(label(action), action);
+    }
+
+    private static String label(MainMenuCallbackData.Action action) {
+        return switch (action) {
+            case HOME -> "🏠 Главное меню";
+            case ADD_PRODUCT -> "➕ Добавить товар";
+            case IMPORT_BASKET -> "🛒 Импортировать корзину";
+            case TRACKED_ITEMS -> "📦 Мои товары";
+            case REGION -> "🌍 Город";
+            case WALLET_DISCOUNT -> "💳 WB Кошелёк";
+            case HELP -> "❓ Помощь";
+            case FEEDBACK -> "💬 Обратная связь";
+        };
     }
 }

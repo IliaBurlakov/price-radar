@@ -38,10 +38,14 @@ public final class WalletEstimateService {
 
         long regularPriceMinorUnits = regularPrice.getMinorUnits();
         int discountPercent = preferences.getWalletDiscountPercent();
-        long estimatedMinorUnits = floorPercent(regularPriceMinorUnits, 100 - discountPercent);
+        long discountedMinorUnits = floorPercent(
+                regularPriceMinorUnits,
+                100 - discountPercent
+        );
+        long walletPriceMinorUnits = floorToWholeRubles(discountedMinorUnits);
 
         return Optional.of(new WalletEstimate(
-                RubleAmount.ofMinorUnits(estimatedMinorUnits),
+                RubleAmount.ofMinorUnits(walletPriceMinorUnits),
                 discountPercent,
                 WalletPriceSource.ESTIMATED_BY_PERCENT
         ));
@@ -51,5 +55,9 @@ public final class WalletEstimateService {
         long wholeHundreds = minorUnits / 100;
         long remainder = minorUnits % 100;
         return wholeHundreds * percent + (remainder * percent) / 100;
+    }
+
+    private long floorToWholeRubles(long minorUnits) {
+        return (minorUnits / 100) * 100;
     }
 }

@@ -7,19 +7,22 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "priceradar.policy")
 public final class PriceRadarPolicyProperties {
 
-    private int activeSubscriptionLimit;
+    private int defaultActiveSubscriptionLimit;
     private int maxProductLinksPerMessage;
     private Duration quoteTtl;
     private Duration pendingActionTtl;
     private Duration sharedBasketImportTtl;
     private int feedbackMaxLength;
 
-    public int getActiveSubscriptionLimit() {
-        return activeSubscriptionLimit;
+    public int getDefaultActiveSubscriptionLimit() {
+        return defaultActiveSubscriptionLimit;
     }
 
-    public void setActiveSubscriptionLimit(int activeSubscriptionLimit) {
-        this.activeSubscriptionLimit = positive(activeSubscriptionLimit, "active subscription limit");
+    public void setDefaultActiveSubscriptionLimit(int defaultActiveSubscriptionLimit) {
+        this.defaultActiveSubscriptionLimit = positive(
+                defaultActiveSubscriptionLimit,
+                "default active subscription limit"
+        );
     }
 
     public int getMaxProductLinksPerMessage() {

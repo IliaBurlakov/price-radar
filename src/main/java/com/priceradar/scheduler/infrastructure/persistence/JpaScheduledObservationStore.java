@@ -79,6 +79,7 @@ public class JpaScheduledObservationStore implements ScheduledObservationStore {
         }
         productRepository.updateMetadataIfNewer(
                 productId,
+                null,
                 product.getTitle().orElse(null),
                 product.getBrand().orElse(null),
                 observedAt

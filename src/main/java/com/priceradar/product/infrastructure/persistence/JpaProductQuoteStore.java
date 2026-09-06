@@ -32,17 +32,19 @@ public class JpaProductQuoteStore implements ProductQuoteStore {
                 command.getObservedAt()
         );
 
-        ProductEntity product = productRepository.findByMarketplaceAndExternalProductId(
+        UUID productId = productRepository.findByMarketplaceAndExternalProductId(
                 productDetails.getMarketplace(),
                 command.getNmId()
-        ).orElseThrow(() -> new IllegalStateException("Product upsert did not return a product"));
+        ).map(ProductEntity::getId)
+                .orElseThrow(() -> new IllegalStateException("Product upsert did not return a product"));
 
-        product.updateMetadata(
+        productRepository.updateMetadataIfNewer(
+                productId,
                 command.getCanonicalUrl(),
                 productDetails.getTitle().orElse(null),
                 productDetails.getBrand().orElse(null),
                 command.getObservedAt()
         );
-        return product.getId();
+        return productId;
     }
 }

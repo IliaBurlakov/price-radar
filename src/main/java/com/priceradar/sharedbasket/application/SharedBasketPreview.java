@@ -16,6 +16,7 @@ public final class SharedBasketPreview {
     private final int newItems;
     private final int absentTracked;
     private final int excludedByLimit;
+    private final int activeSubscriptionLimit;
     private final int freeSlots;
     private final int addableItems;
     private final int syncTargetItems;
@@ -29,7 +30,8 @@ public final class SharedBasketPreview {
             UUID importId, UUID locationId,
             int foundItems, int availableItems, int readyItems,
             int unresolvedItems, List<String> unavailableTitles,
-            int alreadyTracked, int newItems, int absentTracked, int excludedByLimit, int freeSlots,
+            int alreadyTracked, int newItems, int absentTracked, int excludedByLimit,
+            int activeSubscriptionLimit, int freeSlots,
             int addableItems, int syncTargetItems,
             List<String> addSkippedTitles, List<String> syncSkippedTitles, List<String> absentTitles,
             List<String> excludedByLimitTitles, String destructivePlanFingerprint
@@ -45,6 +47,10 @@ public final class SharedBasketPreview {
         this.newItems = newItems;
         this.absentTracked = absentTracked;
         this.excludedByLimit = excludedByLimit;
+        if (activeSubscriptionLimit <= 0 || freeSlots < 0 || freeSlots > activeSubscriptionLimit) {
+            throw new IllegalArgumentException("subscription capacity is invalid");
+        }
+        this.activeSubscriptionLimit = activeSubscriptionLimit;
         this.freeSlots = freeSlots;
         this.addableItems = addableItems;
         this.syncTargetItems = syncTargetItems;
@@ -68,6 +74,7 @@ public final class SharedBasketPreview {
     public int getAbsentTracked() { return absentTracked; }
     public int getExcludedByLimit() { return excludedByLimit; }
     public int getDestructiveRemovalCount() { return absentTracked + excludedByLimit; }
+    public int getActiveSubscriptionLimit() { return activeSubscriptionLimit; }
     public int getFreeSlots() { return freeSlots; }
     public int getAddableItems() { return addableItems; }
     public int getAddSkippedByLimit() { return addSkippedTitles.size(); }

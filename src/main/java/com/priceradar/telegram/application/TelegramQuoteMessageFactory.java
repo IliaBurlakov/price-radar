@@ -43,15 +43,10 @@ public final class TelegramQuoteMessageFactory {
         StringBuilder text = new StringBuilder();
         text.append(quote.getTitle().orElse("Товар Wildberries #" + quote.getNmId()));
         quote.getBrand().ifPresent(brand -> text.append("\nБренд: ").append(brand));
-        appendAutoSelectedVariant(text, quote);
-        text.append("\n\n");
-        appendAvailability(text, quote.getInterpretedPrice());
+        appendVariant(text, quote);
+        text.append("\n");
         appendPrice(text, quote.getInterpretedPrice(), userProfile);
-        text.append("\n\nГород: ")
-                .append(TelegramDisplayFormatter.region(
-                        quote.getPriceContext().getCityName()
-                ));
-        text.append("\nОткрыть товар:\n").append(quote.getCanonicalUrl());
+        text.append("\n\nОткрыть товар:\n").append(quote.getCanonicalUrl());
 
         return new OutgoingTelegramMessage(
                 chatId,
@@ -76,13 +71,6 @@ public final class TelegramQuoteMessageFactory {
                 text,
                 TelegramNavigationKeyboard.addProductAndHome()
         );
-    }
-
-    private void appendAvailability(StringBuilder text, InterpretedPrice price) {
-        String availability = price.getStatus() == SnapshotStatus.UNAVAILABLE
-                ? "нет в наличии"
-                : "в наличии";
-        text.append("Наличие: ").append(availability);
     }
 
     private void appendPrice(
@@ -118,15 +106,15 @@ public final class TelegramQuoteMessageFactory {
                 .append(TelegramDisplayFormatter.walletEstimate(estimate));
     }
 
-    private void appendAutoSelectedVariant(StringBuilder text, ResolvedQuote quote) {
-        if (!quote.getResolvedVariant().isAutoSelected()) {
-            return;
-        }
+    private void appendVariant(StringBuilder text, ResolvedQuote quote) {
         quote.getResolvedVariant().getDisplayName()
                 .flatMap(TelegramDisplayFormatter::variant)
-                .ifPresent(displayName -> text.append("\n")
-                        .append(displayName)
-                        .append(" (выбран автоматически)"));
+                .ifPresent(displayName -> {
+                    text.append("\n").append(displayName);
+                    if (quote.getResolvedVariant().isAutoSelected()) {
+                        text.append(" (выбран автоматически)");
+                    }
+                });
     }
 
     private List<List<TelegramInlineButton>> trackingKeyboard(
@@ -135,7 +123,7 @@ public final class TelegramQuoteMessageFactory {
     ) {
         return List.of(
                 List.of(new TelegramInlineButton(
-                        "Следить за минимумом",
+                        "Следить за снижением",
                         trackingCallbackCodec.encode(
                                 TrackingCallbackData.Action.TRACK_ANY_DECREASE,
                                 quoteSnapshotId,

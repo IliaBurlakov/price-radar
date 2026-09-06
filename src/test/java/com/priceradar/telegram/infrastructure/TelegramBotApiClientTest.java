@@ -132,7 +132,7 @@ class TelegramBotApiClientTest {
             assertThat(objectMapper.readTree(stub.lastRequestBody()).path("commands"))
                     .extracting(node -> node.path("command").textValue())
                     .containsExactly(
-                            "start", "add", "import", "tracked", "city", "help", "feedback"
+                            "start", "add", "import", "tracked", "city", "wallet", "help", "feedback"
                     );
             assertThat(objectMapper.readTree(stub.lastRequestBody()).path("commands"))
                     .extracting(node -> node.path("description").textValue())
@@ -142,6 +142,7 @@ class TelegramBotApiClientTest {
                             "🛒 Импортировать корзину",
                             "📦 Мои товары",
                             "🌍 Город",
+                            "💳 WB Кошелёк",
                             "❓ Помощь",
                             "💬 Обратная связь"
                     );

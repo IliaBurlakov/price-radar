@@ -95,23 +95,4 @@ public class ProductEntity {
         return createdAt;
     }
 
-    public void updateMetadata(
-            String canonicalUrl,
-            String title,
-            String brand,
-            Instant observedAt
-    ) {
-        if (metadataUpdatedAt != null && metadataUpdatedAt.isAfter(observedAt)) {
-            return;
-        }
-
-        this.canonicalUrl = canonicalUrl;
-        if (title != null) {
-            this.title = title;
-        }
-        if (brand != null) {
-            this.brand = brand;
-        }
-        this.metadataUpdatedAt = observedAt;
-    }
 }

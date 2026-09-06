@@ -10,6 +10,7 @@ public enum TelegramBotCommand {
     IMPORT("import", "🛒 Импортировать корзину"),
     TRACKED("tracked", "📦 Мои товары"),
     CITY("city", "🌍 Город"),
+    WALLET("wallet", "💳 WB Кошелёк"),
     HELP("help", "❓ Помощь"),
     FEEDBACK("feedback", "💬 Обратная связь");
 

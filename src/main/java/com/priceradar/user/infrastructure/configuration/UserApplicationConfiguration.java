@@ -1,5 +1,6 @@
 package com.priceradar.user.infrastructure.configuration;
 
+import com.priceradar.configuration.PriceRadarPolicyProperties;
 import com.priceradar.user.application.UserProfileService;
 import com.priceradar.user.application.UserProfileStore;
 import com.priceradar.user.domain.UserPricePreferences;
@@ -17,6 +18,7 @@ public class UserApplicationConfiguration {
     public UserProfileService userProfileService(
             UserProfileStore profileStore,
             UserDefaultsProperties properties,
+            PriceRadarPolicyProperties policy,
             Clock providerClock
     ) {
         UserPricePreferences defaultPricePreferences = new UserPricePreferences(
@@ -25,6 +27,7 @@ public class UserApplicationConfiguration {
         return new UserProfileService(
                 profileStore,
                 defaultPricePreferences,
+                policy.getDefaultActiveSubscriptionLimit(),
                 providerClock
         );
     }

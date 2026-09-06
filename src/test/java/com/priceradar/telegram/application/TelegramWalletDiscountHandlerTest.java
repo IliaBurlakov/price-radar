@@ -39,7 +39,11 @@ class TelegramWalletDiscountHandlerTest {
         assertThat(pending.getValue().getUserId()).isEqualTo(context.profile.getId());
         assertThat(pending.getValue().getExpiresAt()).isEqualTo(NOW.plusSeconds(900));
         assertThat(captured(context.gateway).getText())
-                .contains("💳 WB Кошелёк", "Текущая скидка: 3%", "от 2% до 20%");
+                .contains(
+                        "💳 WB Кошелёк",
+                        "Текущая скидка: 3%",
+                        "Введите размер скидки вашего WB Кошелька"
+                );
     }
 
     @Test
