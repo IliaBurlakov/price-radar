@@ -6,6 +6,8 @@ import com.priceradar.tracking.domain.Subscription;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,7 +46,13 @@ public class SubscriptionStatisticsService {
         }
 
         Subscription subscription = activeSubscription.get();
-        Instant effectiveStart = period.effectiveStart(subscription.getCreatedAt(), now);
+        if (!period.isAvailable(subscription.getCreatedAt(), now)) {
+            return Optional.empty();
+        }
+        Instant effectiveStart = period.effectiveStart(
+                subscription.getPriceHistoryStartedAt(),
+                now
+        );
         ObservedPriceStatistics observedPrices = priceStatisticsStore.calculate(
                 subscription.getWatchTargetId(),
                 effectiveStart,
@@ -57,5 +65,20 @@ public class SubscriptionStatisticsService {
                 now,
                 observedPrices
         ));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<List<StatisticsPeriod>> findAvailablePeriods(
+            UUID userId,
+            UUID subscriptionId,
+            Instant now
+    ) {
+        if (userId == null || subscriptionId == null || now == null) {
+            throw new IllegalArgumentException("statistics period query fields must not be null");
+        }
+        return subscriptionStore.findActiveOwned(userId, subscriptionId)
+                .map(subscription -> Arrays.stream(StatisticsPeriod.values())
+                        .filter(period -> period.isAvailable(subscription.getCreatedAt(), now))
+                        .toList());
     }
 }

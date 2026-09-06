@@ -54,6 +54,9 @@ public class SubscriptionEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "price_history_started_at", nullable = false)
+    private Instant priceHistoryStartedAt;
+
     @Column(name = "ended_at")
     private Instant endedAt;
 
@@ -76,6 +79,7 @@ public class SubscriptionEntity {
             Instant thresholdObservedAt,
             SubscriptionStatus status,
             Instant createdAt,
+            Instant priceHistoryStartedAt,
             Instant endedAt
     ) {
         this.id = id;
@@ -89,6 +93,7 @@ public class SubscriptionEntity {
         this.thresholdObservedAt = thresholdObservedAt;
         this.status = status;
         this.createdAt = createdAt;
+        this.priceHistoryStartedAt = priceHistoryStartedAt;
         this.endedAt = endedAt;
     }
 
@@ -145,6 +150,10 @@ public class SubscriptionEntity {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getPriceHistoryStartedAt() {
+        return priceHistoryStartedAt;
     }
 
     public Instant getEndedAt() {

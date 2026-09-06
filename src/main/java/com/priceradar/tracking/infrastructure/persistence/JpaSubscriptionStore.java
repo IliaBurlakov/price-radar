@@ -154,6 +154,7 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 subscription.getThresholdObservedAt().orElse(null),
                 subscription.getStatus(),
                 subscription.getCreatedAt(),
+                subscription.getPriceHistoryStartedAt(),
                 subscription.getEndedAt().orElse(null)
         );
         return toSubscription(subscriptionRepository.save(entity));
@@ -224,6 +225,7 @@ public class JpaSubscriptionStore implements SubscriptionStore {
                 Optional.ofNullable(entity.getThresholdObservedAt()),
                 entity.getStatus(),
                 entity.getCreatedAt(),
+                entity.getPriceHistoryStartedAt(),
                 Optional.ofNullable(entity.getEndedAt()),
                 entity.getVersion()
         );

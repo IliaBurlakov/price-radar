@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -86,6 +87,32 @@ class SubscriptionStatisticsServiceTest {
     }
 
     @Test
+    void allTimeStartsAtExplicitInitialPriceObservation() {
+        UUID userId = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        UUID watchTargetId = UUID.randomUUID();
+        Instant createdAt = NOW.minus(1, ChronoUnit.DAYS);
+        Instant initialPriceObservedAt = createdAt.minus(5, ChronoUnit.MINUTES);
+        Subscription subscription = new Subscription(
+                subscriptionId, userId, watchTargetId, NotificationMode.ANY_DECREASE,
+                Optional.empty(), Optional.empty(), Optional.empty(),
+                ThresholdState.NOT_APPLICABLE, Optional.empty(), SubscriptionStatus.ACTIVE,
+                createdAt, initialPriceObservedAt, Optional.empty(), 0
+        );
+        when(subscriptionStore.findActiveOwned(userId, subscriptionId))
+                .thenReturn(Optional.of(subscription));
+        when(priceStatisticsStore.calculate(watchTargetId, initialPriceObservedAt, NOW))
+                .thenReturn(ObservedPriceStatistics.empty());
+
+        SubscriptionStatistics result = statisticsService.calculate(
+                userId, subscriptionId, StatisticsPeriod.ALL_TIME, NOW
+        ).orElseThrow();
+
+        assertThat(result.getEffectivePeriodStart()).isEqualTo(initialPriceObservedAt);
+        verify(priceStatisticsStore).calculate(watchTargetId, initialPriceObservedAt, NOW);
+    }
+
+    @Test
     void doesNotQuerySharedSnapshotsWithoutAnActiveOwnedSubscription() {
         UUID userId = UUID.randomUUID();
         UUID subscriptionId = UUID.randomUUID();
@@ -96,6 +123,41 @@ class SubscriptionStatisticsServiceTest {
                 userId,
                 subscriptionId,
                 StatisticsPeriod.ALL_TIME,
+                NOW
+        )).isEmpty();
+        verify(priceStatisticsStore, never()).calculate(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void exposesOnlyPeriodsCoveredByCurrentTrackingDuration() {
+        UUID userId = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        UUID watchTargetId = UUID.randomUUID();
+        Subscription subscription = activeSubscription(
+                subscriptionId,
+                userId,
+                watchTargetId,
+                NOW.minus(40, ChronoUnit.DAYS)
+        );
+        when(subscriptionStore.findActiveOwned(userId, subscriptionId))
+                .thenReturn(Optional.of(subscription));
+
+        assertThat(statisticsService.findAvailablePeriods(userId, subscriptionId, NOW))
+                .contains(List.of(
+                        StatisticsPeriod.LAST_1_DAY,
+                        StatisticsPeriod.LAST_7_DAYS,
+                        StatisticsPeriod.LAST_30_DAYS,
+                        StatisticsPeriod.ALL_TIME
+                ));
+
+        assertThat(statisticsService.calculate(
+                userId,
+                subscriptionId,
+                StatisticsPeriod.LAST_365_DAYS,
                 NOW
         )).isEmpty();
         verify(priceStatisticsStore, never()).calculate(

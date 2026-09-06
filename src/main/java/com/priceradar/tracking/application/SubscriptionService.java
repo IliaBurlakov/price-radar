@@ -273,6 +273,9 @@ public class SubscriptionService {
             Optional<SubscriptionQuoteObservation> currentRegularPrice,
             Instant now
     ) {
+        Instant priceHistoryStartedAt = currentRegularPrice
+                .map(SubscriptionQuoteObservation::getObservedAt)
+                .orElse(now);
         if (mode == NotificationMode.ANY_DECREASE) {
             return new Subscription(
                     UUID.randomUUID(),
@@ -286,6 +289,7 @@ public class SubscriptionService {
                     Optional.empty(),
                     SubscriptionStatus.ACTIVE,
                     now,
+                    priceHistoryStartedAt,
                     Optional.empty(),
                     0
             );
@@ -310,6 +314,7 @@ public class SubscriptionService {
                 currentRegularPrice.map(SubscriptionQuoteObservation::getObservedAt),
                 SubscriptionStatus.ACTIVE,
                 now,
+                priceHistoryStartedAt,
                 Optional.empty(),
                 0
         );

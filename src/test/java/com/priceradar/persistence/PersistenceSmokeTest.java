@@ -11,6 +11,8 @@ import com.priceradar.pricing.domain.PriceSource;
 import com.priceradar.pricing.domain.RubleAmount;
 import com.priceradar.pricing.domain.SnapshotStatus;
 import com.priceradar.notification.application.NotificationObservation;
+import com.priceradar.notification.application.NotificationDecisionResult;
+import com.priceradar.notification.application.NotificationDecisionService;
 import com.priceradar.notification.domain.NotificationType;
 import com.priceradar.notification.domain.OutboxStatus;
 import com.priceradar.notification.infrastructure.persistence.NotificationOutboxJpaRepository;
@@ -38,8 +40,11 @@ import com.priceradar.tracking.infrastructure.persistence.WatchTargetJpaReposito
 import com.priceradar.tracking.application.SubscriptionCreationResult;
 import com.priceradar.tracking.application.SubscriptionConditionChangeResult;
 import com.priceradar.tracking.application.SubscriptionService;
+import com.priceradar.tracking.application.SubscriptionStore;
 import com.priceradar.tracking.domain.NotificationMode;
 import com.priceradar.tracking.domain.Subscription;
+import com.priceradar.tracking.domain.SubscriptionStatus;
+import com.priceradar.tracking.domain.ThresholdState;
 import com.priceradar.telegram.application.PendingTargetPrice;
 import com.priceradar.telegram.application.PendingTargetPriceStore;
 import com.priceradar.user.application.UserProfile;
@@ -128,6 +133,9 @@ class PersistenceSmokeTest {
     private SubscriptionService subscriptionService;
 
     @Autowired
+    private SubscriptionStore subscriptionStore;
+
+    @Autowired
     private SubscriptionStatisticsService subscriptionStatisticsService;
 
     @Autowired
@@ -177,7 +185,7 @@ class PersistenceSmokeTest {
                 updatedAt
         );
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("18");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("19");
         assertThat(cooldownStore.findCooldownUntil(Marketplace.WILDBERRIES))
                 .contains(cooldownUntil);
     }
@@ -530,6 +538,130 @@ class PersistenceSmokeTest {
     }
 
     @Test
+    void importedInitialPriceBelongsOnlyToItsSubscriptionHistoryPeriod() {
+        Instant importedAt = Instant.parse("2026-08-24T09:55:00Z");
+        Instant subscribedAt = importedAt.plusSeconds(300);
+        PersistedResolvedQuote importedQuote = quotePersistenceService.save(
+                quoteCommand(445445L, importedAt, 44_500L)
+        );
+        UserProfile user = userProfileService.getOrCreate(44501L, 44501L);
+        Subscription first = subscriptionStore.create(new Subscription(
+                UUID.randomUUID(), user.getId(), importedQuote.getWatchTargetId(),
+                NotificationMode.ANY_DECREASE, Optional.empty(),
+                Optional.of(RubleAmount.ofMinorUnits(44_500L)), Optional.of(importedAt),
+                ThresholdState.NOT_APPLICABLE,
+                Optional.empty(), SubscriptionStatus.ACTIVE,
+                subscribedAt, importedAt, Optional.empty(), 0
+        ));
+
+        Instant lowerPriceObservedAt = subscribedAt.plusSeconds(60);
+        saveSnapshot(
+                importedQuote.getWatchTargetId(), lowerPriceObservedAt,
+                SnapshotStatus.REGULAR_PRICE, PriceSource.PRODUCT,
+                33_100L, null, true
+        );
+        SubscriptionStatistics firstPeriod = subscriptionStatisticsService.calculate(
+                user.getId(), first.getId(), StatisticsPeriod.ALL_TIME,
+                lowerPriceObservedAt.plusSeconds(1)
+        ).orElseThrow();
+        NotificationDecisionResult decision = new NotificationDecisionService().evaluate(
+                first,
+                new NotificationObservation(
+                        UUID.randomUUID(), importedQuote.getWatchTargetId(),
+                        new PriceSemanticsService().interpret(new ProviderPriceFields(
+                                true, Optional.of(RubleAmount.ofMinorUnits(33_100L)), Optional.empty()
+                        )),
+                        lowerPriceObservedAt
+                )
+        );
+
+        assertThat(first.getCreatedAt()).isEqualTo(subscribedAt);
+        assertThat(first.getPriceHistoryStartedAt()).isEqualTo(importedAt);
+        assertThat(firstPeriod.getObservationCount()).isEqualTo(2);
+        assertThat(firstPeriod.getFirstPrice()).contains(RubleAmount.ofMinorUnits(44_500L));
+        assertThat(firstPeriod.getLatestPrice()).contains(RubleAmount.ofMinorUnits(33_100L));
+        assertThat(decision.getNotificationIntent()).get().satisfies(intent -> {
+            assertThat(intent.getPreviousPrice()).contains(RubleAmount.ofMinorUnits(44_500L));
+            assertThat(intent.getCurrentPrice()).isEqualTo(RubleAmount.ofMinorUnits(33_100L));
+        });
+
+        subscriptionService.end(
+                user.getId(), first.getId(), lowerPriceObservedAt.plusSeconds(1)
+        );
+        Instant secondImportAt = lowerPriceObservedAt.plusSeconds(10);
+        PersistedResolvedQuote secondQuote = quotePersistenceService.save(
+                quoteCommand(445445L, secondImportAt, 40_000L)
+        );
+        Subscription second = subscriptionStore.create(new Subscription(
+                UUID.randomUUID(), user.getId(), secondQuote.getWatchTargetId(),
+                NotificationMode.ANY_DECREASE, Optional.empty(),
+                Optional.of(RubleAmount.ofMinorUnits(40_000L)), Optional.of(secondImportAt),
+                ThresholdState.NOT_APPLICABLE,
+                Optional.empty(), SubscriptionStatus.ACTIVE,
+                secondImportAt.plusSeconds(5), secondImportAt, Optional.empty(), 0
+        ));
+        SubscriptionStatistics secondPeriod = subscriptionStatisticsService.calculate(
+                user.getId(), second.getId(), StatisticsPeriod.ALL_TIME,
+                secondImportAt.plusSeconds(6)
+        ).orElseThrow();
+
+        assertThat(secondPeriod.getObservationCount()).isOne();
+        assertThat(secondPeriod.getFirstPrice()).contains(RubleAmount.ofMinorUnits(40_000L));
+        assertThat(secondPeriod.getLatestPrice()).contains(RubleAmount.ofMinorUnits(40_000L));
+    }
+
+    @Test
+    void directQuoteInitialPriceBelongsToSubscriptionStatistics() {
+        Instant quotedAt = Instant.parse("2026-08-24T09:55:00Z");
+        Instant subscribedAt = quotedAt.plusSeconds(5);
+        PersistedResolvedQuote quote = quotePersistenceService.save(
+                quoteCommand(445446L, quotedAt, 44_500L)
+        );
+        UserProfile user = userProfileService.getOrCreate(44502L, 44502L);
+        userRegionService.changeLocation(
+                user.getId(), com.priceradar.testsupport.TestMarketplaceRegions.moscow(), quotedAt
+        );
+
+        Subscription subscription = subscriptionService.createFromQuote(
+                user.getId(), quote.getSnapshotId(), NotificationMode.ANY_DECREASE,
+                Optional.empty(), subscribedAt
+        ).getSubscription().orElseThrow();
+        SubscriptionStatistics initialStatistics = subscriptionStatisticsService.calculate(
+                user.getId(), subscription.getId(), StatisticsPeriod.ALL_TIME,
+                subscribedAt
+        ).orElseThrow();
+
+        assertThat(subscription.getCreatedAt()).isEqualTo(subscribedAt);
+        assertThat(subscription.getPriceHistoryStartedAt()).isEqualTo(quotedAt);
+        assertThat(initialStatistics.getObservationCount()).isOne();
+        assertThat(initialStatistics.getFirstPrice())
+                .contains(RubleAmount.ofMinorUnits(44_500L));
+        assertThat(initialStatistics.getLatestPrice())
+                .contains(RubleAmount.ofMinorUnits(44_500L));
+        assertThat(initialStatistics.getMinimumPrice())
+                .contains(RubleAmount.ofMinorUnits(44_500L));
+        assertThat(initialStatistics.getMaximumPrice())
+                .contains(RubleAmount.ofMinorUnits(44_500L));
+
+        Instant lowerPriceObservedAt = subscribedAt.plusSeconds(60);
+        saveSnapshot(
+                quote.getWatchTargetId(), lowerPriceObservedAt,
+                SnapshotStatus.REGULAR_PRICE, PriceSource.PRODUCT,
+                33_100L, null, true
+        );
+        SubscriptionStatistics updatedStatistics = subscriptionStatisticsService.calculate(
+                user.getId(), subscription.getId(), StatisticsPeriod.ALL_TIME,
+                lowerPriceObservedAt.plusSeconds(1)
+        ).orElseThrow();
+
+        assertThat(updatedStatistics.getObservationCount()).isEqualTo(2);
+        assertThat(updatedStatistics.getFirstPrice())
+                .contains(RubleAmount.ofMinorUnits(44_500L));
+        assertThat(updatedStatistics.getLatestPrice())
+                .contains(RubleAmount.ofMinorUnits(33_100L));
+    }
+
+    @Test
     void calculatesStatisticsOnlyForTheCurrentSubscriptionPeriod() {
         Instant subscriptionStartedAt = Instant.parse("2026-07-18T10:00:00Z");
         PersistedResolvedQuote quote = quotePersistenceService.save(
@@ -537,6 +669,11 @@ class PersistenceSmokeTest {
         );
         UUID watchTargetId = quote.getWatchTargetId();
         UserProfile user = userProfileService.getOrCreate(40001L, 40001L);
+        userRegionService.changeLocation(
+                user.getId(),
+                com.priceradar.testsupport.TestMarketplaceRegions.moscow(),
+                subscriptionStartedAt
+        );
         SubscriptionCreationResult firstSubscription = subscriptionService.createFromQuote(
                 user.getId(),
                 quote.getSnapshotId(),
@@ -601,8 +738,9 @@ class PersistenceSmokeTest {
                 subscriptionStartedAt.plusSeconds(6)
         ).orElseThrow();
 
-        assertThat(firstPeriod.getEffectivePeriodStart()).isEqualTo(subscriptionStartedAt);
-        assertThat(firstPeriod.getObservationCount()).isEqualTo(2);
+        assertThat(firstPeriod.getEffectivePeriodStart())
+                .isEqualTo(subscriptionStartedAt.minusSeconds(1));
+        assertThat(firstPeriod.getObservationCount()).isEqualTo(3);
         assertThat(firstPeriod.getMinimumPrice())
                 .contains(RubleAmount.ofMinorUnits(9_000L));
         assertThat(firstPeriod.getMinimumObservedAt())
@@ -610,14 +748,14 @@ class PersistenceSmokeTest {
         assertThat(firstPeriod.getMaximumPrice())
                 .contains(RubleAmount.ofMinorUnits(11_001L));
         assertThat(firstPeriod.getAverageMinorUnits().orElseThrow())
-                .isEqualByComparingTo("10000.5");
+                .isEqualByComparingTo("10000.3333333333333333");
         assertThat(firstPeriod.getFirstPrice())
-                .contains(RubleAmount.ofMinorUnits(9_000L));
+                .contains(RubleAmount.ofMinorUnits(10_000L));
         assertThat(firstPeriod.getLatestPrice())
                 .contains(RubleAmount.ofMinorUnits(11_001L));
-        assertThat(firstPeriod.getPriceChangeMinorUnits()).contains(2_001L);
+        assertThat(firstPeriod.getPriceChangeMinorUnits()).contains(1_001L);
         assertThat(firstPeriod.getPriceChangePercent().orElseThrow())
-                .isEqualByComparingTo("22.23");
+                .isEqualByComparingTo("10.01");
         assertThat(firstPeriod.getLatestPriceDifferenceFromMinimum())
                 .contains(RubleAmount.ofMinorUnits(2_001L));
 
@@ -626,32 +764,40 @@ class PersistenceSmokeTest {
                 firstSubscriptionId,
                 subscriptionStartedAt.plusSeconds(7)
         );
+        Instant secondQuoteObservedAt = subscriptionStartedAt.plusSeconds(8);
+        PersistedResolvedQuote secondQuote = quotePersistenceService.save(
+                quoteCommand(444444L, secondQuoteObservedAt)
+        );
         SubscriptionCreationResult secondSubscription = subscriptionService.createFromQuote(
                 user.getId(),
-                quote.getSnapshotId(),
+                secondQuote.getSnapshotId(),
                 NotificationMode.ANY_DECREASE,
                 Optional.empty(),
-                subscriptionStartedAt.plusSeconds(8)
+                subscriptionStartedAt.plusSeconds(9)
         );
         UUID secondSubscriptionId = secondSubscription.getSubscription()
                 .orElseThrow()
                 .getId();
 
-        SubscriptionStatistics newPeriodWithoutObservations = subscriptionStatisticsService
+        SubscriptionStatistics newPeriodWithInitialQuote = subscriptionStatisticsService
                 .calculate(
                         user.getId(),
                         secondSubscriptionId,
                         StatisticsPeriod.ALL_TIME,
-                        subscriptionStartedAt.plusSeconds(9)
+                        subscriptionStartedAt.plusSeconds(10)
                 ).orElseThrow();
 
-        assertThat(newPeriodWithoutObservations.hasData()).isFalse();
-        assertThat(newPeriodWithoutObservations.getObservationCount()).isZero();
-        assertThat(newPeriodWithoutObservations.getMinimumPrice()).isEmpty();
+        assertThat(newPeriodWithInitialQuote.getEffectivePeriodStart())
+                .isEqualTo(secondQuoteObservedAt);
+        assertThat(newPeriodWithInitialQuote.getObservationCount()).isOne();
+        assertThat(newPeriodWithInitialQuote.getFirstPrice())
+                .contains(RubleAmount.ofMinorUnits(10_000L));
+        assertThat(newPeriodWithInitialQuote.getLatestPrice())
+                .contains(RubleAmount.ofMinorUnits(10_000L));
 
         saveSnapshot(
                 watchTargetId,
-                subscriptionStartedAt.plusSeconds(10),
+                subscriptionStartedAt.plusSeconds(11),
                 SnapshotStatus.REGULAR_PRICE,
                 PriceSource.PRODUCT,
                 8_500L,
@@ -662,21 +808,21 @@ class PersistenceSmokeTest {
                 user.getId(),
                 secondSubscriptionId,
                 StatisticsPeriod.ALL_TIME,
-                subscriptionStartedAt.plusSeconds(11)
+                subscriptionStartedAt.plusSeconds(12)
         ).orElseThrow();
 
-        assertThat(newPeriod.getObservationCount()).isOne();
+        assertThat(newPeriod.getObservationCount()).isEqualTo(2);
         assertThat(newPeriod.getMinimumPrice())
                 .contains(RubleAmount.ofMinorUnits(8_500L));
         assertThat(newPeriod.getFirstPrice())
-                .contains(RubleAmount.ofMinorUnits(8_500L));
+                .contains(RubleAmount.ofMinorUnits(10_000L));
         assertThat(newPeriod.getLatestPrice())
                 .contains(RubleAmount.ofMinorUnits(8_500L));
-        assertThat(newPeriod.getPriceChangeMinorUnits()).contains(0L);
+        assertThat(newPeriod.getPriceChangeMinorUnits()).contains(-1_500L);
         assertThat(newPeriod.getLatestPriceDifferenceFromMinimum())
                 .contains(RubleAmount.ofMinorUnits(0));
         assertThat(newPeriod.getAverageMinorUnits().orElseThrow())
-                .isEqualByComparingTo("8500");
+                .isEqualByComparingTo("9250");
     }
 
     @Test
@@ -749,6 +895,37 @@ class PersistenceSmokeTest {
                 "https://www.wildberries.ru/catalog/%d/detail.aspx".formatted(nmId),
                 "Test product",
                 "Test brand"
+        );
+    }
+
+    private ResolvedQuotePersistenceCommand quoteCommand(
+            long nmId,
+            Instant observedAt,
+            long regularPriceMinor
+    ) {
+        PriceContext priceContext = new PriceContext("Moscow", 1259570991L, 30);
+        ProviderPriceFields priceFields = new ProviderPriceFields(
+                true,
+                Optional.of(RubleAmount.ofMinorUnits(regularPriceMinor)),
+                Optional.empty()
+        );
+        String variantKey = ResolvedVariant.noVariant().getVariantKey();
+        MarketplaceProductDetails product = new MarketplaceProductDetails(
+                Marketplace.WILDBERRIES,
+                String.valueOf(nmId),
+                Optional.of("Test product"),
+                Optional.of("Test brand"),
+                List.of(),
+                Map.of(variantKey, priceFields)
+        );
+        return new ResolvedQuotePersistenceCommand(
+                product,
+                nmId,
+                "https://www.wildberries.ru/catalog/%d/detail.aspx".formatted(nmId),
+                ResolvedVariant.noVariant(),
+                priceContext,
+                new PriceSemanticsService().interpret(priceFields),
+                observedAt
         );
     }
 

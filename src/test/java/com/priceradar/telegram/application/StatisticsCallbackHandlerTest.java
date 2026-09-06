@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -146,16 +147,13 @@ class StatisticsCallbackHandlerTest {
         when(userProfileService.getOrCreate(TELEGRAM_USER_ID, CHAT_ID))
                 .thenReturn(profile);
         UUID subscriptionId = UUID.randomUUID();
-        SubscriptionStatistics statistics = new SubscriptionStatistics(
-                subscriptionId,
-                StatisticsPeriod.ALL_TIME,
-                NOW.minusSeconds(60),
-                NOW,
-                ObservedPriceStatistics.empty()
-        );
-        when(statisticsService.calculate(
-                profile.getId(), subscriptionId, StatisticsPeriod.ALL_TIME, NOW
-        )).thenReturn(Optional.of(statistics));
+        when(statisticsService.findAvailablePeriods(profile.getId(), subscriptionId, NOW))
+                .thenReturn(Optional.of(List.of(
+                        StatisticsPeriod.LAST_1_DAY,
+                        StatisticsPeriod.LAST_7_DAYS,
+                        StatisticsPeriod.LAST_30_DAYS,
+                        StatisticsPeriod.ALL_TIME
+                )));
 
         handler.handleCallback(callback(SubscriptionCallbackData.encode(
                 SubscriptionCallbackData.Action.SHOW_STATISTICS,
@@ -165,6 +163,12 @@ class StatisticsCallbackHandlerTest {
         ArgumentCaptor<OutgoingTelegramMessage> messageCaptor =
                 ArgumentCaptor.forClass(OutgoingTelegramMessage.class);
         verify(telegramGateway).sendMessage(messageCaptor.capture());
+        assertThat(messageCaptor.getValue().getInlineKeyboard().stream()
+                .flatMap(java.util.Collection::stream)
+                .map(TelegramInlineButton::getText)
+                .toList())
+                .containsSubsequence("1 день", "7 дней", "30 дней", "Всё время")
+                .doesNotContain("365 дней");
         TelegramInlineButton back = messageCaptor.getValue().getInlineKeyboard().stream()
                 .flatMap(java.util.Collection::stream)
                 .filter(button -> button.getText().equals("← Назад"))

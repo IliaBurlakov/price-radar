@@ -354,7 +354,9 @@ public class SharedBasketImportService {
                 Optional.empty(), observation.getRegularPrice(),
                 observation.getRegularPrice().map(ignored -> observation.getObservedAt()),
                 ThresholdState.NOT_APPLICABLE, Optional.empty(), SubscriptionStatus.ACTIVE,
-                now, Optional.empty(), 0
+                now,
+                observation.getRegularPrice().isPresent() ? observation.getObservedAt() : now,
+                Optional.empty(), 0
         );
     }
 

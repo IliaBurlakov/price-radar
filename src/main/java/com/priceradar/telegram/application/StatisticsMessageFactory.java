@@ -122,6 +122,7 @@ public final class StatisticsMessageFactory {
 
     private String periodLabel(StatisticsPeriod period) {
         return switch (period) {
+            case LAST_1_DAY -> "за 1 день";
             case LAST_7_DAYS -> "за 7 дней";
             case LAST_30_DAYS -> "за 30 дней";
             case LAST_365_DAYS -> "за 365 дней";

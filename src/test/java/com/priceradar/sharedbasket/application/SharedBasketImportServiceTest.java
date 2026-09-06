@@ -77,6 +77,8 @@ class SharedBasketImportServiceTest {
                         .map(RubleAmount::getMinorUnits)
                         .filter(amount -> amount == 10000)
                         .isPresent()
+                        && value.getCreatedAt().equals(NOW)
+                        && value.getPriceHistoryStartedAt().equals(NOW.minusSeconds(30))
         );
         verify(userStore).findByIdAndLock(userId);
     }
@@ -127,7 +129,15 @@ class SharedBasketImportServiceTest {
         assertThat(result.getKept()).isEqualTo(15);
         assertThat(result.getAdded()).isEqualTo(15);
         assertThat(result.getEnded()).isEqualTo(8);
-        verify(subscriptionStore, org.mockito.Mockito.times(15)).create(any());
+        ArgumentCaptor<Subscription> created = ArgumentCaptor.forClass(Subscription.class);
+        verify(subscriptionStore, org.mockito.Mockito.times(15)).create(created.capture());
+        assertThat(created.getAllValues()).allSatisfy(subscription -> {
+            assertThat(subscription.getCreatedAt()).isEqualTo(NOW);
+            assertThat(subscription.getPriceHistoryStartedAt())
+                    .isEqualTo(NOW.minusSeconds(30));
+            assertThat(subscription.getNotificationReferencePrice())
+                    .contains(RubleAmount.ofMinorUnits(10_000));
+        });
         verify(subscriptionStore, org.mockito.Mockito.times(8)).end(any());
         for (int index = 0; index < 15; index++) {
             UUID overlapId = active.get(index).getId();

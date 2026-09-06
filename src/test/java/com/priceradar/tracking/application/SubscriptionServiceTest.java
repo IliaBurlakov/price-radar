@@ -39,6 +39,104 @@ class SubscriptionServiceTest {
     );
 
     @Test
+    void anyDecreaseStartsPriceHistoryAtInitialRegularObservation() {
+        UUID userId = UUID.randomUUID();
+        UUID quoteSnapshotId = UUID.randomUUID();
+        Instant observedAt = Instant.parse("2026-01-01T00:09:30Z");
+        Instant createdAt = Instant.parse("2026-01-01T00:10:00Z");
+        SubscriptionQuoteObservation observation = new SubscriptionQuoteObservation(
+                quoteSnapshotId,
+                UUID.randomUUID(),
+                observedAt,
+                Optional.of(RubleAmount.ofMinorUnits(44_500)),
+                moscow().toPriceContext()
+        );
+        ready(userId, quoteSnapshotId, observation);
+        when(subscriptionStore.create(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Subscription subscription = service.createFromQuote(
+                userId,
+                quoteSnapshotId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                createdAt
+        ).getSubscription().orElseThrow();
+
+        assertThat(subscription.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(subscription.getPriceHistoryStartedAt()).isEqualTo(observedAt);
+        assertThat(subscription.getNotificationReferencePrice())
+                .contains(RubleAmount.ofMinorUnits(44_500));
+        assertThat(subscription.getLastProcessedPriceObservedAt()).contains(observedAt);
+        verifyNoInteractions(thresholdNotificationEnqueuer);
+    }
+
+    @Test
+    void targetPriceStartsPriceHistoryAtInitialRegularObservation() {
+        UUID userId = UUID.randomUUID();
+        UUID quoteSnapshotId = UUID.randomUUID();
+        Instant observedAt = Instant.parse("2026-01-01T00:09:30Z");
+        Instant createdAt = Instant.parse("2026-01-01T00:10:00Z");
+        SubscriptionQuoteObservation observation = new SubscriptionQuoteObservation(
+                quoteSnapshotId,
+                UUID.randomUUID(),
+                observedAt,
+                Optional.of(RubleAmount.ofMinorUnits(44_500)),
+                moscow().toPriceContext()
+        );
+        ready(userId, quoteSnapshotId, observation);
+        when(subscriptionStore.create(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Subscription subscription = service.createFromQuote(
+                userId,
+                quoteSnapshotId,
+                NotificationMode.TARGET_PRICE,
+                Optional.of(RubleAmount.ofMinorUnits(40_000)),
+                createdAt
+        ).getSubscription().orElseThrow();
+
+        assertThat(subscription.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(subscription.getPriceHistoryStartedAt()).isEqualTo(observedAt);
+        assertThat(subscription.getThresholdState()).isEqualTo(ThresholdState.ABOVE_TARGET);
+        assertThat(subscription.getThresholdObservedAt()).contains(observedAt);
+        assertThat(subscription.getLastProcessedPriceObservedAt()).contains(observedAt);
+        verifyNoInteractions(thresholdNotificationEnqueuer);
+    }
+
+    @Test
+    void subscriptionWithoutRegularObservationStartsPriceHistoryAtCreationTime() {
+        UUID userId = UUID.randomUUID();
+        UUID quoteSnapshotId = UUID.randomUUID();
+        Instant observedAt = Instant.parse("2026-01-01T00:09:30Z");
+        Instant createdAt = Instant.parse("2026-01-01T00:10:00Z");
+        SubscriptionQuoteObservation observation = new SubscriptionQuoteObservation(
+                quoteSnapshotId,
+                UUID.randomUUID(),
+                observedAt,
+                Optional.empty(),
+                moscow().toPriceContext()
+        );
+        ready(userId, quoteSnapshotId, observation);
+        when(subscriptionStore.create(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Subscription subscription = service.createFromQuote(
+                userId,
+                quoteSnapshotId,
+                NotificationMode.ANY_DECREASE,
+                Optional.empty(),
+                createdAt
+        ).getSubscription().orElseThrow();
+
+        assertThat(subscription.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(subscription.getPriceHistoryStartedAt()).isEqualTo(createdAt);
+        assertThat(subscription.getNotificationReferencePrice()).isEmpty();
+        assertThat(subscription.getLastProcessedPriceObservedAt()).isEmpty();
+        verifyNoInteractions(thresholdNotificationEnqueuer);
+    }
+
+    @Test
     void alreadyReachedTargetIsMarkedAndNotificationIsEnqueued() {
         UUID userId = UUID.randomUUID();
         UUID watchTargetId = UUID.randomUUID();

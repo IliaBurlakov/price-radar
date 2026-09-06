@@ -57,6 +57,7 @@ public final class StatisticsCallbackData {
 
     private static String action(StatisticsPeriod period) {
         return switch (period) {
+            case LAST_1_DAY -> "SHOW_STATS_1D";
             case LAST_7_DAYS -> "SHOW_STATS_7D";
             case LAST_30_DAYS -> "SHOW_STATS_30D";
             case LAST_365_DAYS -> "SHOW_STATS_365D";
@@ -66,6 +67,7 @@ public final class StatisticsCallbackData {
 
     private static Optional<StatisticsPeriod> period(String action) {
         return switch (action) {
+            case "SHOW_STATS_1D" -> Optional.of(StatisticsPeriod.LAST_1_DAY);
             case "SHOW_STATS_7D" -> Optional.of(StatisticsPeriod.LAST_7_DAYS);
             case "SHOW_STATS_30D" -> Optional.of(StatisticsPeriod.LAST_30_DAYS);
             case "SHOW_STATS_365D" -> Optional.of(StatisticsPeriod.LAST_365_DAYS);
