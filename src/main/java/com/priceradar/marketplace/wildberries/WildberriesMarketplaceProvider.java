@@ -290,9 +290,13 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                         Instant observedAt = mappedResult.getObservedAt().orElseThrow();
                         saveCached(cacheKey, product, observedAt);
                     } else {
-                        providerCooldownUntil = mappedResult.getFailure()
-                                .orElseThrow()
-                                .getRetryNotBefore();
+                        MarketplaceProviderFailure providerFailure = mappedResult.getFailure()
+                                .orElseThrow();
+                        providerCooldownUntil = providerFailure.getRetryNotBefore();
+                        if (isInvalidResponse(providerFailure.getCode())) {
+                            logProviderFailure(response, providerFailure.getCode(), cacheKey,
+                                    correlationId, providerCooldownUntil, Optional.empty(), attempt);
+                        }
                     }
 
                     return mappedResult;
@@ -310,6 +314,8 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
 
                 if (statusCode == 403) {
                     providerCooldownUntil = Optional.of(clock.instant().plus(accessForbiddenCooldown));
+                    logProviderFailure(response, MarketplaceProviderFailureCode.ACCESS_FORBIDDEN,
+                            cacheKey, correlationId, providerCooldownUntil, Optional.empty(), attempt);
                     return failure(
                             MarketplaceProviderFailureCode.ACCESS_FORBIDDEN,
                             "Wildberries temporarily rejected provider access",
@@ -321,6 +327,8 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                 if (statusCode == 429) {
                     Instant retryNotBefore = resolveRateLimitCooldown(response);
                     providerCooldownUntil = Optional.of(retryNotBefore);
+                    logProviderFailure(response, MarketplaceProviderFailureCode.RATE_LIMITED,
+                            cacheKey, correlationId, providerCooldownUntil, Optional.empty(), attempt);
                     return failure(
                             MarketplaceProviderFailureCode.RATE_LIMITED,
                             "Wildberries temporarily limited request frequency",
@@ -333,6 +341,8 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                     Optional<Instant> retryAfter = findRetryAfter(response);
                     if (retryAfter.isPresent() && retryAfter.get().isAfter(clock.instant())) {
                         providerCooldownUntil = retryAfter;
+                        logProviderFailure(response, MarketplaceProviderFailureCode.SERVER_ERROR,
+                                cacheKey, correlationId, providerCooldownUntil, Optional.empty(), attempt);
                         return failure(
                                 MarketplaceProviderFailureCode.SERVER_ERROR,
                                 "Wildberries is temporarily unavailable",
@@ -343,10 +353,15 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
 
                     if (attempt < maxAttempts) {
                         delayAfterRequest = calculateBackoff(attempt);
+                        logProviderFailure(response, MarketplaceProviderFailureCode.SERVER_ERROR,
+                                cacheKey, correlationId, Optional.empty(),
+                                Optional.of(delayAfterRequest), attempt);
                         continue;
                     }
 
                     providerCooldownUntil = Optional.of(clock.instant().plus(serverErrorCooldown));
+                    logProviderFailure(response, MarketplaceProviderFailureCode.SERVER_ERROR,
+                            cacheKey, correlationId, providerCooldownUntil, Optional.empty(), attempt);
                     return failure(
                             MarketplaceProviderFailureCode.SERVER_ERROR,
                             "Wildberries is temporarily unavailable",
@@ -355,6 +370,8 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
                     );
                 }
 
+                logProviderFailure(response, MarketplaceProviderFailureCode.HTTP_ERROR,
+                        cacheKey, correlationId, Optional.empty(), Optional.empty(), attempt);
                 return failure(
                         MarketplaceProviderFailureCode.HTTP_ERROR,
                         "Wildberries returned unexpected HTTP status " + statusCode,
@@ -534,6 +551,65 @@ public final class WildberriesMarketplaceProvider implements MarketplaceProvider
         return response.headers()
                 .firstValue("Retry-After")
                 .flatMap(this::parseRetryAfter);
+    }
+
+    private void logProviderFailure(
+            HttpResponse<?> response,
+            MarketplaceProviderFailureCode errorCode,
+            RequestCacheKey cacheKey,
+            String correlationId,
+            Optional<Instant> cooldownUntil,
+            Optional<Duration> retryDelay,
+            int attempt
+    ) {
+        Instant now = clock.instant();
+        String cooldownUntilValue = cooldownUntil.map(Instant::toString).orElse("none");
+        String cooldownDuration = cooldownUntil
+                .map(until -> Duration.between(now, until))
+                .map(duration -> duration.isNegative() ? Duration.ZERO : duration)
+                .map(Duration::toString)
+                .orElse("none");
+        String action = cooldownUntil.isPresent()
+                ? "COOLDOWN"
+                : retryDelay.isPresent() ? "RETRY" : "RETURN_FAILURE";
+        URI endpoint = response.request().uri();
+
+        LOGGER.warn(
+                "Wildberries provider request failed, requestType=PRODUCT_CARD, endpoint={}, "
+                        + "httpStatus={}, errorCode={}, nmId={}, dest={}, spp={}, retryAfter={}, "
+                        + "xPowPresent={}, correlationId={}, action={}, cooldownUntil={}, "
+                        + "cooldownDuration={}, retryDelay={}, attempt={}/{}",
+                endpoint.getHost() + endpoint.getPath(),
+                response.statusCode(),
+                errorCode,
+                cacheKey.getNmId(),
+                cacheKey.getDest(),
+                cacheKey.getSpp(),
+                retryAfterForLog(response),
+                response.headers().firstValue("x-pow").isPresent(),
+                correlationId,
+                action,
+                cooldownUntilValue,
+                cooldownDuration,
+                retryDelay.map(Duration::toString).orElse("none"),
+                attempt,
+                maxAttempts
+        );
+    }
+
+    private String retryAfterForLog(HttpResponse<?> response) {
+        Optional<String> retryAfter = response.headers().firstValue("Retry-After");
+        if (retryAfter.isEmpty()) {
+            return "none";
+        }
+        return parseRetryAfter(retryAfter.orElseThrow())
+                .map(Instant::toString)
+                .orElse("present-invalid");
+    }
+
+    private boolean isInvalidResponse(MarketplaceProviderFailureCode errorCode) {
+        return errorCode == MarketplaceProviderFailureCode.MALFORMED_RESPONSE
+                || errorCode == MarketplaceProviderFailureCode.SCHEMA_VIOLATION;
     }
 
     private Optional<Instant> parseRetryAfter(String rawValue) {
